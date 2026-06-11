@@ -3,6 +3,56 @@
 All notable changes to kroopt are recorded here. RFC lifecycle transitions are
 governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycle-policy.md).
 
+## [0.14.0-dev] — M13 provider-arena refactor: stateful crypto seam + real TLS 1.3 key schedule (RFC 8448-validated) — 2026-06-11
+
+Makes the crypto seam stateful so real key material can flow, and builds the real
+TLS 1.3 key schedule on the native HACL* primitives — validated against the
+RFC 8448 §3 trace. The verified core and its 78 theorems are untouched: handle
+opacity is preserved, so this adds a stateful trusted seam beside the proofs, it
+does not modify them.
+
+### Added — secret arena (`Kroopt.Crypto.SecretArena`)
+
+- A bounded, generation-tagged store mapping `SecretKeyHandle` ids to secret
+  bytes, threaded as a pure value (no hidden `IORef`). Handles carry the arena
+  generation; a stale handle is rejected after `bumpGeneration`. Capacity-bounded
+  (RFC 019); release/zeroize documented honestly as best-effort.
+
+### Changed — stateful provider seam
+
+- `CryptoProvider.submit` now threads the arena:
+  `SecretArena → OperationId → CryptoOp → Except CryptoError (SecretArena × CryptoResult)`.
+  The interpreter threads it through `RuntimeState.arena`. The fake provider
+  allocates real handles from the arena (ECDHE/HKDF), so the existing handshake
+  tests now exercise arena allocation end-to-end. All seam-affected suites stay
+  green with no behaviour change.
+
+### Added — real key schedule (`Kroopt.Crypto.KeySchedule`) and arena AEAD (`Kroopt.Crypto.Real`)
+
+- The RFC 8446 §7.1 schedule on HACL*: HKDF-Expand-Label, Derive-Secret, the
+  early/handshake/master chain, handshake/application traffic secrets, traffic
+  keys/IVs, and Finished keys (SHA-256 suite).
+- `Kroopt.Crypto.Real` installs derived keys into the arena under handles and
+  seals/opens records by handle with the per-record nonce (RFC 8446 §5.3).
+
+### Added — RFC 8448 validation (`kroopt-keyschedule-test`, 20 checks)
+
+- The whole chain matches the RFC 8448 §3 "Simple 1-RTT Handshake" trace exactly
+  (empty hash, Early Secret, X25519 from both sides, derived secrets, Handshake
+  and Master Secrets, all traffic secrets, traffic keys/IVs, Finished key),
+  computed through the native HACL* object code — plus a real-key arena AEAD
+  round-trip with tamper rejection and stale-handle behaviour. Wired into CI.
+
+### The honest boundary (next milestone)
+
+- Not yet driven by `Kroopt.Core.step`: the core's `CryptoOp`s are too abstract
+  to express a real schedule (no salt/IKM, no label/input handle, no AEAD key
+  reference). Wiring it requires enriching those shapes and re-proving the
+  operation-id correlation and no-emit/no-accept discipline over them, while
+  keeping handle opacity. See `docs/src/key-schedule.md`.
+
+
+
 ## [0.13.0-dev] — M12 native crypto binding: HACL* primitives callable and KAT-verified through Lean — 2026-06-11
 
 - The vendored HACL* generated C files are

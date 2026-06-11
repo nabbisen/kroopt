@@ -12,7 +12,7 @@ actions; a thin interpreter executes those actions over real crypto and sockets
 and never makes protocol decisions of its own. That separation carries
 machine-checked safety properties into the running code.
 
-## Status: M0–M12 (verified core → handshake → TlsConn → config → alerts/close → jemmet HTTPS → hardening → native crypto binding)
+## Status: M0–M13 (verified core → handshake → TlsConn → config → alerts/close → HTTPS → hardening → native crypto → key schedule)
 
 This tree implements milestones **M0**–**M5** from the [ROADMAP](ROADMAP.md). M0
 fixes the pure-core/interpreter architecture; M1 adds the bounds-safe parsing
@@ -56,6 +56,19 @@ cannot thread real key material on its own. See
 [`docs/src/native-crypto.md`](docs/src/native-crypto.md) for the honest
 boundary. The pure verified core still builds with no C toolchain; only the FFI
 library and its KAT executable need a C compiler.
+
+M13 does that provider-arena refactor. A generation-tagged secret arena
+(`Kroopt.Crypto.SecretArena`) is threaded through `CryptoProvider.submit`, so
+real key material can flow while the verified core still sees only opaque
+handles (its 78 theorems are untouched). On top of it sits the real TLS 1.3 key
+schedule (`Kroopt.Crypto.KeySchedule`) on HACL\*, **validated end-to-end against
+the RFC 8448 §3 trace** — every secret, traffic key, IV, and Finished key matches
+— plus a real derived key driven through the arena into the ChaCha20-Poly1305
+AEAD (`kroopt-keyschedule-test`, 20 checks). It is not yet driven by
+`Kroopt.Core.step`: the core's crypto ops must first be enriched (and their
+correlation proofs re-established) to express a real schedule, which is the next
+step toward a real handshake. See
+[`docs/src/key-schedule.md`](docs/src/key-schedule.md).
 
 The headline M5 result: every M2/M3 safety theorem — above all *no early
 plaintext* — **still holds over the live handshake**, which is the
@@ -112,6 +125,7 @@ lake exe kroopt-close-test    # M9 alerts, close_notify, and terminal-policy tes
 lake exe kroopt-https-test    # M10 jemmet integration + end-to-end HTTPS acceptance
 lake exe kroopt-hardening-test# M11 resource budgets + deferred-feature scope control
 lake exe kroopt-hacl-test     # M12 native HACL* crypto KATs through the Lean FFI (needs a C compiler)
+lake exe kroopt-keyschedule-test # M13 TLS 1.3 key schedule vs RFC 8448 + secret arena (needs a C compiler)
 ./scripts/check-axioms.sh     # proof gate: no sorryAx across all public theorems
 lake exe kroopt-parse-fuzz    # parser + ClientHello smoke fuzzer (optional arg: iterations)
 ./scripts/check-hygiene.sh    # RFC 022 proof-hygiene gate

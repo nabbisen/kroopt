@@ -138,3 +138,11 @@ calls, which would otherwise be undefined at link. -/
 lean_exe «kroopt-hacl-test» where
   root := `Tests.Hacl
   moreLinkArgs := #["-Wl,--gc-sections"]
+
+/-- M13 provider-arena refactor: the real TLS 1.3 key schedule validated against
+RFC 8448 §3, plus the secret arena driving a real key into the AEAD. Links the
+HACL* FFI lib. -/
+@[default_target]
+lean_exe «kroopt-keyschedule-test» where
+  root := `Tests.KeySchedule
+  moreLinkArgs := #["-Wl,--gc-sections"]

@@ -22,7 +22,7 @@ namespace Kroopt.Conn
 
 open Kroopt (TlsError TransportError CryptoError)
 open Kroopt.Core (State InputEvent OutputAction HandshakeInfo)
-open Kroopt.Crypto (CryptoProvider)
+open Kroopt.Crypto (CryptoProvider SecretArena)
 
 /-- How many bytes a single `readTransport` requests. -/
 def maxReadChunk : Nat := 16384
@@ -39,6 +39,7 @@ structure RuntimeState where
   metadata       : Option HandshakeInfo := none
   lastError      : Option TlsError := none
   terminal       : Bool := false
+  arena          : SecretArena := SecretArena.empty
   deriving Inhabited
 
 /-- Try to push the pending ciphertext queue toward the transport, honouring
@@ -74,9 +75,9 @@ def execAction {τ : Type} [Transport τ] (prov : CryptoProvider) (rt : RuntimeS
   | .enableWriteInterest _  => ({ rt with writeInterest := true }, Transport.enableWrite tr (Transport.fd tr), [])
   | .disableWriteInterest _ => ({ rt with writeInterest := false }, Transport.disableWrite tr (Transport.fd tr), [])
   | .callCrypto conn op req =>
-      match prov.submit op req with
-      | .ok r    => (rt, tr, [InputEvent.cryptoResult conn op r])
-      | .error e => (rt, tr, [InputEvent.cryptoResult conn op (.failed e)])
+      match prov.submit rt.arena op req with
+      | .ok (arena', r) => ({ rt with arena := arena' }, tr, [InputEvent.cryptoResult conn op r])
+      | .error e        => (rt, tr, [InputEvent.cryptoResult conn op (.failed e)])
   | .emitPlaintext _ b        => ({ rt with plaintextOut := some b }, tr, [])
   | .acceptPlaintextBytes _ n => ({ rt with acceptedBytes := rt.acceptedBytes + n }, tr, [])
   | .reportHandshakeComplete _ info => ({ rt with metadata := some info }, tr, [])

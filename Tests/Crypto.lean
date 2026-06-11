@@ -65,17 +65,17 @@ def checks : List Check :=
              | .error .noRandomSource => true | _ => false) }
     -- deterministic fake provider
   , { name := "fake provider: ECDHE returns a shared-secret handle"
-    , ok := (match fakeProvider.submit ⟨0⟩ (.ecdheX25519 (ByteArray.mk #[])) with
-             | .ok (.sharedSecret _) => true | _ => false) }
+    , ok := (match fakeProvider.submit Kroopt.Crypto.SecretArena.empty ⟨0⟩ (.ecdheX25519 (ByteArray.mk #[])) with
+             | .ok (_, .sharedSecret _) => true | _ => false) }
   , { name := "fake provider: Finished verification succeeds"
-    , ok := (match fakeProvider.submit ⟨0⟩ (.verifyFinished .sha256 (ByteArray.mk #[]) (ByteArray.mk #[])) with
-             | .ok .verified => true | _ => false) }
+    , ok := (match fakeProvider.submit Kroopt.Crypto.SecretArena.empty ⟨0⟩ (.verifyFinished .sha256 (ByteArray.mk #[]) (ByteArray.mk #[])) with
+             | .ok (_, .verified) => true | _ => false) }
   , { name := "fake provider: AEAD seal echoes the plaintext envelope deterministically"
-    , ok := (match fakeProvider.submit ⟨0⟩
+    , ok := (match fakeProvider.submit Kroopt.Crypto.SecretArena.empty ⟨0⟩
                (.aeadSeal { conn := ⟨0,0⟩, direction := .write, epoch := .application,
                             seq := SeqNo.zero, suite := .aes128GcmSha256,
                             contentRole := .applicationData } (ByteArray.mk #[]) (ByteArray.mk #[7,7,7])) with
-             | .ok (.aeadSealed ct) => ct.toList == [7,7,7] | _ => false) }
+             | .ok (_, .aeadSealed ct) => ct.toList == [7,7,7] | _ => false) }
     -- operation-id correlation guard (RFC 008 §5)
   , { name := "outstanding op: a returning result is processed (buffers plaintext)"
     , ok := (match stateAfter connectedWithOp

@@ -1,5 +1,6 @@
 import Kroopt.Core.CipherSuite
 import Kroopt.Core.Crypto
+import Kroopt.Crypto.Arena
 import Kroopt.Error
 
 /-!
@@ -91,11 +92,15 @@ def validateCapabilities (caps : CryptoCapabilities) (req : RequiredCrypto) :
 
 /-- A synchronous crypto provider (RFC 008 §8.1, §8.2). `submit` answers a
 `CryptoOp` deterministically (for the fake) or by calling the C shim (for the
-real provider). The operation id is echoed by the interpreter and matched against
-the outstanding op in the core — `submit` itself performs no protocol logic. -/
+real provider). It threads the `SecretArena` (RFC 008 §6): operations producing
+secret material (ECDHE, HKDF) allocate a handle in the arena and return it, so
+later operations can read the bytes back — something a pure, stateless `submit`
+could not do. The operation id is echoed by the interpreter and matched against
+the outstanding op in the core; `submit` itself performs no protocol logic. -/
 structure CryptoProvider where
   capabilities : CryptoCapabilities
-  submit       : OperationId → CryptoOp → Except CryptoError CryptoResult
+  submit       : SecretArena → OperationId → CryptoOp →
+                   Except CryptoError (SecretArena × CryptoResult)
 
 /-! ## The deterministic fake provider (RFC 008 §8.1, §10) -/
 
@@ -110,18 +115,25 @@ def fakeCapabilities : CryptoCapabilities :=
     supportsSecretHandles := true }
 
 /-- A deterministic, purpose-aware answer for each operation kind (RFC 008 §8.1).
-Secret outputs are fixed handles; AEAD wraps/unwraps a test envelope; sign and
-verify are scripted. This is the same shape the C provider must satisfy — it is
-*not* a stand-in for real cryptography, only a faithful interface. -/
-def fakeSubmit (_ : OperationId) : CryptoOp → Except CryptoError CryptoResult
-  | .randomBytes _ => .ok (.randomBytes (ByteArray.mk #[]))
-  | .ecdheX25519 _ => .ok (.sharedSecret ⟨1, 0⟩)
-  | .hkdfExtract _ => .ok (.hkdfSecret ⟨2, 0⟩)
-  | .hkdfExpandLabel _ _ => .ok (.hkdfSecret ⟨3, 0⟩)
-  | .aeadSeal _ _ pt => .ok (.aeadSealed pt)
-  | .aeadOpen _ _ ct => .ok (.aeadOpened ct)
-  | .signCertificateVerify _ _ => .ok (.signature (ByteArray.mk (Array.mkArray 64 0xCD)))
-  | .verifyFinished _ _ _ => .ok .verified
+Now threads the arena: ECDHE and HKDF allocate a real handle backed by a
+placeholder secret (the fake never uses real key material — its AEAD is the
+identity envelope), so the existing handshake tests exercise arena allocation
+end-to-end. AEAD wraps/unwraps a test envelope; sign and verify are scripted.
+This is the same shape the real provider must satisfy — not a stand-in for real
+cryptography, only a faithful interface. -/
+def fakeSubmit (a : SecretArena) (_ : OperationId) :
+    CryptoOp → Except CryptoError (SecretArena × CryptoResult)
+  | .randomBytes _ => .ok (a, .randomBytes (ByteArray.mk #[]))
+  | .ecdheX25519 _ => do
+      let (h, a') ← a.store (ByteArray.mk (Array.mkArray 32 0)); .ok (a', .sharedSecret h)
+  | .hkdfExtract _ => do
+      let (h, a') ← a.store (ByteArray.mk (Array.mkArray 32 0)); .ok (a', .hkdfSecret h)
+  | .hkdfExpandLabel _ _ => do
+      let (h, a') ← a.store (ByteArray.mk (Array.mkArray 32 0)); .ok (a', .hkdfSecret h)
+  | .aeadSeal _ _ pt => .ok (a, .aeadSealed pt)
+  | .aeadOpen _ _ ct => .ok (a, .aeadOpened ct)
+  | .signCertificateVerify _ _ => .ok (a, .signature (ByteArray.mk (Array.mkArray 64 0xCD)))
+  | .verifyFinished _ _ _ => .ok (a, .verified)
 
 /-- The deterministic fake provider used by the model/handshake/e2e tests. -/
 def fakeProvider : CryptoProvider :=
