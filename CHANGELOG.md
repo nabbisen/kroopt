@@ -3,6 +3,51 @@
 All notable changes to kroopt are recorded here. RFC lifecycle transitions are
 governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycle-policy.md).
 
+## [0.4.0-dev] — M3 nonce, sequence, epoch, key separation — 2026-06-11
+
+Fourth implementation milestone (RFC 005). Proves the record layer's
+cryptographic discipline — the part where a kroopt bug, not a HACL\* bug, would
+destroy security: AEAD nonce reuse, sequence wrap, or read/write/epoch key
+confusion. Built over the M2 record path; still no real crypto and no sockets.
+
+### Added — nonce / key-epoch model (`Kroopt.Core.Nonce`)
+
+- `KeyEpochId` — a non-secret key-epoch identity (conn, direction, epoch,
+  generation) for correlating nonces, proofs, and logs without secret bytes.
+- `RecordNonce` / `deriveNonce` — the nonce modeled as the public IV-base
+  identity plus the sequence value (the data the uniqueness argument needs).
+- `seqBytesBE`, `paddedSeqBytes`, `nonceBytes` — the concrete
+  `iv_base XOR left_pad(seq)` byte realization for the interpreter and KATs.
+
+### Added — proofs (`Kroopt.Proofs.Nonces`, `Kroopt.Proofs.KeySeparation`)
+
+- `SeqNo.next_some_succ` / `next_none_overflow` — increment is exactly `+1`;
+  `none` only at the `UInt64` ceiling (no wrapped value is produced).
+- `successful_seal_increments_write_seq` / `successful_open_increments_read_seq`
+  — an accepted seal/open advances that direction's sequence by exactly one.
+- `no_crypto_on_write_seq_overflow` — **no silent wrap**: at the ceiling a send
+  requests no crypto and fails.
+- `nonce_unique_within_epoch` — distinct sequences derive distinct nonces for a
+  fixed IV base (depends on no axioms at all).
+- `aeadSeal_uses_write_keys` / `aeadOpen_uses_read_keys` — directional and epoch
+  key separation: seal ops carry write/application metadata, open ops carry
+  read/application metadata.
+- All machine-checked, no `sorry`/`axiom`/`unsafe`; `#print axioms` shows only
+  `propext` (one theorem none, one also `Quot.sound`).
+
+### Added — tests, docs
+
+- `Tests/Nonce.lean` (`kroopt-nonce-test`) — 12 checks: sequence increment and
+  ceiling overflow, nonce uniqueness (modeled and concrete bytes), the
+  direction/epoch metadata on emitted seal/open ops, and stale/early
+  crypto-result behaviour; all passing.
+- `docs/src/nonce-sequence.md`; expanded theorem inventory and proof-assumptions.
+
+### Changed
+
+- `Core.Record` gained the `SeqNo.next` increment/overflow lemmas. The gates now
+  cover the nonce model and its proofs (22 pure-zone files).
+
 ## [0.3.0-dev] — M2 TLS 1.3 record model — 2026-06-11
 
 Third implementation milestone (RFC 004). Adds the TLS 1.3 record model — the

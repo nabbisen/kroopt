@@ -83,18 +83,35 @@ the crypto provider's contract (ASSUMED — HACL\*/EverCrypt), not something kro
 proves. What kroopt proves is that buffered/emitted plaintext is reachable
 *only* through that authenticated path — the structural half of the guarantee.
 
+## M3 — proved (nonce, sequence, epoch, key separation)
+
+The record layer's cryptographic discipline (RFC 005 §7). Nonce reuse breaks AEAD
+catastrophically, so these are proof targets rather than tested conventions. They
+live in `Kroopt.Core.Proofs` (modules `Kroopt.Proofs.Nonces` and
+`Kroopt.Proofs.KeySeparation`), with the `SeqNo` increment/overflow facts in the
+core.
+
+| # | Theorem | Property | RFC | Axioms | Status |
+|---|---------|----------|-----|--------|--------|
+| 20 | `SeqNo.next_some_succ` / `SeqNo.next_none_overflow` | A successful increment is exactly `+1`; `next` returns `none` only at the `UInt64` ceiling. | RFC 005 §7.1–7.2 | propext | proved |
+| 21 | `successful_seal_increments_write_seq` | A successful seal advances the write sequence by exactly one. | RFC 005 §7.1 | propext | proved |
+| 22 | `successful_open_increments_read_seq` | A successful open (that buffers content) advances the read sequence by exactly one. | RFC 005 §7.1 | propext | proved |
+| 23 | `no_crypto_on_write_seq_overflow` | At the sequence ceiling a send requests no crypto and fails — no seal with a wrapped sequence (no silent wrap). | RFC 005 §7.2 | propext | proved |
+| 24 | `nonce_unique_within_epoch` | For a fixed IV base, distinct sequence values derive distinct nonces. | RFC 005 §7.3 | none | proved |
+| 25 | `aeadSeal_uses_write_keys` | Every seal request carries write-direction, application-epoch metadata. | RFC 005 §7.4–7.5 | propext | proved |
+| 26 | `aeadOpen_uses_read_keys` | Every open request carries read-direction, application-epoch metadata. | RFC 005 §7.4–7.5 | propext, Quot.sound | proved |
+
+All confirmed via `#print axioms` to depend only on `propext` (`nonce_unique_within_epoch` on no axioms at all; one also on `Quot.sound`), never `sorryAx`.
+
+Note on the nonce model: the uniqueness proof is over `deriveNonce`, which models
+the per-record nonce as the public IV-base identity plus the sequence value — the
+data the security argument needs. The concrete `iv_base XOR left_pad(seq)`
+realization (`nonceBytes`) is provided for the interpreter and known-answer tests
+(M6); for a fixed IV base it is a bijection in the sequence, so it preserves the
+proved uniqueness. RFC 005 §5 explicitly sanctions representing the IV base
+abstractly.
+
 ## Planned — later milestones
-
-These are required by the RFCs and tracked here so the inventory shows the whole
-target, not only what is done. They are absent from the tree (not stubbed with
-`sorry`) until their milestone.
-
-| Theorem (working name) | Property | RFC | Milestone |
-|------------------------|----------|-----|-----------|
-| `seq_monotonic` | Record sequence numbers strictly increase within an epoch; no reuse. | RFC 005 §7.1 | M3 |
-| `seq_overflow_fatal` | A sequence at `UInt64` max forces failure before nonce derivation. | RFC 005 §7.2 | M3 |
-| `nonce_unique_per_key` | No two seals under one key/epoch use the same nonce. | RFC 005 §7.3 | M3 |
-| `key_separation` | Read/write and handshake/application key material never alias. | RFC 005 §7.5 | M3 |
 | `handshake_transitions_legal` | Every reachable `HandshakeState` transition is an allowed edge. | RFC 006 §4 | M4 |
 | `transcript_exact_bytes` | The transcript binds exactly the wire bytes, in order. | RFC 007 §5 | M4 |
 | `takeCountedItems_bounds` | The fuel-bounded item combinator is bounds-safe given a bounds-safe item parser (composition lemma). | RFC 003 §9.3 | M4 |

@@ -20,17 +20,23 @@ No proof depends on `sorryAx`. This is enforced two ways:
 
 ## Project-local assumptions
 
-**None at M0–M2.** The core, parser foundation, and record model are
+**None at M0–M3.** The core, parser foundation, record model, and
+sequence/nonce layer are
 self-contained: no `axiom` declarations, no appeals to unproven lemmas, no
 trusted project-local facts. Every parser primitive and every record transition
 that runs in a strict zone carries a proof (see `theorem-inventory.md`).
 
-The one *external* assumption the record proofs lean on is the crypto provider's
-contract — that a `CryptoResult.aeadOpened` is returned only for a record whose
-AEAD tag verified. That is the ASSUMED tier (HACL\*/EverCrypt), tracked in the
-trust/test/proof matrix, not a project-local Lean assumption. kroopt proves the
-*structural* half: buffered and emitted plaintext is reachable only through that
-authenticated path.
+Two *external* facts the record/nonce proofs lean on, both in the ASSUMED tier
+(HACL\*/EverCrypt), tracked in the trust/test/proof matrix rather than as
+project-local Lean assumptions:
+
+* a `CryptoResult.aeadOpened` is returned only for a record whose AEAD tag
+  verified — kroopt proves the structural half (plaintext is reachable only
+  through that authenticated path);
+* the concrete `iv_base XOR left_pad(seq)` nonce derivation is a bijection in the
+  sequence for a fixed IV base — the uniqueness proof is stated over the abstract
+  `deriveNonce` model (RFC 005 §5 sanctions abstracting the IV base), and the
+  concrete byte realization is exercised by known-answer tests at M6.
 
 ### Tested-but-not-yet-proved helpers (explicit follow-up tasks)
 

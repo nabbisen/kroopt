@@ -48,6 +48,11 @@ lean_exe «kroopt-parse-test» where
 lean_exe «kroopt-record-test» where
   root := `Tests.Record
 
+/-- Unit and negative tests for sequence/nonce/key-separation (RFC 005 §10). -/
+@[default_target]
+lean_exe «kroopt-nonce-test» where
+  root := `Tests.Nonce
+
 /-- Bounded smoke fuzzer for the parser primitives (RFC 003 §11, RFC 023). -/
 @[default_target]
 lean_exe «kroopt-parse-fuzz» where

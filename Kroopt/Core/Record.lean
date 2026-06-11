@@ -49,6 +49,26 @@ def next (s : SeqNo) : Option SeqNo :=
 theorem next_zero : next zero = some ⟨1⟩ := by
   simp [next, zero]
 
+/-- A successful increment advances the value by exactly one (RFC 005 §7.1). -/
+theorem next_some_succ {s s' : SeqNo} (h : next s = some s') :
+    s'.value = s.value + 1 := by
+  unfold next at h
+  simp only [] at h
+  split at h
+  · exact absurd h (by simp)
+  · simp only [Option.some.injEq] at h; rw [← h]
+
+/-- `next` returns `none` only at the `UInt64` ceiling, i.e. exactly when the
+incremented value would wrap to zero (RFC 005 §7.2). No wrapped value is ever
+produced. -/
+theorem next_none_overflow {s : SeqNo} (h : next s = none) :
+    s.value + 1 = 0 := by
+  unfold next at h
+  simp only [] at h
+  split at h
+  · assumption
+  · exact absurd h (by simp)
+
 end SeqNo
 
 /-- Per-direction record state: which epoch is installed, the current sequence

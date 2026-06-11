@@ -9,32 +9,32 @@ actions; a thin interpreter executes those actions over real crypto and sockets
 and never makes protocol decisions of its own. That separation carries
 machine-checked safety properties into the running code.
 
-## Status: M0 + M1 + M2 (verified core + parser + record model)
+## Status: M0 + M1 + M2 + M3 (verified core, parser, record model, nonce/seq)
 
-This tree implements milestones **M0**, **M1**, and **M2** from the
-[ROADMAP](ROADMAP.md). M0 fixes the pure-core/interpreter architecture; M1 adds
-the bounds-safe parsing foundation; M2 adds the TLS 1.3 record model with the
-*no unauthenticated plaintext* proof. There is still no real cryptography and no
-sockets — that is deliberate. These layers are built and proven first so the
-protocol model and the running code cannot drift apart later (RFC 001–004, 022,
-024).
+This tree implements milestones **M0**–**M3** from the [ROADMAP](ROADMAP.md). M0
+fixes the pure-core/interpreter architecture; M1 adds the bounds-safe parsing
+foundation; M2 adds the TLS 1.3 record model with the *no unauthenticated
+plaintext* proof; M3 proves the record layer's cryptographic discipline (sequence
+monotonicity, no nonce wrap, nonce uniqueness, read/write/epoch key separation).
+There is still no real cryptography and no sockets — that is deliberate. These
+layers are built and proven first so the protocol model and the running code
+cannot drift apart later (RFC 001–005, 022, 024).
 
 What builds and is checked today:
 
-- the pure core — `Kroopt.Core` (`Id`, `Common`, `CipherSuite`, `Record` with
-  the TLS 1.3 record types, `Crypto`, `Transcript`, `State`, `Event`, `Action`,
-  `RecordPath`, `Step`);
+- the pure core — `Kroopt.Core` (`Id`, `Common`, `CipherSuite`, `Record` with the
+  TLS 1.3 record types and `SeqNo`, `Crypto`, `Nonce`, `Transcript`, `State`,
+  `Event`, `Action`, `RecordPath`, `Step`);
 - the bounds-safe parser foundation — `Kroopt.Parse` (`Reader`, fixed-width and
   length-prefixed reads, the budgeted vector framer, the record framer
   `tryTakeRecord`, inner-plaintext parsing, CCS classification);
-- nineteen machine-checked theorems in `Kroopt.Proofs`, including *no early
-  plaintext* (`no_plaintext_emit_unless_connected`), *no unauthenticated
-  plaintext* (`buffered_plaintext_authenticated`), AEAD-open-failure safety,
-  terminal-state absorption, and parser bounds-safety — all with **no
-  `sorry`/`axiom`/`unsafe`**, depending only on `propext` (some also
-  `Quot.sound`);
-- deterministic tests — an M0 model test (9 checks), an M1 parser test (18), an
-  M2 record test (19), all green, plus a parser fuzz harness;
+- twenty-six machine-checked theorems in `Kroopt.Proofs`, including *no early
+  plaintext*, *no unauthenticated plaintext* (`buffered_plaintext_authenticated`),
+  *no silent sequence wrap*, nonce uniqueness, read/write/epoch key separation,
+  and parser bounds-safety — all with **no `sorry`/`axiom`/`unsafe`**, depending
+  only on `propext` (some also `Quot.sound`, one on no axioms at all);
+- deterministic tests — model (9), parser (18), record (19), nonce/seq (12), all
+  green, plus a parser fuzz harness;
 - two CI gates that run from M0: proof hygiene and module-dependency isolation.
 
 See the [theorem inventory](docs/src/theorem-inventory.md) and
@@ -51,6 +51,7 @@ lake build                    # build the core + parser + proofs + test exes
 lake exe kroopt-model-test    # M0 model test (drives `step`)
 lake exe kroopt-parse-test    # M1 parser unit + negative tests
 lake exe kroopt-record-test   # M2 record-model unit + negative tests
+lake exe kroopt-nonce-test    # M3 sequence/nonce/key-separation tests
 lake exe kroopt-parse-fuzz    # M1 parser smoke fuzzer (optional arg: iterations)
 ./scripts/check-hygiene.sh    # RFC 022 proof-hygiene gate
 ./scripts/check-deps.sh       # RFC 022 module-dependency gate
@@ -62,13 +63,14 @@ lake exe kroopt-parse-fuzz    # M1 parser smoke fuzzer (optional arg: iterations
 Kroopt.lean            root module (re-exports the M0 core)
 Kroopt/
   Error.lean           typed, redaction-safe error/alert taxonomy
-  Core/                pure verified core: types, State, Event, Action, step
+  Core/                pure verified core: types, records, nonce, State, step
   Parse/               pure bounds-safe parser/framer foundation (Reader, …)
   Proofs/              structural proofs over `step` and the parser
 Tests/
   Model.lean           deterministic model test (drives `step`)
   Parse.lean           parser unit + negative tests
   Record.lean          record-model unit + negative tests
+  Nonce.lean           sequence/nonce/key-separation tests
   Fuzz.lean            parser smoke fuzzer
 scripts/               CI gates (hygiene, module dependencies)
 docs/src/              mdbook documentation (incl. theorem inventory)
