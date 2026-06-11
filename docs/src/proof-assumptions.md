@@ -20,8 +20,21 @@ No proof depends on `sorryAx`. This is enforced two ways:
 
 ## Project-local assumptions
 
-**None at M0.** The M0 core is self-contained: it makes no appeal to unproven
-lemmas, no `axiom` declarations, and no trusted external facts.
+**None at M0–M1.** The core and parser foundation are self-contained: no `axiom`
+declarations, no appeals to unproven lemmas, no trusted external facts. Every
+parser primitive that runs in a strict zone carries a bounds-safety proof (see
+`theorem-inventory.md`).
+
+### Tested-but-not-yet-proved helpers (explicit follow-up tasks)
+
+RFC 003 §12 permits "tested trusted helpers with explicit follow-up proof
+tasks." There is currently one:
+
+* `Reader.takeCountedItems` (the fuel-bounded item combinator) is exercised by
+  unit tests and the fuzz harness, and is structurally terminating (recursion on
+  explicit fuel), but its bounds-safety *lemma* (`takeCountedItems_bounds`, under
+  a bounds-safe-item hypothesis) is scheduled for M4 alongside the extension-list
+  parser that first uses it. It is not yet relied upon by any verified theorem.
 
 ## Assumptions deferred to later milestones (not yet in the tree)
 

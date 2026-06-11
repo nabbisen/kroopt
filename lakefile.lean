@@ -28,6 +28,7 @@ native code, no FFI, no iotakt import. This is the only default target at M0. -/
 lean_lib Kroopt where
   globs := #[.one `Kroopt,
              .andSubmodules `Kroopt.Core,
+             .andSubmodules `Kroopt.Parse,
              .andSubmodules `Kroopt.Proofs]
 
 /-- Deterministic, Lean-only model test: drives `Kroopt.Core.step` directly
@@ -36,3 +37,13 @@ with scripted input events and asserts the resulting state/action behaviour
 @[default_target]
 lean_exe «kroopt-model-test» where
   root := `Tests.Model
+
+/-- Deterministic parser unit + negative tests (RFC 003 §11). -/
+@[default_target]
+lean_exe «kroopt-parse-test» where
+  root := `Tests.Parse
+
+/-- Bounded smoke fuzzer for the parser primitives (RFC 003 §11, RFC 023). -/
+@[default_target]
+lean_exe «kroopt-parse-fuzz» where
+  root := `Tests.Fuzz

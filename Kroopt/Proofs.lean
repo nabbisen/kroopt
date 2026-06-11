@@ -1,5 +1,6 @@
 import Kroopt.Proofs.Basic
 import Kroopt.Proofs.ActionDiscipline
+import Kroopt.Proofs.ParserBounds
 
 /-!
 # Kroopt.Proofs

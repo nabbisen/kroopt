@@ -5,6 +5,7 @@
 # Architecture
 
 - [Boundary and non-goals](boundary.md)
+- [Parser foundation](parser.md)
 
 # Verification
 

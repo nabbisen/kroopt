@@ -3,6 +3,55 @@
 All notable changes to kroopt are recorded here. RFC lifecycle transitions are
 governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycle-policy.md).
 
+## [0.2.0-dev] — M1 bounds-safe parser foundation — 2026-06-11
+
+Second implementation milestone (RFC 003). Adds the pure parsing/framing
+foundation with bounds-safety proofs, on top of the M0 core. Still no crypto and
+no sockets. (Per the roadmap, the released `v0.1` "synthetic handshake and record
+core" line is reached once M1–M5 all land; these `0.x.0-dev` tags are internal
+per-milestone snapshots.)
+
+### Added — parser foundation (`Kroopt.Parse`)
+
+- `Reader` — a byte cursor carrying its own `offset ≤ input.size` proof, so
+  out-of-bounds readers are unconstructable (*bounds-safety by construction*).
+- `UInt24` — a dedicated 24-bit wrapper for handshake lengths (RFC 003 §9.2), in
+  place of an unchecked `UInt32` cast.
+- Primitives — `takeBytes`, `takeU8`/`U16`/`U24`/`U32` (big-endian), `takeLen`
+  (8/16/24-bit prefixes), `remaining`, `atEnd`, `expectEnd`.
+- `takeVectorBytes` — length-prefixed byte vector with a `maxLen` budget check
+  plus the remaining-input check; the framer the record/extension parsers build
+  on.
+- `takeCountedItems` — fuel-bounded item combinator (no unbounded recursion over
+  attacker-controlled counts).
+- `ParseError` — internal typed parse errors with positions/sizes but no raw
+  bytes, plus `toPublic` projecting onto the redacted `Kroopt.ParseError`.
+
+### Added — proofs (`Kroopt.Parse.Proofs`, module `Kroopt.Proofs.ParserBounds`)
+
+- `reader_in_bounds`, `takeBytes_bounds`/`_mono`, `takeU8`/`U16`/`U24`/`U32_bounds`,
+  `takeLen_bounds`, `takeVectorBytes_bounds`, and the umbrella `parser_bounds_safe`
+  — every successful read advances the cursor monotonically, stays within the
+  buffer, and preserves the buffer. All machine-checked, no `sorry`/`axiom`/
+  `unsafe`; verified via `#print axioms` to depend only on `propext` (some also
+  `Quot.sound`).
+
+### Added — tests, fuzzing, docs
+
+- `Tests/Parse.lean` (`kroopt-parse-test`) — 18 unit + negative checks (decode,
+  truncation, over-budget length, trailing bytes, fuel exhaustion); all passing.
+- `Tests/Fuzz.lean` (`kroopt-parse-fuzz`) — deterministic bounded smoke fuzzer
+  asserting the reader invariant across pseudo-random buffers (50k iterations,
+  zero violations).
+- `docs/src/parser.md` and an expanded theorem inventory / proof-assumptions
+  register.
+
+### Changed
+
+- The proof-hygiene and module-dependency gates now cover `Kroopt/Parse`.
+- `Kroopt.Parse` depends only on `Kroopt.Error`, keeping it a pure sibling of the
+  core (enforced by `scripts/check-deps.sh`).
+
 ## [0.1.0-dev] — M0 verified-core skeleton — 2026-06-11
 
 First implementation milestone (RFC 001, 002, 022, 024). Establishes the

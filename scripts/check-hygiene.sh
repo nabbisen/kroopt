@@ -11,7 +11,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-STRICT_PATHS=(Kroopt/Core Kroopt/Proofs Kroopt/Error.lean Kroopt/Core.lean Kroopt/Proofs.lean)
+STRICT_PATHS=(Kroopt/Core Kroopt/Parse Kroopt/Proofs Kroopt/Error.lean Kroopt/Core.lean Kroopt/Parse.lean Kroopt/Proofs.lean)
 FORBIDDEN='sorry|axiom|unsafe|native_decide|admit'
 
 fail=0
