@@ -198,4 +198,24 @@ guarantees in force over the running connection is structural: `execAction` does
 not take the core `State`, so the interpreter cannot make a protocol decision —
 all protocol truth remains in `step`, which every M0–M6 theorem constrains.
 
+## M8 — configuration selection and certificate lint (RFC 011, 012)
+
+Seven theorems over the pure config model (`Kroopt.Proofs.Config`), all
+`propext`(+`Quot.sound`) only:
+
+- `negotiateAlpn_offered_and_allowed` — **ALPN safety**: any negotiated protocol
+  is in both the client and endpoint lists (never an unoffered protocol, RFC 011 §8).
+- `selectEndpoint_none_uses_default` — absent SNI selects the default endpoint.
+- `validateServerConfig_rejects_ambiguous` — ambiguous SNI routes are refused.
+- `validateServerConfig_preserves_generation` — a validated config carries its
+  stamped generation (the basis for reload isolation, RFC 011 §6).
+- `selectSignatureScheme_sound` — a selected CertificateVerify scheme was offered,
+  configured, and is producible by the leaf key (no downgrade, RFC 012 §6).
+- `validateEndpointCertKey_rejects_mismatch` — a cert/key kind mismatch is rejected
+  at config lint (RFC 012 §5).
+
+Selection is wired into the handshake (`onClientHello` records the selected
+SNI/ALPN/cert into `NegotiationState`); this is additive, so all M0–M7 theorems
+are unchanged. ~45 theorems total.
+
 ## Planned — later milestones

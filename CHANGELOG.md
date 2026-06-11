@@ -3,6 +3,52 @@
 All notable changes to kroopt are recorded here. RFC lifecycle transitions are
 governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycle-policy.md).
 
+## [0.9.0-dev] — M8 SNI/ALPN configuration + server certificate presentation — 2026-06-11
+
+Ninth implementation milestone (RFC 011 / 012). Replaces the hardcoded suite
+selection with a real, immutable, validated server-configuration model: an
+SNI→endpoint table, ALPN negotiation, and certificate presentation with config
+lint — all as pure, deterministic, **proved** functions, then wired into the
+live handshake.
+
+### Added — configuration model (`Kroopt.Core.Config`, `Kroopt.Core.Cert`, pure)
+
+- `ServerConfig` / `ValidatedServerConfig` with `validateServerConfig` — a total,
+  deterministic validator that stamps a `ConfigGeneration`, rejects ambiguous SNI
+  routes, and lints every endpoint's cert/key/suites. Immutable; reload produces a
+  new generation (RFC 011 §6).
+- `selectEndpoint` — deterministic SNI resolution: exact preferred over wildcard
+  (single leftmost label), default fallback, no callbacks (RFC 011 §4, §8).
+- `negotiateAlpn` — client/endpoint intersection by policy
+  (server-/client-preference, require-overlap).
+- `Cert`: `CertificateChainHandle` (opaque DER + minimal leaf metadata),
+  `PrivateKeyHandle` (behind a secret handle), `validateEndpointCertKey` (config
+  lint), `selectSignatureScheme` (CertificateVerify scheme selection).
+
+### Added — proofs (`Kroopt.Proofs.Config`, 7 theorems, propext-only)
+
+- `negotiateAlpn_offered_and_allowed` — **ALPN safety**: a negotiated protocol is
+  always in both the client and endpoint lists; kroopt never selects an unoffered
+  protocol (RFC 011 §8).
+- `selectEndpoint_none_uses_default`, `validateServerConfig_rejects_ambiguous`,
+  `validateServerConfig_preserves_generation`, `selectSignatureScheme_sound`
+  (no scheme downgrade), `validateEndpointCertKey_rejects_mismatch`. ~45 total.
+
+### Changed — handshake wiring (additive)
+
+- `NegotiationState` gains `selectedSni` / `selectedAlpn` / `selectedCert`; `State`
+  carries an immutable `serverConfig`; `onClientHello` records the SNI/ALPN/cert
+  selection. Additive only — all M0–M7 theorems hold unchanged.
+- `TlsConn.server` accepts a `ValidatedServerConfig`; `TlsConn.negotiatedAlpn` and
+  `selectedCert` accessors added.
+
+### Added — tests
+
+- `Tests/Config.lean` (`kroopt-config-test`) — 17 checks: exact/wildcard SNI,
+  default fallback, ALPN intersection by policy and no-overlap, generation
+  stamping, ambiguous-config rejection, cert/key lint (compatible/mismatch/empty/
+  oversized), and signature-scheme selection.
+
 ## [0.8.0-dev] — M7 TlsConn API + non-blocking interpreter — 2026-06-11
 
 Eighth implementation milestone (RFC 010). Adds the runtime layer: the public

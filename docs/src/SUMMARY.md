@@ -13,6 +13,7 @@
 - [End-to-end handshake (fakes)](end-to-end.md)
 - [Crypto provider and FFI contract](crypto-ffi-contract.md)
 - [TlsConn API and the interpreter](tlsconn-interpreter.md)
+- [SNI/ALPN config and certificate presentation](config-cert.md)
 
 # Verification
 

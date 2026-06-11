@@ -92,10 +92,17 @@ def installEpoch (e : Epoch) : EpochState :=
 ClientHello bytes to the transcript, and request the ECDHE shared secret. -/
 def onClientHello (s : State) (vch : ValidClientHello) (chWire : ByteArray) : HsResult :=
   if s.handshake = .start then
+    let ep := selectEndpoint s.serverConfig vch.sni
+    let alpn := ep.bind (fun e =>
+      negotiateAlpn s.serverConfig.alpnMode (vch.alpn.map AlpnProtocol.mk) e.allowedAlpn)
+    let cert := ep.map (·.chain)
     let s := { s with
       negotiated := { selectedSuite := some vch.selectedSuite
                       selectedGroup := some vch.selectedGroup
-                      selectedSigScheme := some vch.selectedSigScheme }
+                      selectedSigScheme := some vch.selectedSigScheme
+                      selectedSni := vch.sni
+                      selectedAlpn := alpn
+                      selectedCert := cert }
       transcript := s.transcript.appendFramed .clientHello .read chWire }
     let (oid, s) := s.allocOp .ecdhe .handshake (some .read)
     .ok ({ s with handshake := .requestedEcdhe },

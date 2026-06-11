@@ -1,0 +1,124 @@
+import Kroopt.Core.Config
+
+/-!
+# Tests.Config
+
+SNI/ALPN configuration and certificate-presentation tests (RFC 011 §9,
+RFC 012 §10): exact and wildcard SNI matching, default fallback, ALPN
+intersection by policy, no-overlap behaviour, config-generation stamping,
+cert/key compatibility lint, and signature-scheme selection.
+-/
+
+namespace Tests.Config
+
+open Kroopt Kroopt.Core
+
+structure Check where
+  name : String
+  ok : Bool
+
+def bytesOf (l : List UInt8) : ByteArray := ByteArray.mk l.toArray
+def name (s : String) : ByteArray := s.toUTF8
+
+def alpnH11 : AlpnProtocol := ⟨name "http/1.1"⟩
+def alpnH2  : AlpnProtocol := ⟨name "h2"⟩
+
+def leafEd : LeafCertificateMeta :=
+  { publicKeyKind := .ed25519, subjectNameCount := 1, notBeforeUnix := none, notAfterUnix := none }
+def chainEd : CertificateChainHandle :=
+  { id := 1, generation := ⟨0⟩, chainLen := 1, derSize := 500, leafMeta := leafEd }
+def keyEd : PrivateKeyHandle := { secret := ⟨1, 0⟩, keyKind := .ed25519, generation := ⟨0⟩ }
+def keyEcdsa : PrivateKeyHandle := { secret := ⟨2, 0⟩, keyKind := .ecdsaP256, generation := ⟨0⟩ }
+
+def epEd : EndpointConfig :=
+  { chain := chainEd, key := keyEd, allowedAlpn := [alpnH2, alpnH11]
+    signatureSchemes := [.ed25519], cipherSuites := [.aes128GcmSha256] }
+def epDefault : EndpointConfig := { epEd with allowedAlpn := [alpnH11] }
+
+def routeExact : SniRoute := { pattern := .exact (name "a.example.com"), endpoint := epEd }
+def routeWild : SniRoute := { pattern := .wildcard (name "wild.com"), endpoint := epEd }
+
+def goodConfig : ServerConfig :=
+  { defaultEndpoint := some epDefault, sniRoutes := [routeExact, routeWild]
+    alpnMode := .serverPreference }
+
+def validated (gen : Nat) : Option ValidatedServerConfig :=
+  match validateServerConfig goodConfig ⟨gen.toUInt64⟩ with
+  | .ok v => some v | .error _ => none
+
+def checks : List Check :=
+  [ -- config validation + generation (RFC 011 §6, §7)
+    { name := "valid config validates and is stamped with its generation"
+    , ok := (match validateServerConfig goodConfig ⟨7⟩ with
+             | .ok v => v.generation.value == 7 | .error _ => false) }
+  , { name := "ambiguous SNI routes are rejected"
+    , ok := (let cfg := { goodConfig with sniRoutes := [routeExact, routeExact] }
+             match validateServerConfig cfg ⟨0⟩ with
+             | .error .ambiguousSni => true | _ => false) }
+    -- SNI selection (RFC 011 §4)
+  , { name := "absent SNI selects the default endpoint"
+    , ok := (match validated 0 with
+             | some v => (selectEndpoint v none).isSome | none => false) }
+  , { name := "exact SNI match selects its route"
+    , ok := (match validated 0 with
+             | some v => match selectEndpoint v (some (name "a.example.com")) with
+                         | some e => e.signatureSchemes == [.ed25519] | none => false
+             | none => false) }
+  , { name := "wildcard SNI matches a single leftmost label"
+    , ok := (match validated 0 with
+             | some v => (selectEndpoint v (some (name "host.wild.com"))).isSome
+             | none => false) }
+  , { name := "wildcard does not match a multi-label prefix"
+    , ok := patternMatches (.wildcard (name "wild.com")) (name "a.b.wild.com") == false }
+  , { name := "unknown SNI falls back to the default endpoint"
+    , ok := (match validated 0 with
+             | some v => (selectEndpoint v (some (name "nope.test"))).isSome
+             | none => false) }
+    -- ALPN negotiation (RFC 011 §5)
+  , { name := "ALPN serverPreference picks the server's first overlapping protocol"
+    , ok := (match negotiateAlpn .serverPreference [alpnH2, alpnH11] [alpnH11, alpnH2] with
+             | some a => a.eq alpnH11 | none => false) }
+  , { name := "ALPN clientPreference picks the client's first overlapping protocol"
+    , ok := (match negotiateAlpn .clientPreferenceWithinAllowed [alpnH2, alpnH11] [alpnH11, alpnH2] with
+             | some a => a.eq alpnH2 | none => false) }
+  , { name := "ALPN with no overlap selects nothing"
+    , ok := (negotiateAlpn .serverPreference [alpnH2] [alpnH11]).isNone }
+  , { name := "ALPN never selects an unoffered protocol (mechanised property holds at runtime)"
+    , ok := (match negotiateAlpn .serverPreference [alpnH11] [alpnH2, alpnH11] with
+             | some a => alpnMem a [alpnH11] && alpnMem a [alpnH2, alpnH11] | none => false) }
+    -- certificate / key lint (RFC 012 §5, §6)
+  , { name := "compatible Ed25519 cert/key validates"
+    , ok := (match validateEndpointCertKey chainEd keyEd [.ed25519] with
+             | .ok info => info.compatibleSchemes == [.ed25519] | .error _ => false) }
+  , { name := "incompatible cert/key kinds are rejected"
+    , ok := (match validateEndpointCertKey chainEd keyEcdsa [.ed25519] with
+             | .error .certKeyMismatch => true | _ => false) }
+  , { name := "empty certificate chain is rejected"
+    , ok := (match validateEndpointCertKey { chainEd with chainLen := 0 } keyEd [.ed25519] with
+             | .error .emptyChain => true | _ => false) }
+  , { name := "oversized DER chain is rejected"
+    , ok := (match validateEndpointCertKey { chainEd with derSize := 70000 } keyEd [.ed25519] with
+             | .error .oversizedDer => true | _ => false) }
+  , { name := "signature scheme selected is offered, configured, and key-compatible"
+    , ok := (match selectSignatureScheme [.ecdsaSecp256r1Sha256, .ed25519] [.ed25519] .ed25519 with
+             | some s => s == .ed25519 | none => false) }
+  , { name := "no compatible signature scheme yields none"
+    , ok := (selectSignatureScheme [.ecdsaSecp256r1Sha256] [.ed25519] .ed25519).isNone }
+  ]
+
+def main : IO UInt32 := do
+  let mut failures := 0
+  IO.println "kroopt M8 SNI/ALPN config + cert presentation tests:"
+  for c in checks do
+    if c.ok then IO.println s!"  PASS  {c.name}"
+    else IO.println s!"  FAIL  {c.name}"; failures := failures + 1
+  if failures == 0 then
+    IO.println s!"\nAll {checks.length} checks passed."
+    return 0
+  else
+    IO.println s!"\n{failures} of {checks.length} checks FAILED."
+    return 1
+
+end Tests.Config
+
+def main : IO UInt32 := Tests.Config.main

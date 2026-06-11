@@ -6,6 +6,7 @@ import Kroopt.Proofs.KeySeparation
 import Kroopt.Proofs.Handshake
 import Kroopt.Proofs.Transcript
 import Kroopt.Proofs.Nonces
+import Kroopt.Proofs.Config
 
 /-!
 # Kroopt.Proofs

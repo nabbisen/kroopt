@@ -4,6 +4,7 @@ import Kroopt.Core.CipherSuite
 import Kroopt.Core.Record
 import Kroopt.Core.Crypto
 import Kroopt.Core.Transcript
+import Kroopt.Core.Config
 
 /-!
 # Kroopt.Core.State
@@ -89,12 +90,16 @@ structure NegotiationState where
   selectedSuite : Option CipherSuite
   selectedGroup : Option NamedGroup
   selectedSigScheme : Option SignatureScheme
-  deriving Repr, Inhabited
+  selectedSni : Option ByteArray
+  selectedAlpn : Option AlpnProtocol
+  selectedCert : Option CertificateChainHandle
+  deriving Inhabited
 
 namespace NegotiationState
 
 def empty : NegotiationState :=
-  { selectedSuite := none, selectedGroup := none, selectedSigScheme := none }
+  { selectedSuite := none, selectedGroup := none, selectedSigScheme := none
+    selectedSni := none, selectedAlpn := none, selectedCert := none }
 
 end NegotiationState
 
@@ -139,6 +144,7 @@ structure State where
   pendingClientFinished : Option ByteArray
   transcript : TranscriptState
   negotiated : NegotiationState
+  serverConfig : ValidatedServerConfig
   closeState : CloseState
   budgets : BudgetState
 
@@ -161,6 +167,7 @@ def initial (conn : ConnId) (cfg : ConfigGeneration) (alg : HashAlgorithm) : Sta
     pendingClientFinished := none
     transcript := TranscriptState.fresh alg
     negotiated := NegotiationState.empty
+    serverConfig := default
     closeState := .open
     budgets := BudgetState.empty }
 

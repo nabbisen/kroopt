@@ -23,7 +23,7 @@ namespace Kroopt.Conn
 
 open Kroopt (TlsError)
 open Kroopt.Core (State InputEvent HandshakeInfo CipherSuite ConfigGeneration
-  HashAlgorithm ConnId CloseMode)
+  HashAlgorithm ConnId CloseMode ValidatedServerConfig AlpnProtocol CertificateChainHandle)
 open Kroopt.Crypto (CryptoProvider)
 
 inductive TlsReadResult where
@@ -64,11 +64,13 @@ structure TlsConn where
 
 namespace TlsConn
 
-/-- Create a handshaking server connection over an accepted fd (RFC 010 §3).
+/-- Create a handshaking server connection over an accepted fd (RFC 010 §3),
+with a validated configuration (RFC 011) that drives SNI/ALPN/cert selection.
 The initial state is `start`; no application bytes may flow yet. -/
 def server (fd : FdKey) (conn : ConnId) (cfg : ConfigGeneration)
-    (alg : HashAlgorithm) (prov : CryptoProvider) : TlsConn :=
-  { core := State.initial conn cfg alg
+    (alg : HashAlgorithm) (prov : CryptoProvider)
+    (config : ValidatedServerConfig := default) : TlsConn :=
+  { core := { State.initial conn cfg alg with serverConfig := config }
     rt   := {}
     tr   := { fd := fd, inbound := [] }
     prov := prov }
@@ -138,6 +140,14 @@ def metadata (c : TlsConn) : Option HandshakeInfo := c.rt.metadata
 
 /-- The negotiated cipher suite, if the handshake completed. -/
 def cipherSuite (c : TlsConn) : Option CipherSuite := c.rt.metadata.map (·.suite)
+
+/-- The negotiated ALPN protocol, if any (RFC 011 §5). Meaningful after
+`connected`; jemmet uses it to choose its protocol handler. -/
+def negotiatedAlpn (c : TlsConn) : Option AlpnProtocol := c.core.negotiated.selectedAlpn
+
+/-- The certificate chain selected for this connection by SNI (RFC 012 §6). -/
+def selectedCert (c : TlsConn) : Option CertificateChainHandle :=
+  c.core.negotiated.selectedCert
 
 /-- Whether the handshake has completed. -/
 def isConnected (c : TlsConn) : Bool := c.core.handshake.isConnected

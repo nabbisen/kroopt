@@ -73,6 +73,11 @@ lean_exe «kroopt-crypto-test» where
 lean_exe «kroopt-conn-test» where
   root := `Tests.Conn
 
+/-- SNI/ALPN configuration + certificate-presentation tests (RFC 011, 012). -/
+@[default_target]
+lean_exe «kroopt-config-test» where
+  root := `Tests.Config
+
 /-- Bounded smoke fuzzer for the parser primitives (RFC 003 §11, RFC 023). -/
 @[default_target]
 lean_exe «kroopt-parse-fuzz» where
