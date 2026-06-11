@@ -63,6 +63,11 @@ lean_exe «kroopt-handshake-test» where
 lean_exe «kroopt-e2e-test» where
   root := `Tests.EndToEnd
 
+/-- Crypto provider capability + operation-id correlation tests (RFC 008). -/
+@[default_target]
+lean_exe «kroopt-crypto-test» where
+  root := `Tests.Crypto
+
 /-- Bounded smoke fuzzer for the parser primitives (RFC 003 §11, RFC 023). -/
 @[default_target]
 lean_exe «kroopt-parse-fuzz» where

@@ -112,14 +112,15 @@ def handleTransportBytes (s0 : State) (b : ByteArray) : RecordStepResult :=
       | .invalid =>
           recordFailAlert s .decodeError (.parse .invalidContentType)
 
-/-- Handle a returning crypto result for the record layer (RFC 004 §5.6, §6.6).
+/-- Handle a *correlated* crypto result for the record layer (RFC 004 §5.6, §6.6):
+the operation id has already been checked outstanding by `handleCryptoResult`.
 
 The single safety-critical branch is `aeadOpened` in `connected` state with an
 inner content type of `applicationData`: it validates the inner plaintext,
 advances the read sequence (overflow fatal), and buffers the content for later
 delivery. AEAD-open failure (`verifyFailed`/`failed`) is fatal with no plaintext.
 No branch emits `emitPlaintext`. -/
-def handleCryptoResult (s : State) (op : OperationId) (r : CryptoResult) :
+def handleCryptoResultCorrelated (s : State) (op : OperationId) (r : CryptoResult) :
     RecordStepResult :=
   match r with
   | .aeadOpened pt =>
@@ -160,6 +161,20 @@ def handleCryptoResult (s : State) (op : OperationId) (r : CryptoResult) :
   | .hkdfSecret _ => .ok (s.clearOp op, [])
   | .signature sig => handshakeOnGatingResult s op (.signature sig)
   | .verified => handshakeOnGatingResult s op .verified
+
+/-- Handle a returning crypto result (RFC 008 §5 — **operation-id correlation**).
+A result is processed only if its operation id is currently outstanding. A
+result whose id is **not** outstanding — stale (the connection advanced or
+failed since the request), already-consumed (duplicate), or unknown (forged) —
+is dropped with no effect: no plaintext, no state change, no protocol progress
+(RFC 015 §9.13). This is the gate that keeps a late or replayed provider answer
+from perturbing the protocol. -/
+def handleCryptoResult (s : State) (op : OperationId) (r : CryptoResult) :
+    RecordStepResult :=
+  if s.pendingOps.contains op then
+    handleCryptoResultCorrelated s op r
+  else
+    .ok (s, [])
 
 /-- Handle an application send in `connected` state (RFC 004 §6). Accept a bounded
 prefix (one fragment ≤ 2¹⁴), build the inner plaintext, advance the write

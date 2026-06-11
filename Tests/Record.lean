@@ -28,6 +28,9 @@ def bytes (l : List UInt8) : ByteArray := ByteArray.mk l.toArray
 record path directly; the real path to `connected` arrives at M4). -/
 def connectedState : State :=
   let s := State.initial ⟨0, 0⟩ ⟨0⟩ .sha256
+  -- a record-open operation is outstanding (id 0), as it is when its result
+  -- arrives in the real read path — required by the RFC 008 §5 correlation guard
+  let (_, s) := s.allocOp .aeadOpen .application (some .read)
   { s with handshake := .connected }
 
 /-- A protected application-data record on the wire: header (type 23, version,

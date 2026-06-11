@@ -3,6 +3,48 @@
 All notable changes to kroopt are recorded here. RFC lifecycle transitions are
 governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycle-policy.md).
 
+## [0.7.0-dev] — M6 crypto provider, FFI contract, operation-id correlation — 2026-06-11
+
+Seventh implementation milestone (RFC 008 / 009). Adds the crypto provider
+trusted boundary and — the verification-first contribution — the **operation-id
+correlation guard** on returning crypto results. The native HACL\*/EverCrypt shim
+is contracted with its build deferred until HACL\* is vendored (Requirements Open
+Question 1); the deterministic fake provider stands in, and the correlation
+guarantee holds regardless of provider.
+
+### Added — crypto provider model (`Kroopt.Crypto.Provider`, RFC 008)
+
+- `CryptoCapabilities`, `RequiredCrypto`, `CapabilityError`, and
+  `validateCapabilities` — a total, deterministic config-time check that the
+  configured suites/groups/signature schemes/hashes are supported and a usable
+  random source exists. Capability mismatch is a configuration error, never a
+  silent downgrade.
+- `CryptoProvider` (synchronous interface) and `fakeProvider` — a deterministic,
+  purpose-aware fake satisfying the same interface the real shim will.
+
+### Added — operation-id correlation (the headline)
+
+- `handleCryptoResult` now checks `pendingOps.contains op` before processing a
+  result; a stale / duplicate / forged operation id is dropped with no effect.
+- `Kroopt.Core.Proofs.stale_crypto_result_rejected` — a non-outstanding op id
+  leaves the state unchanged and emits no actions; `stale_crypto_result_no_plaintext`
+  is the no-plaintext corollary. Both `propext`-only.
+- All M2–M5 safety theorems re-checked over the guarded handler;
+  `aead_open_failure_no_plaintext` now carries an explicit "operation outstanding"
+  hypothesis (a stale failure is dropped instead).
+
+### Added — native FFI contract (RFC 009), tests, docs
+
+- `Kroopt/Native/kroopt.h` — the C shim contract (one function per primitive /
+  secret-handle op, explicit lengths, status codes, documented ownership);
+  `kroopt_hacl_shim.c` a documented placeholder pending the HACL\* build.
+- `Tests/Crypto.lean` (`kroopt-crypto-test`) — 11 checks: capability validation
+  (incl. rejection and no-entropy), the deterministic fake provider, and a
+  runtime cross-check of the correlation guard (outstanding processed, stale
+  dropped, duplicate is a no-op).
+- `docs/src/crypto-ffi-contract.md`; theorem inventory and proof-assumptions
+  updated. ~38 theorems total.
+
 ## [0.6.0-dev] — M5 live handshake through `step`, fakes, end-to-end — 2026-06-11
 
 Sixth implementation milestone (RFC 014). Wires the M4 handshake transition

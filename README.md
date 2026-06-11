@@ -9,7 +9,7 @@ actions; a thin interpreter executes those actions over real crypto and sockets
 and never makes protocol decisions of its own. That separation carries
 machine-checked safety properties into the running code.
 
-## Status: M0 + M1 + M2 + M3 + M4 + M5 (verified core → handshake live through `step`)
+## Status: M0 + M1 + M2 + M3 + M4 + M5 + M6 (verified core → live handshake + crypto provider boundary)
 
 This tree implements milestones **M0**–**M5** from the [ROADMAP](ROADMAP.md). M0
 fixes the pure-core/interpreter architecture; M1 adds the bounds-safe parsing
@@ -19,9 +19,12 @@ monotonicity, no nonce wrap, nonce uniqueness, key separation); M4 adds the
 server handshake state machine (no HelloRetryRequest) and the exact-wire-byte
 transcript; M5 wires the handshake into the live `step` dispatcher and drives the
 **full synthetic handshake end-to-end through `step`** against a fake transport
-and fake crypto provider — closing the v0.1 synthetic-core line. There is still no
-real cryptography and no sockets. These layers are built and proven first so the
-protocol model and the running code cannot drift apart later (RFC 001–007, 014,
+and fake crypto provider — closing the v0.1 synthetic-core line. M6 adds the crypto
+provider trusted boundary with the **operation-id correlation guard** proved over
+the live handshake; the native HACL\*/EverCrypt shim is contracted with its build
+deferred until HACL\* is vendored, so the deterministic fake provider still stands
+in and there are no sockets yet. These layers are built and proven first so the
+protocol model and the running code cannot drift apart later (RFC 001–009, 014,
 022, 024).
 
 The headline M5 result: every M2/M3 safety theorem — above all *no early
@@ -38,15 +41,16 @@ What builds and is checked today:
   length-prefixed reads, the budgeted vector framer, the record framer
   `tryTakeRecord`, the `Handshake` ClientHello parser, inner-plaintext parsing,
   CCS classification);
-- ~36 machine-checked theorems in `Kroopt.Proofs`, including *no early plaintext*
+- ~38 machine-checked theorems in `Kroopt.Proofs`, including *no early plaintext*
   and *no unauthenticated plaintext* **preserved over the live handshake**, *no
   silent sequence wrap*, nonce uniqueness, key separation, *legal handshake
   transitions*, *client-Finished-before-connected*, *exact transcript byte
-  binding*, and parser bounds-safety — all with **no `sorry`/`axiom`/`unsafe`**,
+  binding*, *stale-crypto-result rejection* (operation-id correlation), and parser
+  bounds-safety — all with **no `sorry`/`axiom`/`unsafe`**,
   depending only on `propext` (some also `Quot.sound`, several on no axioms);
 - deterministic tests — model (9), parser (18), record (19), nonce/seq (12),
-  handshake/transcript (10), end-to-end through `step` (12), all green, plus a
-  parser/ClientHello fuzz harness;
+  handshake/transcript (10), end-to-end through `step` (12), crypto provider +
+  correlation (11), all green, plus a parser/ClientHello fuzz harness;
 - two CI gates that run from M0: proof hygiene and module-dependency isolation.
 
 See the [theorem inventory](docs/src/theorem-inventory.md) and
@@ -66,6 +70,7 @@ lake exe kroopt-record-test   # M2 record-model unit + negative tests
 lake exe kroopt-nonce-test    # M3 sequence/nonce/key-separation tests
 lake exe kroopt-handshake-test # M4 synthetic handshake + transcript tests
 lake exe kroopt-e2e-test      # M5 full handshake end-to-end through `step`
+lake exe kroopt-crypto-test   # M6 crypto provider + operation-id correlation tests
 lake exe kroopt-parse-fuzz    # parser + ClientHello smoke fuzzer (optional arg: iterations)
 ./scripts/check-hygiene.sh    # RFC 022 proof-hygiene gate
 ./scripts/check-deps.sh       # RFC 022 module-dependency gate
@@ -79,6 +84,8 @@ Kroopt/
   Error.lean           typed, redaction-safe error/alert taxonomy
   Core/                pure verified core: types, records, nonce, transcript, handshake, step
   Parse/               pure bounds-safe parser/framer foundation (Reader, …)
+  Crypto/              trusted boundary: provider capability model + fake provider
+  Native/              C shim contract (kroopt.h) — HACL* build deferred
   Proofs/              structural proofs over `step` and the parser
 Tests/
   Model.lean           deterministic model test (drives `step`)
@@ -87,6 +94,7 @@ Tests/
   Nonce.lean           sequence/nonce/key-separation tests
   Handshake.lean       synthetic handshake + transcript tests
   EndToEnd.lean        full handshake end-to-end through `step` (fake crypto/transport)
+  Crypto.lean          provider capability + operation-id correlation tests
   Fuzz.lean            parser + ClientHello smoke fuzzer
 scripts/               CI gates (hygiene, module dependencies)
 docs/src/              mdbook documentation (incl. theorem inventory)

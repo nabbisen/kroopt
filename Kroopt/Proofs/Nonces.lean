@@ -59,8 +59,9 @@ theorem successful_open_increments_read_seq
     (b : ByteArray) (hb : s'.pendingPlainOut = some b)
     (hne : s.pendingPlainOut ≠ some b) :
     s'.readEpoch.seq.value = s.readEpoch.seq.value + 1 := by
-  unfold handleCryptoResult recordFailAlert at h
+  unfold handleCryptoResult handleCryptoResultCorrelated recordFailAlert at h
   simp only [] at h
+  all_goals (try split at h)
   all_goals (try split at h)
   all_goals (try split at h)
   all_goals (try split at h)
@@ -71,6 +72,11 @@ theorem successful_open_increments_read_seq
   all_goals (try split at h)
   all_goals (
     first
+    | (-- stale-guard else leaf: s' = s, so the buffer is unchanged, contradicting hne
+       simp only [Except.ok.injEq, Prod.mk.injEq] at h
+       obtain ⟨hs, -⟩ := h
+       rw [← hs] at hb
+       exact absurd hb hne)
     | (rename_i hsome
        simp only [Except.ok.injEq, Prod.mk.injEq] at h
        obtain ⟨hs, -⟩ := h

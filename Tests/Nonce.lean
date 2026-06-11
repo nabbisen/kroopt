@@ -84,10 +84,10 @@ def checks : List Check :=
              | some meta => meta.direction == .read && meta.epoch == .application
              | none      => false) }
   -- Stale crypto result: an unknown op id must not buffer plaintext
-  , { name := "stale aeadOpened (no matching pending op) still only buffers if connected"
+  , { name := "stale aeadOpened (no matching pending op) buffers no plaintext (RFC 008 §5)"
     , ok := (match step connectedState
                (.cryptoResult ⟨0,0⟩ ⟨999⟩ (.aeadOpened (bytes [0x41, 23]))) with
-             | .ok (s', _) => s'.pendingPlainOut.isSome   -- connected: accepted
+             | .ok (s', _) => s'.pendingPlainOut.isNone   -- correlation guard drops stale result
              | .error _    => false) }
   , { name := "aeadOpened before connected buffers no plaintext"
     , ok := (match step (State.initial ⟨0,0⟩ ⟨0⟩ .sha256)

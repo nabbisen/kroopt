@@ -121,7 +121,8 @@ private theorem handleCryptoResult_no_emit
     (h : handleCryptoResult s op r = .ok (s', acts)) :
     ∀ (c : ConnId) (bb : ByteArray), OutputAction.emitPlaintext c bb ∉ acts := by
   intro c bb hmem
-  unfold handleCryptoResult recordFailAlert at h
+  unfold handleCryptoResult handleCryptoResultCorrelated recordFailAlert at h
+  all_goals (try split at h)
   all_goals (try split at h)
   all_goals (try split at h)
   all_goals (try split at h)
@@ -200,7 +201,8 @@ private theorem handleCryptoResult_no_accept'
     (h : handleCryptoResult s op r = .ok (s', acts)) :
     ∀ (c : ConnId) (n : Nat), OutputAction.acceptPlaintextBytes c n ∉ acts := by
   intro c n hmem
-  unfold handleCryptoResult recordFailAlert at h
+  unfold handleCryptoResult handleCryptoResultCorrelated recordFailAlert at h
+  all_goals (try split at h)
   all_goals (try split at h)
   all_goals (try split at h)
   all_goals (try split at h)
@@ -252,19 +254,24 @@ theorem handleCryptoResult_no_accept
   handleCryptoResult_no_accept' s s' op r acts h c n
 
 /-- **AEAD-open failure emits no plaintext and is terminal.** A verification
-failure on a record-open operation maps to a fatal `bad_record_mac`, clears the
-plaintext buffer, and emits no `emitPlaintext` (RFC 004 §12). -/
+failure on an *outstanding* record-open operation maps to a fatal
+`bad_record_mac`, clears the plaintext buffer, and emits no `emitPlaintext`
+(RFC 004 §12). (For a *stale* operation id the result is dropped instead —
+`stale_crypto_result_rejected`.) -/
 theorem aead_open_failure_no_plaintext
     (s s' : State) (c : ConnId) (op : OperationId) (acts : List OutputAction)
     (h : step s (.cryptoResult c op .verifyFailed) = .ok (s', acts))
-    (hnt : s.handshake.isTerminal = false) :
+    (hnt : s.handshake.isTerminal = false)
+    (hpend : s.pendingOps.contains op = true) :
     (∀ (cc : ConnId) (bb : ByteArray), OutputAction.emitPlaintext cc bb ∉ acts)
     ∧ s'.pendingPlainOut = none
     ∧ s'.handshake.isTerminal = true := by
   unfold step at h
   rw [hnt] at h
   simp only [Bool.false_eq_true, if_false, reduceIte] at h
-  unfold handleCryptoResult recordFailAlert at h
+  unfold handleCryptoResult at h
+  rw [if_pos hpend] at h
+  unfold handleCryptoResultCorrelated recordFailAlert at h
   simp only [Except.ok.injEq, Prod.mk.injEq] at h
   obtain ⟨hs, ha⟩ := h
   refine ⟨?_, ?_, ?_⟩
@@ -274,6 +281,31 @@ theorem aead_open_failure_no_plaintext
       reduceCtorEq, or_self, or_false] at hmem
   · rw [← hs]
   · rw [← hs]; rfl
+
+/-- **Operation-id correlation (RFC 008 §5, RFC 015 §9.13).** A crypto result
+whose operation id is **not** outstanding — stale, duplicate, or forged — is a
+complete no-op: the state is unchanged and no actions are emitted. This is the
+gate that stops a late or replayed provider answer from perturbing the protocol;
+in particular no plaintext can be buffered or emitted through a stale result. -/
+theorem stale_crypto_result_rejected
+    (s s' : State) (op : OperationId) (r : CryptoResult) (acts : List OutputAction)
+    (hstale : s.pendingOps.contains op = false)
+    (h : handleCryptoResult s op r = .ok (s', acts)) :
+    s' = s ∧ acts = [] := by
+  unfold handleCryptoResult at h
+  rw [if_neg (by rw [hstale]; decide)] at h
+  simp only [Except.ok.injEq, Prod.mk.injEq] at h
+  exact ⟨h.1.symm, h.2.symm⟩
+
+/-- A stale crypto result emits no application plaintext (corollary of
+`stale_crypto_result_rejected`). -/
+theorem stale_crypto_result_no_plaintext
+    (s s' : State) (op : OperationId) (r : CryptoResult) (acts : List OutputAction)
+    (hstale : s.pendingOps.contains op = false)
+    (h : handleCryptoResult s op r = .ok (s', acts))
+    (c : ConnId) (bb : ByteArray) : OutputAction.emitPlaintext c bb ∉ acts := by
+  have := (stale_crypto_result_rejected s s' op r acts hstale h).2
+  rw [this]; simp only [List.not_mem_nil, not_false_iff]
 
 /-- **No unauthenticated plaintext (headline, RFC 004 §10, RFC 015 §15.1).**
 If handling an `aeadOpened` crypto result newly buffers application plaintext
@@ -292,8 +324,9 @@ theorem buffered_plaintext_authenticated
     (b : ByteArray) (hb : s'.pendingPlainOut = some b)
     (hne : s.pendingPlainOut ≠ some b) :
     s.handshake.isConnected = true := by
-  unfold handleCryptoResult recordFailAlert at h
+  unfold handleCryptoResult handleCryptoResultCorrelated recordFailAlert at h
   simp only [] at h
+  all_goals (try split at h)
   all_goals (try split at h)
   all_goals (try split at h)
   all_goals (try split at h)

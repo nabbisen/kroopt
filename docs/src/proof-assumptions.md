@@ -94,3 +94,14 @@ layer's `verifyFailed → bad_record_mac` fatal path rather than emitting
 `decrypt_error`. Both are fatal and emit no plaintext; the distinction is a
 cosmetic alert-code detail that keeps `aead_open_failure_no_plaintext` intact and
 is resolved when real crypto correlation lands at M6.
+
+At M6 the crypto provider boundary lands (RFC 008 / 009). The operation-id
+correlation guard is *proved* in the core (`stale_crypto_result_rejected`), and
+capability validation is a total deterministic function. The native
+HACL\*/EverCrypt shim is **contracted** (`Kroopt/Native/kroopt.h`) but its build
+is deferred until HACL\* is vendored (Requirements Open Question 1); until then
+the deterministic `Kroopt.Crypto.fakeProvider` is used. This does not weaken any
+proof: the core's guarantees hold for *any* provider result, so the choice of
+provider is outside the proof boundary. Cryptographic correctness and
+constant-time behaviour of the primitives remain ASSUMED (inherited from
+HACL\*/EverCrypt), never proved here, exactly as the trust matrix states.

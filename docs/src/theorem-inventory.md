@@ -166,5 +166,24 @@ build and depend only on `propext` (+ `Quot.sound`). The end-to-end harness
 `connected`, and the negative traces (malformed ClientHello, early application
 data, bad client Finished) fail deterministically and emit no plaintext.
 
+## M6 — proved (crypto-result correlation)
+
+M6 adds the crypto provider boundary (RFC 008 / 009). The verification-first
+contribution is the **operation-id correlation guard**: `handleCryptoResult`
+processes a result only if its operation id is currently outstanding. The native
+HACL\*/EverCrypt shim is contracted (`Kroopt/Native/kroopt.h`) with its build
+deferred until HACL\* is vendored; the deterministic `Kroopt.Crypto.fakeProvider`
+stands in, and the correlation guarantee holds regardless of provider.
+
+| # | Theorem | Property | RFC | Axioms | Status |
+|---|---------|----------|-----|--------|--------|
+| 37 | `stale_crypto_result_rejected` | A crypto result whose operation id is not outstanding (stale / duplicate / forged) is a complete no-op — state unchanged, no actions. | RFC 008 §5 | propext | proved |
+| 38 | `stale_crypto_result_no_plaintext` | A stale crypto result emits no application plaintext (corollary). | RFC 008 §5 | propext | proved |
+
+All M2–M5 safety theorems were re-checked over the guarded `handleCryptoResult`
+and still hold; `aead_open_failure_no_plaintext` now carries an explicit
+"operation outstanding" hypothesis (a stale failure is dropped instead, by the
+theorem above). Capability negotiation (`validateCapabilities`) is a total
+deterministic function exercised by `kroopt-crypto-test`, not a proof target.
+
 ## Planned — later milestones
-| `crypto_result_correlation` | A `cryptoResult` is consumed only if its id/kind/epoch/direction matches an outstanding op. | RFC 008 §5 | M6 |
