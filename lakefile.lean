@@ -88,6 +88,11 @@ lean_exe «kroopt-close-test» where
 lean_exe «kroopt-https-test» where
   root := `Tests.E2EHttps
 
+/-- Resource-budget + deferred-feature scope-control tests (RFC 019, 016). -/
+@[default_target]
+lean_exe «kroopt-hardening-test» where
+  root := `Tests.Hardening
+
 /-- Bounded smoke fuzzer for the parser primitives (RFC 003 §11, RFC 023). -/
 @[default_target]
 lean_exe «kroopt-parse-fuzz» where

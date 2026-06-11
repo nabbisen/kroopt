@@ -21,3 +21,8 @@
 
 - [Theorem inventory](theorem-inventory.md)
 - [Proof assumptions register](proof-assumptions.md)
+
+- [Threat model and abuse cases](threat-model.md)
+- [Resource budgets and DoS defense](resource-budgets.md)
+- [Deferred features and scope control](deferred-scope.md)
+- [Proof gates, CI, and Lean hygiene](proof-gates.md)

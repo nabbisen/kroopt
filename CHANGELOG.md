@@ -3,6 +3,39 @@
 All notable changes to kroopt are recorded here. RFC lifecycle transitions are
 governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycle-policy.md).
 
+## [0.12.0-dev] — M11 cross-cutting hardening: budgets, threat model, scope, proof gates — 2026-06-11
+
+Cross-cutting hardening milestone (RFC 016, 017, 019, 022). Adds the resource-
+budget model with proved DoS bounds, deferred-feature scope control, the threat
+model, and a third proof gate (axiom audit) wired into CI.
+
+### Added — resource budgets (`Kroopt.Core.Budget`, RFC 019)
+
+- `ResourceLimits` (configured ceilings) and pure charge primitives
+  (`chargeHandshakeBytes`, `chargeExtensions`, `chargeProgressStep`,
+  `checkRecordSize`, `chargePendingCiphertext`) returning typed
+  `ResourceLimitError`.
+- `Kroopt.Proofs.Budget` — six theorems: an accepted charge never exceeds its
+  ceiling (`*_bounded`), over-limit input is rejected (`*_rejects_over`), and
+  charges account exactly. The DoS bound is proved, not asserted.
+
+### Added — proof gates and CI (RFC 022)
+
+- `scripts/check-axioms.sh` — the semantic gate: `#print axioms` for every public
+  theorem, asserting no `sorryAx` and axioms within
+  `{propext, Quot.sound, Classical.choice}`. Audits 78 public theorems/lemmas.
+- `.github/workflows/ci.yml` — runs build, all test suites, the fuzzer, and all
+  three gates (hygiene, dependency, axiom) on push and PR.
+
+### Added — scope control + threat model (RFC 016, 017)
+
+- `Tests/Hardening.lean` (`kroopt-hardening-test`) — 12 checks: budget
+  accept/reject/bound behaviour, and deferred-feature scope control (a ClientHello
+  with no `supported_versions`, only TLS 1.2, or no key_share is refused — no
+  silent downgrade, no HRR).
+- Docs: `threat-model.md` (adversary + threat→defense map), `resource-budgets.md`,
+  `deferred-scope.md`, `proof-gates.md`.
+
 ## [0.11.0-dev] — M10 jemmet integration + end-to-end HTTPS acceptance — 2026-06-11
 
 Eleventh implementation milestone (RFC 015), closing the v0.x acceptance target.

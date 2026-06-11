@@ -155,7 +155,7 @@ contract (RFC 002 §5). New supporting lemmas, in `Kroopt.Proofs.Handshake` and
 | 33 | `handshakeOnPlaintextRecord_no_emit` / `_no_accept` | The plaintext-handshake-record dispatch (ClientHello / client Finished) emits and accepts no application plaintext. | RFC 002 §7 | propext, Quot.sound | proved |
 | 34 | `handshakeOnGatingResult_no_emit` / `_no_accept` | The gating-result dispatch (ECDHE / signature / verify) emits and accepts no application plaintext. | RFC 002 §7 | propext | proved |
 | 35 | `handshakeOnPlaintextRecord_no_aeadOpen` | The handshake dispatch requests no AEAD-open, so `aeadOpen_uses_read_keys` still characterises every record open. | RFC 005 §6 | propext, Quot.sound | proved |
-| 36 | `onClientHello_no_emit` … `onClientFinishedVerified` (transition no-emit/no-accept/no-aeadOpen family) | Each handshake transition emits only `callCrypto`/`writeTransport`/`reportHandshakeComplete`/alerts. | RFC 006 §10 | propext | proved |
+| 36 | `hs_no_emit_onClientHello` … `hs_no_emit_onClientFinishedVerified` (private per-transition family, no-emit/no-accept/no-aeadOpen) | Each handshake transition emits only `callCrypto`/`writeTransport`/`reportHandshakeComplete`/alerts. These back the public `handshakeOnPlaintextRecord_*` / `handshakeOnGatingResult_*` wrappers (rows 33–35). | RFC 006 §10 | propext | proved |
 
 The pre-existing headline theorems were re-checked unchanged over the new live
 handshake: `no_plaintext_emit_unless_connected`, `accept_plaintext_only_connected`,
@@ -246,5 +246,26 @@ plaintext input never reaching the handler, redacted error views, metrics). The
 M0–M9 guarantees keep governing the running connection because the integration
 adds no protocol logic — the uniform `PlainConn` adapter is exactly the public
 `TlsConn` API. ~52 theorems total.
+
+## M11 — resource-budget DoS bounds (RFC 019)
+
+Six theorems over the budget primitives (`Kroopt.Proofs.Budget`); two depend on
+no axioms at all:
+
+- `chargeHandshakeBytes_bounded`, `chargeExtensions_bounded`,
+  `chargeProgressStep_bounded` — an accepted charge never leaves a counter above
+  its ceiling (the hard DoS bound).
+- `chargeHandshakeBytes_rejects_over`, `checkRecordSize_rejects_over` — over-limit
+  input is rejected deterministically.
+- `chargeHandshakeBytes_accounts` — accepted charges account for exactly the bytes
+  charged.
+
+The other hardening RFCs in this milestone are documentation and gates: the
+threat model (RFC 017), deferred-feature scope control (RFC 016, enforced via the
+parser and exercised by the hardening suite), and the proof gates (RFC 022 — the
+hygiene, dependency, and new axiom gates, plus CI). The axiom gate audits **78
+public theorems** with no `sorryAx` (plus 17 private helper lemmas used by them);
+the per-milestone "~N total" figures above count the headline results enumerated
+in each section, not these supporting lemmas.
 
 ## Planned — later milestones

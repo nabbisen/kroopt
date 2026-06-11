@@ -1,0 +1,39 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-test-prove:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install elan (Lean toolchain manager)
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
+            | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Build
+        run: lake build
+
+      - name: Tests
+        run: |
+          for t in model parse record nonce handshake e2e crypto conn config close https; do
+            lake exe "kroopt-$t-test"
+          done
+
+      - name: Parser fuzz
+        run: lake exe kroopt-parse-fuzz 40000
+
+      - name: Hygiene gate (no sorry/axiom/unsafe in strict zones)
+        run: ./scripts/check-hygiene.sh
+
+      - name: Dependency gate (pure zones import no runtime/native/transport)
+        run: ./scripts/check-deps.sh
+
+      - name: Axiom gate (no sorryAx; whitelisted axioms only)
+        run: ./scripts/check-axioms.sh

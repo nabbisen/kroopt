@@ -8,6 +8,7 @@ import Kroopt.Proofs.Transcript
 import Kroopt.Proofs.Nonces
 import Kroopt.Proofs.Config
 import Kroopt.Proofs.Closure
+import Kroopt.Proofs.Budget
 
 /-!
 # Kroopt.Proofs

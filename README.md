@@ -9,7 +9,7 @@ actions; a thin interpreter executes those actions over real crypto and sockets
 and never makes protocol decisions of its own. That separation carries
 machine-checked safety properties into the running code.
 
-## Status: M0–M10 (verified core → handshake → TlsConn → config → alerts/close → jemmet HTTPS E2E)
+## Status: M0–M11 (verified core → handshake → TlsConn → config → alerts/close → jemmet HTTPS → hardening)
 
 This tree implements milestones **M0**–**M5** from the [ROADMAP](ROADMAP.md). M0
 fixes the pure-core/interpreter architecture; M1 adds the bounds-safe parsing
@@ -36,9 +36,11 @@ distinct from clean close, and proved terminal discipline. M10 closes the v0.x
 acceptance target: jemmet consumes kroopt through one uniform connection
 abstraction (the same handler path for plaintext and TLS), with a full HTTPS
 request served end-to-end over the fakes, ALPN handoff, redacted error views, and
-negative inputs proven never to reach the handler as plaintext. These layers are built and proven first so the
-protocol model and the running code cannot drift apart later (RFC 001–015,
-022, 024).
+negative inputs proven never to reach the handler as plaintext. M11 hardens
+the edge: a resource-budget model with proved DoS bounds, deferred-feature scope
+control, a documented threat model, and a third proof gate (axiom audit, no
+`sorryAx`) wired into CI. These layers are built and proven first so the
+protocol model and the running code cannot drift apart later (RFC 001–022, 024).
 
 The headline M5 result: every M2/M3 safety theorem — above all *no early
 plaintext* — **still holds over the live handshake**, which is the
@@ -54,19 +56,21 @@ What builds and is checked today:
   length-prefixed reads, the budgeted vector framer, the record framer
   `tryTakeRecord`, the `Handshake` ClientHello parser, inner-plaintext parsing,
   CCS classification);
-- ~52 machine-checked theorems in `Kroopt.Proofs`, including *no early plaintext*
+- 78 machine-checked theorems in `Kroopt.Proofs` (audited by the axiom gate),
+  including *no early plaintext*
   and *no unauthenticated plaintext* **preserved over the live handshake**, *no
   silent sequence wrap*, nonce uniqueness, key separation, *legal handshake
   transitions*, *client-Finished-before-connected*, *exact transcript byte
   binding*, *stale-crypto-result rejection* (operation-id correlation), *ALPN never selects an
-  unoffered protocol*, *the fatal alert is the only post-failure write*, and parser
-  bounds-safety — all with **no `sorry`/`axiom`/`unsafe`**,
+  unoffered protocol*, *the fatal alert is the only post-failure write*, *resource budgets are hard
+  bounds*, and parser bounds-safety — all with **no `sorry`/`axiom`/`unsafe`**,
   depending only on `propext` (some also `Quot.sound`, several on no axioms);
 - deterministic tests — model (9), parser (18), record (19), nonce/seq (12),
   handshake/transcript (10), end-to-end through `step` (12), crypto provider +
   correlation (11), TlsConn + interpreter (13), SNI/ALPN/cert config (17),
   alerts + close (16),
-  jemmet HTTPS E2E (12), all green, plus a parser/ClientHello fuzz harness;
+  jemmet HTTPS E2E (12), hardening (12), all green, plus a parser/ClientHello fuzz
+  harness, and three proof gates (hygiene, dependency, axiom) run in CI;
 - two CI gates that run from M0: proof hygiene and module-dependency isolation.
 
 See the [theorem inventory](docs/src/theorem-inventory.md) and
@@ -91,6 +95,8 @@ lake exe kroopt-conn-test     # M7 TlsConn API + non-blocking interpreter tests
 lake exe kroopt-config-test   # M8 SNI/ALPN config + certificate presentation tests
 lake exe kroopt-close-test    # M9 alerts, close_notify, and terminal-policy tests
 lake exe kroopt-https-test    # M10 jemmet integration + end-to-end HTTPS acceptance
+lake exe kroopt-hardening-test# M11 resource budgets + deferred-feature scope control
+./scripts/check-axioms.sh     # proof gate: no sorryAx across all public theorems
 lake exe kroopt-parse-fuzz    # parser + ClientHello smoke fuzzer (optional arg: iterations)
 ./scripts/check-hygiene.sh    # RFC 022 proof-hygiene gate
 ./scripts/check-deps.sh       # RFC 022 module-dependency gate
@@ -106,7 +112,7 @@ Kroopt/
   Parse/               pure bounds-safe parser/framer foundation (Reader, …)
   Crypto/              trusted boundary: provider capability model + fake provider
   Native/              C shim contract (kroopt.h) — HACL* build deferred
-  Conn/                runtime layer: TlsConn API + thin interpreter + transport
+  Conn/                runtime layer: TlsConn, interpreter, transport, jemmet integration
   Proofs/              structural proofs over `step` and the parser
 Tests/
   Model.lean           deterministic model test (drives `step`)
@@ -120,6 +126,7 @@ Tests/
   Config.lean          SNI/ALPN config + certificate-presentation tests
   Close.lean           alerts + close + terminal-policy tests
   E2EHttps.lean        jemmet integration + HTTPS end-to-end acceptance
+  Hardening.lean       resource budgets + deferred-feature scope control
   Fuzz.lean            parser + ClientHello smoke fuzzer
 scripts/               CI gates (hygiene, module dependencies)
 docs/src/              mdbook documentation (incl. theorem inventory)
