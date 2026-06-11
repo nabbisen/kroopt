@@ -83,6 +83,11 @@ lean_exe «kroopt-config-test» where
 lean_exe «kroopt-close-test» where
   root := `Tests.Close
 
+/-- jemmet integration + end-to-end HTTPS acceptance tests (RFC 015). -/
+@[default_target]
+lean_exe «kroopt-https-test» where
+  root := `Tests.E2EHttps
+
 /-- Bounded smoke fuzzer for the parser primitives (RFC 003 §11, RFC 023). -/
 @[default_target]
 lean_exe «kroopt-parse-fuzz» where

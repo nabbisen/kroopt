@@ -237,4 +237,14 @@ The `appClose` transition was refined into explicit per-mode close states; the
 M0 action-discipline proofs were updated for the new shape and continue to hold.
 ~52 theorems total.
 
+## M10 — jemmet integration and E2E acceptance (RFC 015)
+
+No new core theorems — by design. M10 is interop/E2E work, classed TESTED in the
+trust matrix (`kroopt-https-test`: an HTTPS request served end-to-end through
+`TlsConn`, the same handler over plaintext and TLS, ALPN handoff, malformed and
+plaintext input never reaching the handler, redacted error views, metrics). The
+M0–M9 guarantees keep governing the running connection because the integration
+adds no protocol logic — the uniform `PlainConn` adapter is exactly the public
+`TlsConn` API. ~52 theorems total.
+
 ## Planned — later milestones

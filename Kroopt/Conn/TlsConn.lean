@@ -85,18 +85,34 @@ private def drive (c : TlsConn) (ev : InputEvent) : TlsConn :=
   { c with core := core', rt := rt', tr := tr' }
 
 /-- Read authenticated application plaintext (RFC 010 §5). Never returns bytes
-before `connected` or after a terminal state. -/
+before `connected` or after a terminal state. If nothing is buffered, it drives
+one transport-read/decrypt cycle and retries, so a single `recv` pulls the next
+record off the wire (matching the plaintext adapter's behaviour). -/
 def recv (c : TlsConn) : TlsConn × TlsReadResult :=
+  let deliver (c : TlsConn) : Option (TlsConn × TlsReadResult) :=
+    match c.rt.plaintextOut with
+    | some b => some ({ c with rt := { c.rt with plaintextOut := none } }, .bytes b)
+    | none => none
   let c := drive c (.appRecvRequested c.core.connId)
-  match c.rt.plaintextOut with
-  | some b => ({ c with rt := { c.rt with plaintextOut := none } }, .bytes b)
+  match deliver c with
+  | some r => r
   | none =>
       if c.core.handshake.isTerminal then
         match c.rt.lastError with
         | some e => (c, .error e)
         | none   => (c, .closed)
       else
-        (c, .wouldBlock)
+        -- Pull and decrypt the next record, then retry delivery once.
+        let c := drive c (.transportReadable c.core.connId)
+        let c := drive c (.appRecvRequested c.core.connId)
+        match deliver c with
+        | some r => r
+        | none =>
+            if c.core.handshake.isTerminal then
+              match c.rt.lastError with
+              | some e => (c, .error e)
+              | none   => (c, .closed)
+            else (c, .wouldBlock)
 
 /-- Accept application plaintext for encryption and transmission (RFC 010 §4).
 `wrote n` = kroopt took ownership of `n` plaintext bytes; `wouldBlock` = zero

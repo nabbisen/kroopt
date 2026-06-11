@@ -3,6 +3,46 @@
 All notable changes to kroopt are recorded here. RFC lifecycle transitions are
 governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycle-policy.md).
 
+## [0.11.0-dev] — M10 jemmet integration + end-to-end HTTPS acceptance — 2026-06-11
+
+Eleventh implementation milestone (RFC 015), closing the v0.x acceptance target.
+jemmet consumes kroopt through one uniform connection abstraction, and a full
+HTTPS request is served end-to-end through the modeled stack.
+
+### Added — integration surface (`Kroopt.Conn.Uniform`)
+
+- `PlainConn` — the uniform connection abstraction jemmet depends on
+  (`recv`/`send`/`flush`/`close`/`negotiatedProtocol`/`isConnected`). `TlsConn`
+  implements it as exactly its public API; `PlainIotaktConn` is the plaintext
+  (`:80`) adapter. One jemmet handler path serves both.
+- `TlsErrorView` + `redactError` — the typed, redacted failure view jemmet may
+  log (category, alert, config generation, SNI *length*); no field for secrets,
+  plaintext, or raw attacker bytes by construction.
+- `Metrics` — bounded, non-secret operational counters (handshake success/failure,
+  alerts, ALPN selections, resource-budget failures).
+
+### Changed
+
+- `TlsConn.recv` is now self-driving: when nothing is buffered it pulls and
+  decrypts one record from the transport before retrying, so a single `recv`
+  reads the next record off the wire — matching the plaintext adapter and the
+  uniform `PlainConn` contract.
+
+### Added — acceptance tests
+
+- `Tests/E2EHttps.lean` (`kroopt-https-test`) — 12 checks: an HTTPS request
+  served end-to-end through `TlsConn` (handshake → app-data record → jemmet
+  handler → response on the wire); the **same** handler serving a plaintext
+  connection; ALPN handoff; plaintext/garbage on the TLS listener never reaching
+  the handler as application bytes; no plaintext before `connected`; redacted
+  error views; metrics.
+
+### Notes
+
+- No new core theorems: M10 is interop/E2E, classed TESTED. Real iotakt sockets
+  and curl/OpenSSL/browser interop are the deferred v0.3 binding — the
+  action-mapping is identical, so the real adapter adds no protocol logic.
+
 ## [0.10.0-dev] — M9 alerts, close_notify, and terminal policy — 2026-06-11
 
 Tenth implementation milestone (RFC 013). Makes alert mapping and close behaviour
