@@ -111,8 +111,34 @@ realization (`nonceBytes`) is provided for the interpreter and known-answer test
 proved uniqueness. RFC 005 §5 explicitly sanctions representing the IV base
 abstractly.
 
+## M4 — proved (handshake state model + transcript binding)
+
+The handshake state machine without HelloRetryRequest (RFC 006) and the
+exact-wire-byte transcript (RFC 007). The handshake is a sequence of small
+transition functions; the transcript is an ordered log of the exact committed
+bytes. Proofs live in `Kroopt.Proofs.Handshake`, `Kroopt.Proofs.Transcript`, and
+(for the deferred composition lemma) `Kroopt.Parse.Proofs`.
+
+| # | Theorem | Property | RFC | Axioms | Status |
+|---|---------|----------|-----|--------|--------|
+| 27 | `onClientHello_legal` … `onClientFinishedVerified_legal` (×5) | Every handshake transition moves the phase along a `legalEdge` — no skipped or out-of-order phases. | RFC 006 §4, §9 | propext | proved |
+| 28 | `connected_requires_finished_verified` | `connected` is reachable only from `requestedClientFinishedVerify`, and only when the client Finished verified — so no application data flows before it is checked. | RFC 006 §9 | propext | proved |
+| 29 | `appendFramed_binds_exact_bytes` / `appendParsed_uses_wire_bytes` | The transcript commits the exact framed/consumed bytes verbatim — never a reconstruction. | RFC 007 §6 | propext | proved |
+| 30 | `appendFramed_preserves_order` / `appendFramed_increments_count` | Appends extend the event sequence in order, one message at a time. | RFC 007 §8 | none / propext | proved |
+| 31 | `snapshot_eventCount` / `snapshot_then_append_is_before` | A snapshot covers exactly the committed prefix, so a Finished/CertificateVerify input built before appending message M covers up to but not including M. | RFC 007 §8 | propext | proved |
+| 32 | `takeCountedItems_bounds` | The fuel-bounded item combinator is bounds-safe given a bounds-safe item parser (composition lemma deferred from M1). | RFC 003 §9.3 | propext | proved |
+
+All confirmed via `#print axioms` to depend only on `propext` (two on no axioms
+at all), never `sorryAx`.
+
+Notes on the model: the handshake key-schedule HKDF derivations are modeled as
+synchronous key installation (the gating crypto round-trips — ECDHE, the
+CertificateVerify signature, the client-Finished verification — are real actions
+whose results re-enter as events); the provider-backed HKDF round-trips arrive at
+M6. The transcript stores the exact bytes for the binding proof; the running hash
+is a provider action (RFC 007 §9.1 permits this hybrid). The synthetic handshake
+drives the transition functions directly to `connected`; wiring them into the
+live `step` event loop against the fake transport/provider is M5.
+
 ## Planned — later milestones
-| `handshake_transitions_legal` | Every reachable `HandshakeState` transition is an allowed edge. | RFC 006 §4 | M4 |
-| `transcript_exact_bytes` | The transcript binds exactly the wire bytes, in order. | RFC 007 §5 | M4 |
-| `takeCountedItems_bounds` | The fuel-bounded item combinator is bounds-safe given a bounds-safe item parser (composition lemma). | RFC 003 §9.3 | M4 |
 | `crypto_result_correlation` | A `cryptoResult` is consumed only if its id/kind/epoch/direction matches an outstanding op. | RFC 008 §5 | M6 |

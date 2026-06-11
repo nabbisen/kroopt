@@ -20,8 +20,8 @@ No proof depends on `sorryAx`. This is enforced two ways:
 
 ## Project-local assumptions
 
-**None at M0–M3.** The core, parser foundation, record model, and
-sequence/nonce layer are
+**None at M0–M4.** The core, parser foundation, record model,
+sequence/nonce layer, handshake state model, and transcript model are
 self-contained: no `axiom` declarations, no appeals to unproven lemmas, no
 trusted project-local facts. Every parser primitive and every record transition
 that runs in a strict zone carries a proof (see `theorem-inventory.md`).
@@ -37,6 +37,19 @@ project-local Lean assumptions:
   sequence for a fixed IV base — the uniqueness proof is stated over the abstract
   `deriveNonce` model (RFC 005 §5 sanctions abstracting the IV base), and the
   concrete byte realization is exercised by known-answer tests at M6.
+
+Two **modeling abstractions** in the M4 layer, documented here and discharged at
+later milestones rather than assumed away:
+
+* the handshake key-schedule HKDF derivations are modeled as synchronous key
+  installation; the operations whose *results gate* a phase change (ECDHE, the
+  CertificateVerify signature, the client-Finished verification) are real crypto
+  actions whose results re-enter as events. The provider-backed HKDF round-trips
+  arrive with the crypto FFI at M6;
+* the transcript proof model stores the exact committed bytes; the running hash
+  is a provider action (RFC 007 §9.1 explicitly permits this hybrid — proofs
+  cover event order and exact-byte binding, the digest value is provider-backed
+  and checked by correspondence tests).
 
 ### Tested-but-not-yet-proved helpers (explicit follow-up tasks)
 

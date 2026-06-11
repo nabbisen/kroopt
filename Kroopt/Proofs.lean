@@ -3,6 +3,8 @@ import Kroopt.Proofs.ActionDiscipline
 import Kroopt.Proofs.ParserBounds
 import Kroopt.Proofs.RecordPath
 import Kroopt.Proofs.KeySeparation
+import Kroopt.Proofs.Handshake
+import Kroopt.Proofs.Transcript
 import Kroopt.Proofs.Nonces
 
 /-!

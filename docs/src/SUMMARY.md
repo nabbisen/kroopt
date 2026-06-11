@@ -8,6 +8,8 @@
 - [Parser foundation](parser.md)
 - [Record model](record-model.md)
 - [Nonce, sequence, key separation](nonce-sequence.md)
+- [Handshake state model](handshake.md)
+- [Transcript model](transcript.md)
 
 # Verification
 

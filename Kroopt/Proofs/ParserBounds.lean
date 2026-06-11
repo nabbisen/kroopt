@@ -172,5 +172,47 @@ theorem parser_bounds_safe (r : Reader) (n : Nat) (bs : ByteArray) (r' : Reader)
   have hb := takeBytes_bounds r n bs r' h
   exact ⟨hb.1, hb.2.1⟩
 
+/-- **Fuel-bounded item combinator is bounds-safe (RFC 003 §9.3).** Given an item
+parser that is itself bounds-monotone — each success preserves the buffer and
+advances the cursor — `takeCountedItems` preserves the buffer and advances the
+cursor across the whole (fuel-bounded) list. This is the composition lemma the
+extension-list and cipher-suite-list parsers rely on; it was deferred from M1
+until a caller existed (the M4 handshake parser). -/
+theorem takeCountedItems_bounds {α : Type}
+    (item : Reader → Except ParseError (α × Reader))
+    (hitem : ∀ (rr rr' : Reader) (a : α),
+        item rr = .ok (a, rr') → rr.input = rr'.input ∧ rr.offset ≤ rr'.offset) :
+    ∀ (maxItems : Nat) (r r' : Reader) (xs : List α),
+      r.takeCountedItems maxItems item = .ok (xs, r') →
+      r.input = r'.input ∧ r.offset ≤ r'.offset := by
+  intro maxItems
+  induction maxItems with
+  | zero =>
+      intro r r' xs h
+      unfold Reader.takeCountedItems at h
+      split at h
+      · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+        obtain ⟨-, hr⟩ := h; rw [← hr]; exact ⟨rfl, Nat.le_refl _⟩
+      · simp only [reduceCtorEq] at h
+  | succ n ih =>
+      intro r r' xs h
+      unfold Reader.takeCountedItems at h
+      split at h
+      · -- at end: empty list, reader unchanged
+        simp only [Except.ok.injEq, Prod.mk.injEq] at h
+        obtain ⟨-, hr⟩ := h; rw [← hr]; exact ⟨rfl, Nat.le_refl _⟩
+      · -- one item, then recurse on the remainder
+        split at h
+        · simp only [reduceCtorEq] at h
+        · split at h
+          · simp only [reduceCtorEq] at h
+          · rename_i _x1 a r1 hitemeq _x2 rest r2 hrec
+            simp only [Except.ok.injEq, Prod.mk.injEq] at h
+            obtain ⟨-, hr⟩ := h
+            have h1 := hitem r r1 a hitemeq
+            have h2 := ih r1 r2 rest hrec
+            rw [← hr]
+            exact ⟨h1.1.trans h2.1, Nat.le_trans h1.2 h2.2⟩
+
 end Proofs
 end Kroopt.Parse

@@ -53,6 +53,11 @@ lean_exe «kroopt-record-test» where
 lean_exe «kroopt-nonce-test» where
   root := `Tests.Nonce
 
+/-- Synthetic handshake trace + transcript tests (RFC 006 §12, RFC 007 §10). -/
+@[default_target]
+lean_exe «kroopt-handshake-test» where
+  root := `Tests.Handshake
+
 /-- Bounded smoke fuzzer for the parser primitives (RFC 003 §11, RFC 023). -/
 @[default_target]
 lean_exe «kroopt-parse-fuzz» where

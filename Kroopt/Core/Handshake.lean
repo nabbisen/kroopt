@@ -1,0 +1,186 @@
+import Kroopt.Core.State
+import Kroopt.Core.Event
+import Kroopt.Core.Action
+import Kroopt.Core.RecordPath
+
+/-!
+# Kroopt.Core.Handshake
+
+The TLS 1.3 **server** handshake state model, no HelloRetryRequest (RFC 006).
+Clients must present an acceptable X25519 `key_share` in the initial ClientHello
+or the handshake fails cleanly.
+
+The handshake is a sequence of small transition functions (RFC 006 §10), each
+moving the phase forward along a legal edge and either requesting the next crypto
+operation or framing the next flight. The crypto operations that *gate* a phase
+change (ECDHE, the CertificateVerify signature, the client-Finished
+verification) are requested as actions and their results re-enter as events; the
+key-schedule HKDF derivations are modeled as synchronous key installation in this
+state-model milestone (the provider-backed HKDF round-trips arrive with the
+crypto FFI at M6).
+
+Safety-relevant structure, exploited by `Kroopt.Proofs.Handshake`:
+* every transition moves along a `legalEdge` (no skipped/closed-out-of-order
+  phases);
+* `connected` is reachable **only** from `requestedClientFinishedVerify` via
+  `onClientFinishedVerified` — i.e. only after the client Finished verified;
+* no handshake transition emits application plaintext.
+-/
+
+namespace Kroopt.Core
+
+open Kroopt (TlsError AlertDescription)
+
+/-- A validated ClientHello: the negotiated parameters the parser/policy checker
+produced (RFC 006 §5). Holding one is evidence the mandatory checks passed —
+TLS 1.3 offered, an acceptable suite, an X25519 `key_share` present, a compatible
+signature scheme, no duplicate extensions, no early data. -/
+structure ValidClientHello where
+  selectedSuite : CipherSuite
+  selectedGroup : NamedGroup
+  clientShare : ByteArray
+  selectedSigScheme : SignatureScheme
+  sni : Option ByteArray
+  alpn : List ByteArray
+
+/-! ## Legal phase edges (RFC 006 §4) -/
+
+/-- The allowed handshake-phase transitions. A phase may stay put (record I/O,
+recv, flush leave the phase unchanged), fail cleanly from any live phase, begin a
+close, or advance one step along the server flight. `connected` is reachable only
+from `requestedClientFinishedVerify`. -/
+def legalEdge (a b : HandshakeState) : Bool :=
+  (a == b)
+  || (!a.isTerminal && (match b with | .failed _ => true | _ => false))
+  || (!a.isTerminal && b == .closing)
+  || (a == .closing && b == .closed)
+  || (a == .start && b == .requestedEcdhe)
+  || (a == .requestedEcdhe && b == .requestedCertificateVerifySignature)
+  || (a == .requestedCertificateVerifySignature && b == .sentServerFinished)
+  || (a == .sentServerFinished && b == .requestedClientFinishedVerify)
+  || (a == .requestedClientFinishedVerify && b == .connected)
+
+/-! ## Frame builders (synthetic)
+
+Representative framed bytes for each server-flight message. The exact bytes are
+what enter the transcript; the binding proof (RFC 007) cares that the transcript
+stores them verbatim, not their specific shape. Real wire framing lands with the
+crypto/interop milestones. -/
+
+def frameServerHello (_vch : ValidClientHello) : ByteArray := ByteArray.mk #[2, 0, 0, 0]
+def frameEncryptedExtensions : ByteArray := ByteArray.mk #[8, 0, 0, 0]
+def frameCertificate : ByteArray := ByteArray.mk #[11, 0, 0, 0]
+def frameCertificateVerify (_sig : ByteArray) : ByteArray := ByteArray.mk #[15, 0, 0, 0]
+def frameServerFinished : ByteArray := ByteArray.mk #[20, 0, 0, 0]
+
+/-- The handshake-step result type (same as `Step.StepResult`). -/
+abbrev HsResult := Except TlsError (State × List OutputAction)
+
+/-- Fail the handshake terminally with an alert (no plaintext on this path). -/
+def hsFail (s : State) (a : AlertDescription) (e : TlsError) : HsResult :=
+  .ok ({ s with handshake := .failed a, closeState := .fatalSent a,
+                pendingPlainOut := none },
+       [ OutputAction.failWithAlert s.connId a, OutputAction.reportError s.connId e ])
+
+/-- Install epoch keys for a direction (synthetic: marks the epoch installed and
+resets the sequence; the real HKDF-derived handles arrive at M6). -/
+def installEpoch (e : Epoch) : EpochState :=
+  { epoch := e, seq := SeqNo.zero, keysInstalled := true }
+
+/-! ## Transitions (RFC 006 §10) -/
+
+/-- `start → requestedEcdhe`. Record the negotiated parameters, commit the exact
+ClientHello bytes to the transcript, and request the ECDHE shared secret. -/
+def onClientHello (s : State) (vch : ValidClientHello) (chWire : ByteArray) : HsResult :=
+  if s.handshake = .start then
+    let s := { s with
+      negotiated := { selectedSuite := some vch.selectedSuite
+                      selectedGroup := some vch.selectedGroup
+                      selectedSigScheme := some vch.selectedSigScheme }
+      transcript := s.transcript.appendFramed .clientHello .read chWire }
+    let (oid, s) := s.allocOp .ecdhe .handshake (some .read)
+    .ok ({ s with handshake := .requestedEcdhe },
+         [OutputAction.callCrypto s.connId oid (CryptoOp.ecdheX25519 vch.clientShare)])
+  else
+    hsFail s .unexpectedMessage (.protocol .illegalMessageForState)
+
+/-- `requestedEcdhe → requestedCertificateVerifySignature`. Install handshake
+keys, frame ServerHello / EncryptedExtensions / Certificate (committing each to
+the transcript), and request the CertificateVerify signature over the transcript
+snapshot taken at this point. -/
+def onEcdheDone (s : State) (_secret : SecretKeyHandle) : HsResult :=
+  if s.handshake = .requestedEcdhe then
+    let sh := frameServerHello { selectedSuite := s.negotiated.selectedSuite.getD .aes128GcmSha256
+                                 selectedGroup := s.negotiated.selectedGroup.getD .x25519
+                                 clientShare := ByteArray.mk #[]
+                                 selectedSigScheme := s.negotiated.selectedSigScheme.getD .ed25519
+                                 sni := none, alpn := [] }
+    let ts := s.transcript.appendFramed .serverHello .write sh
+    let ts := ts.appendFramed .encryptedExtensions .write frameEncryptedExtensions
+    let ts := ts.appendFramed .certificate .write frameCertificate
+    let (snap, ts) := ts.snapshot
+    let s := { s with transcript := ts
+                      readEpoch := installEpoch .handshake
+                      writeEpoch := installEpoch .handshake }
+    let (oid, s) := s.allocOp .signCertificateVerify .handshake (some .write)
+    let scheme := s.negotiated.selectedSigScheme.getD .ed25519
+    .ok ({ s with handshake := .requestedCertificateVerifySignature },
+         [ OutputAction.writeTransport s.connId sh,
+           OutputAction.writeTransport s.connId frameEncryptedExtensions,
+           OutputAction.writeTransport s.connId frameCertificate,
+           OutputAction.callCrypto s.connId oid
+             (CryptoOp.signCertificateVerify scheme
+               (ByteArray.mk #[snap.id.toUInt8])) ])
+  else
+    hsFail s .unexpectedMessage (.protocol .illegalMessageForState)
+
+/-- `requestedCertificateVerifySignature → sentServerFinished`. Commit the framed
+CertificateVerify and server Finished to the transcript, install application
+keys, and emit the server flight tail. -/
+def onCertVerifySigned (s : State) (sig : ByteArray) : HsResult :=
+  if s.handshake = .requestedCertificateVerifySignature then
+    let cv := frameCertificateVerify sig
+    let ts := s.transcript.appendFramed .certificateVerify .write cv
+    let ts := ts.appendFramed .finished .write frameServerFinished
+    let s := { s with transcript := ts
+                      readEpoch := installEpoch .application
+                      writeEpoch := installEpoch .application }
+    .ok ({ s with handshake := .sentServerFinished },
+         [ OutputAction.writeTransport s.connId cv,
+           OutputAction.writeTransport s.connId frameServerFinished ])
+  else
+    hsFail s .unexpectedMessage (.protocol .illegalMessageForState)
+
+/-- `sentServerFinished → requestedClientFinishedVerify`. Take the transcript
+snapshot *before* committing the client Finished and request its MAC
+verification. -/
+def onClientFinishedBytes (s : State) (cfWire : ByteArray) : HsResult :=
+  if s.handshake = .sentServerFinished then
+    let (snap, ts) := s.transcript.snapshot
+    let s := { s with transcript := ts }
+    let (oid, s) := s.allocOp .verifyFinished .application (some .read)
+    .ok ({ s with handshake := .requestedClientFinishedVerify },
+         [ OutputAction.callCrypto s.connId oid
+             (CryptoOp.verifyFinished s.transcript.hashAlg
+               (ByteArray.mk #[snap.id.toUInt8]) cfWire) ])
+  else
+    hsFail s .unexpectedMessage (.protocol .illegalMessageForState)
+
+/-- `requestedClientFinishedVerify → connected`. On a successful verification,
+commit the client Finished to the transcript and report completion. A
+verification failure is fatal (`decrypt_error`) — `connected` is unreachable
+without it. -/
+def onClientFinishedVerified (s : State) (verified : Bool) (cfWire : ByteArray) : HsResult :=
+  if s.handshake = .requestedClientFinishedVerify then
+    if verified then
+      let s := { s with transcript := s.transcript.appendFramed .finished .read cfWire }
+      .ok ({ s with handshake := .connected },
+           [ OutputAction.reportHandshakeComplete s.connId
+               { suite := s.negotiated.selectedSuite.getD .aes128GcmSha256
+                 configGen := s.configGen } ])
+    else
+      hsFail s .decryptError (.protocol .badFinished)
+  else
+    hsFail s .unexpectedMessage (.protocol .illegalMessageForState)
+
+end Kroopt.Core

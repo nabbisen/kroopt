@@ -9,6 +9,7 @@ import Kroopt.Core.Event
 import Kroopt.Core.Action
 import Kroopt.Core.Nonce
 import Kroopt.Core.RecordPath
+import Kroopt.Core.Handshake
 import Kroopt.Core.Step
 
 /-!

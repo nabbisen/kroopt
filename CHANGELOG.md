@@ -3,6 +3,60 @@
 All notable changes to kroopt are recorded here. RFC lifecycle transitions are
 governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycle-policy.md).
 
+## [0.5.0-dev] — M4 handshake state model + transcript binding — 2026-06-11
+
+Fifth implementation milestone (RFC 006 + RFC 007). Adds the TLS 1.3 **server**
+handshake state machine (no HelloRetryRequest) and the **exact-wire-byte**
+transcript, with the legal-transition and exact-byte-binding proofs. Still no
+real crypto and no sockets: the synthetic handshake drives the transition
+functions directly with fake crypto results.
+
+### Added — transcript model (`Kroopt.Core.Transcript`, RFC 007)
+
+- `WireBound` binds a parsed value to its exact consumed bytes; `appendParsed`
+  commits those bytes, never a reconstruction.
+- `HandshakeMessageType`, `TranscriptEvent`/`TranscriptEventMeta`,
+  `appendFramed`/`appendParsed`, `snapshot`, `TranscriptSnapshot`,
+  `TranscriptBoundInput` + `makeCertificateVerifyInput`/`makeFinishedInput`.
+
+### Added — handshake state model (`Kroopt.Core.Handshake`, RFC 006)
+
+- `ValidClientHello`; `legalEdge` (the allowed phase graph); `installEpoch`;
+  `hsFail`; and the five transition functions `onClientHello`, `onEcdheDone`,
+  `onCertVerifySigned`, `onClientFinishedBytes`, `onClientFinishedVerified`,
+  driving `start → … → connected` via gating crypto actions.
+
+### Added — proofs (`Kroopt.Proofs.Handshake`, `Kroopt.Proofs.Transcript`)
+
+- `onClientHello_legal` … `onClientFinishedVerified_legal` — every transition
+  moves along a `legalEdge` (no skipped/out-of-order phases).
+- `connected_requires_finished_verified` — `connected` is reachable only from
+  `requestedClientFinishedVerify` and only when the client Finished verified.
+- `appendFramed_binds_exact_bytes`, `appendParsed_uses_wire_bytes` — exact-byte
+  binding; `appendFramed_preserves_order`, `appendFramed_increments_count` —
+  ordering; `snapshot_eventCount`, `snapshot_then_append_is_before` — the
+  snapshot-before-append discipline for Finished/CertificateVerify.
+- `takeCountedItems_bounds` — the fuel-bounded item combinator is bounds-safe
+  (composition lemma deferred from M1, now discharged).
+- All machine-checked, no `sorry`/`axiom`/`unsafe`; `#print axioms` shows only
+  `propext` (two on no axioms).
+
+### Added — tests, docs
+
+- `Tests/Handshake.lean` (`kroopt-handshake-test`) — 10 checks: the full
+  synthetic handshake to `connected`, the legal phase order, completion
+  reporting, the seven-message transcript in order, exact ClientHello byte
+  binding, and negative traces (out-of-order ECDHE, bad Finished, duplicate
+  ClientHello).
+- `docs/src/handshake.md`, `docs/src/transcript.md`; expanded theorem inventory
+  and proof-assumptions.
+
+### Changed
+
+- `Core.Transcript` rewritten from the M0 stub to the full RFC 007 model. The
+  gates now cover the handshake and transcript modules and their proofs (25
+  pure-zone files).
+
 ## [0.4.0-dev] — M3 nonce, sequence, epoch, key separation — 2026-06-11
 
 Fourth implementation milestone (RFC 005). Proves the record layer's
