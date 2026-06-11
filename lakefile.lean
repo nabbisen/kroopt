@@ -78,6 +78,11 @@ lean_exe «kroopt-conn-test» where
 lean_exe «kroopt-config-test» where
   root := `Tests.Config
 
+/-- Alerts, close_notify, and terminal-policy tests (RFC 013). -/
+@[default_target]
+lean_exe «kroopt-close-test» where
+  root := `Tests.Close
+
 /-- Bounded smoke fuzzer for the parser primitives (RFC 003 §11, RFC 023). -/
 @[default_target]
 lean_exe «kroopt-parse-fuzz» where

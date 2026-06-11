@@ -9,7 +9,7 @@ actions; a thin interpreter executes those actions over real crypto and sockets
 and never makes protocol decisions of its own. That separation carries
 machine-checked safety properties into the running code.
 
-## Status: M0–M8 (verified core → live handshake → TlsConn runtime → validated SNI/ALPN/cert config)
+## Status: M0–M9 (verified core → live handshake → TlsConn runtime → config → alerts & close)
 
 This tree implements milestones **M0**–**M5** from the [ROADMAP](ROADMAP.md). M0
 fixes the pure-core/interpreter architecture; M1 adds the bounds-safe parsing
@@ -29,8 +29,11 @@ transport and provider and carries no protocol logic; the real iotakt binding is
 a thin deferred adapter. M8 makes server configuration real — an immutable,
 validated SNI→cert table with deterministic ALPN negotiation and certificate
 presentation, wired into the handshake, with the key selection-safety properties
-proved (notably that ALPN never selects an unoffered protocol). These layers are built and proven first so the
-protocol model and the running code cannot drift apart later (RFC 001–012, 014,
+proved (notably that ALPN never selects an unoffered protocol). M9 makes alert
+mapping and close behaviour explicit and proved: a centralized deterministic
+alert mapping, explicit graceful/fatal/abortive close states, truncation kept
+distinct from clean close, and proved terminal discipline. These layers are built and proven first so the
+protocol model and the running code cannot drift apart later (RFC 001–014,
 022, 024).
 
 The headline M5 result: every M2/M3 safety theorem — above all *no early
@@ -47,17 +50,18 @@ What builds and is checked today:
   length-prefixed reads, the budgeted vector framer, the record framer
   `tryTakeRecord`, the `Handshake` ClientHello parser, inner-plaintext parsing,
   CCS classification);
-- ~45 machine-checked theorems in `Kroopt.Proofs`, including *no early plaintext*
+- ~52 machine-checked theorems in `Kroopt.Proofs`, including *no early plaintext*
   and *no unauthenticated plaintext* **preserved over the live handshake**, *no
   silent sequence wrap*, nonce uniqueness, key separation, *legal handshake
   transitions*, *client-Finished-before-connected*, *exact transcript byte
   binding*, *stale-crypto-result rejection* (operation-id correlation), *ALPN never selects an
-  unoffered protocol*, and parser bounds-safety — all with **no `sorry`/`axiom`/`unsafe`**,
+  unoffered protocol*, *the fatal alert is the only post-failure write*, and parser
+  bounds-safety — all with **no `sorry`/`axiom`/`unsafe`**,
   depending only on `propext` (some also `Quot.sound`, several on no axioms);
 - deterministic tests — model (9), parser (18), record (19), nonce/seq (12),
   handshake/transcript (10), end-to-end through `step` (12), crypto provider +
-  correlation (11), TlsConn + interpreter (13), SNI/ALPN/cert config (17), all green,
-  plus a parser/ClientHello fuzz harness;
+  correlation (11), TlsConn + interpreter (13), SNI/ALPN/cert config (17),
+  alerts + close (16), all green, plus a parser/ClientHello fuzz harness;
 - two CI gates that run from M0: proof hygiene and module-dependency isolation.
 
 See the [theorem inventory](docs/src/theorem-inventory.md) and
@@ -80,6 +84,7 @@ lake exe kroopt-e2e-test      # M5 full handshake end-to-end through `step`
 lake exe kroopt-crypto-test   # M6 crypto provider + operation-id correlation tests
 lake exe kroopt-conn-test     # M7 TlsConn API + non-blocking interpreter tests
 lake exe kroopt-config-test   # M8 SNI/ALPN config + certificate presentation tests
+lake exe kroopt-close-test    # M9 alerts, close_notify, and terminal-policy tests
 lake exe kroopt-parse-fuzz    # parser + ClientHello smoke fuzzer (optional arg: iterations)
 ./scripts/check-hygiene.sh    # RFC 022 proof-hygiene gate
 ./scripts/check-deps.sh       # RFC 022 module-dependency gate
@@ -107,6 +112,7 @@ Tests/
   Crypto.lean          provider capability + operation-id correlation tests
   Conn.lean            TlsConn + interpreter faithfulness tests
   Config.lean          SNI/ALPN config + certificate-presentation tests
+  Close.lean           alerts + close + terminal-policy tests
   Fuzz.lean            parser + ClientHello smoke fuzzer
 scripts/               CI gates (hygiene, module dependencies)
 docs/src/              mdbook documentation (incl. theorem inventory)

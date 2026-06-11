@@ -1,0 +1,101 @@
+import Kroopt.Core.Step
+import Kroopt.Core.Alert
+
+/-!
+# Kroopt.Proofs.Closure
+
+Terminal- and alert-policy proofs (RFC 013 §11):
+
+* `failAlert` emits no application plaintext and no ordinary transport write —
+  the optional fatal alert is the only thing it sends (`failAlert_no_emit`,
+  `failAlert_no_accept`, `failAlert_only_alert_write`);
+* the per-mode close path emits no application plaintext (`appClose_no_emit`);
+* the centralized alert mapping never turns an error into the benign
+  `closeNotify`, and error alerts are always fatal (`alertForParseError_*`,
+  `alertForProtocolError_fatal_unless_close`).
+
+These complement the M0 action-discipline theorems (terminal states absorbing,
+no early plaintext) to give the full "nothing escapes after failure/close" story.
+-/
+
+namespace Kroopt.Core.Proofs
+
+open Kroopt Kroopt.Core
+
+/-- **No plaintext on the fatal path.** `failAlert` emits no application
+plaintext (RFC 013 §7, §11). -/
+theorem failAlert_no_emit (s : State) (a : AlertDescription) (e : TlsError)
+    (s' : State) (acts : List OutputAction) (h : failAlert s a e = .ok (s', acts))
+    (c : ConnId) (b : ByteArray) (hmem : OutputAction.emitPlaintext c b ∈ acts) : False := by
+  unfold failAlert at h
+  simp only [Except.ok.injEq, Prod.mk.injEq] at h
+  rw [← h.2] at hmem
+  simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil,
+    reduceCtorEq, or_self, or_false] at hmem
+
+/-- `failAlert` accepts no application plaintext (RFC 013 §7). -/
+theorem failAlert_no_accept (s : State) (a : AlertDescription) (e : TlsError)
+    (s' : State) (acts : List OutputAction) (h : failAlert s a e = .ok (s', acts))
+    (c : ConnId) (n : Nat) (hmem : OutputAction.acceptPlaintextBytes c n ∈ acts) : False := by
+  unfold failAlert at h
+  simp only [Except.ok.injEq, Prod.mk.injEq] at h
+  rw [← h.2] at hmem
+  simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil,
+    reduceCtorEq, or_self, or_false] at hmem
+
+/-- **The fatal alert is the only post-failure transport write.** `failAlert`
+emits no ordinary `writeTransport`; its only wire effect is the alert itself
+(RFC 013 §7, §11). -/
+theorem failAlert_only_alert_write (s : State) (a : AlertDescription) (e : TlsError)
+    (s' : State) (acts : List OutputAction) (h : failAlert s a e = .ok (s', acts))
+    (c : ConnId) (b : ByteArray) (hmem : OutputAction.writeTransport c b ∈ acts) : False := by
+  unfold failAlert at h
+  simp only [Except.ok.injEq, Prod.mk.injEq] at h
+  rw [← h.2] at hmem
+  simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil,
+    reduceCtorEq, or_self, or_false] at hmem
+
+/-- **No plaintext on the close path.** Beginning a close (any mode) emits no
+application plaintext (RFC 013 §7). -/
+theorem appClose_no_emit (s s' : State) (conn : ConnId) (mode : CloseMode)
+    (acts : List OutputAction)
+    (hnt : s.handshake.isTerminal = false)
+    (h : step s (.appClose conn mode) = .ok (s', acts))
+    (c : ConnId) (b : ByteArray) (hmem : OutputAction.emitPlaintext c b ∈ acts) : False := by
+  unfold step at h
+  split at h
+  · rename_i hc; rw [hc] at hnt; simp at hnt
+  · simp only [] at h
+    split at h
+    · split at h
+      · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+        rw [← h.2] at hmem; simp only [List.mem_singleton, reduceCtorEq] at hmem
+      · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+        rw [← h.2] at hmem
+        simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil,
+          reduceCtorEq, or_self, or_false] at hmem
+      · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+        rw [← h.2] at hmem; simp only [List.mem_singleton, reduceCtorEq] at hmem
+    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+      rw [← h.2] at hmem; simp only [List.mem_singleton, reduceCtorEq] at hmem
+
+/-- Every parse-error alert is fatal — never the benign `closeNotify`
+(RFC 013 §4, §9). -/
+theorem alertForParseError_is_fatal (e : ParseError) :
+    alertLevel (alertForParseError e) = .fatal := by
+  cases e <;> rfl
+
+/-- A parse error never maps to `closeNotify`, so a malformed input can never be
+mistaken by the peer for a clean close. -/
+theorem alertForParseError_not_closeNotify (e : ParseError) :
+    alertForParseError e ≠ .closeNotify := by
+  cases e <;> decide
+
+/-- A protocol error is fatal unless it is precisely "peer sent close_notify",
+which is the one benign case (RFC 013 §4). -/
+theorem alertForProtocolError_fatal_unless_close (e : ProtocolError)
+    (hne : e ≠ .closeNotifyReceived) :
+    alertLevel (alertForProtocolError e) = .fatal := by
+  cases e <;> first | rfl | exact absurd rfl hne
+
+end Kroopt.Core.Proofs

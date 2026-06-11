@@ -218,4 +218,23 @@ Selection is wired into the handshake (`onClientHello` records the selected
 SNI/ALPN/cert into `NegotiationState`); this is additive, so all M0–M7 theorems
 are unchanged. ~45 theorems total.
 
+## M9 — alerts, close, and terminal policy (RFC 013)
+
+Seven theorems (`Kroopt.Proofs.Closure`); the three alert-mapping facts depend on
+**no axioms at all** (pure computation), the rest `propext`(+`Quot.sound`):
+
+- `failAlert_no_emit`, `failAlert_no_accept` — the fatal path emits/accepts no
+  application plaintext.
+- `failAlert_only_alert_write` — the optional fatal alert is the *only*
+  post-failure transport write (RFC 013 §11).
+- `appClose_no_emit` — beginning a close, in any mode, emits no plaintext.
+- `alertForParseError_is_fatal`, `alertForParseError_not_closeNotify` — error
+  alerts are always fatal and never the benign close_notify.
+- `alertForProtocolError_fatal_unless_close` — a protocol error is fatal unless it
+  is exactly "peer sent close_notify".
+
+The `appClose` transition was refined into explicit per-mode close states; the
+M0 action-discipline proofs were updated for the new shape and continue to hold.
+~52 theorems total.
+
 ## Planned — later milestones

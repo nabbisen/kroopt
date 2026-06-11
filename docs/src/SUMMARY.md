@@ -14,6 +14,7 @@
 - [Crypto provider and FFI contract](crypto-ffi-contract.md)
 - [TlsConn API and the interpreter](tlsconn-interpreter.md)
 - [SNI/ALPN config and certificate presentation](config-cert.md)
+- [Alerts, close_notify, and terminal policy](alerts-close.md)
 
 # Verification
 

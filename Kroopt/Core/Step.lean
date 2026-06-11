@@ -84,11 +84,33 @@ def step (s : State) (ev : InputEvent) : StepResult :=
         -- Send before `connected` consumes zero plaintext and fails cleanly.
         failAlert s .unexpectedMessage (.protocol .illegalMessageForState)
     | .appClose _ mode =>
-      -- Begin close: stop accepting app data, route close through the transport.
-      .ok ({ s with handshake := .closing
-                    closeState := .sentCloseNotify
-                    pendingPlainOut := none },
-           [OutputAction.closeTransport s.connId mode])
+      -- Begin close, distinguishing the three modes (RFC 013 §5). Repeated close
+      -- is idempotent: once a close is in progress, re-issue the transport close
+      -- without regressing the close state (RFC 013 §7).
+      if s.closeState = .open then
+        match mode with
+        | .graceful =>
+            -- Send close_notify (best-effort via the interpreter), then close.
+            .ok ({ s with handshake := .closing
+                          closeState := .sentCloseNotify
+                          pendingPlainOut := none },
+                 [OutputAction.closeTransport s.connId .graceful])
+        | .fatal a =>
+            -- Local fatal close: the optional fatal alert is the only post-failure
+            -- transport write permitted (RFC 013 §7).
+            .ok ({ s with handshake := .failed a
+                          closeState := .fatalSent a
+                          pendingPlainOut := none },
+                 [ OutputAction.failWithAlert s.connId a,
+                   OutputAction.closeTransport s.connId (.fatal a) ])
+        | .abortive =>
+            -- Abortive close: no TLS alert, just drop the transport.
+            .ok ({ s with handshake := .closed
+                          closeState := .transportClosed
+                          pendingPlainOut := none },
+                 [OutputAction.closeTransport s.connId .abortive])
+      else
+        .ok (s, [OutputAction.closeTransport s.connId mode])
     | .transportEof _ =>
       -- EOF before close_notify is truncation, never a graceful end (RFC 013 §6).
       .ok ({ s with handshake := .failed .closeNotify

@@ -3,6 +3,45 @@
 All notable changes to kroopt are recorded here. RFC lifecycle transitions are
 governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycle-policy.md).
 
+## [0.10.0-dev] — M9 alerts, close_notify, and terminal policy — 2026-06-11
+
+Tenth implementation milestone (RFC 013). Makes alert mapping and close behaviour
+explicit and proved: a single centralized alert mapping, explicit per-mode close
+states, truncation distinguished from clean close, and terminal discipline
+proved.
+
+### Added — centralized alert mapping (`Kroopt.Core.Alert`, pure)
+
+- `alertForProtocolError`, `alertForParseError`, `alertForCryptoFailure`,
+  `alertLevel` — the single deterministic mapping from error class to alert.
+  Internal/secret-bearing crypto failures map to no detailed alert; adversarial
+  ones map to `bad_record_mac`. Record-layer parse failures now route through this
+  mapping rather than hardcoding `decode_error`.
+
+### Changed — explicit per-mode close (RFC 013 §3, §5, §7)
+
+- `step`'s `appClose` distinguishes **graceful** (`closing`/`sentCloseNotify`),
+  **fatal** (`failed`/`fatalSent`, emits the alert as the only post-failure
+  write), and **abortive** (`closed`/`transportClosed`, no alert). Repeated close
+  is idempotent. Transport EOF before close_notify remains a truncation failure,
+  never a clean close.
+
+### Added — proofs (`Kroopt.Proofs.Closure`, 7 theorems)
+
+- `failAlert_no_emit`, `failAlert_no_accept`, `failAlert_only_alert_write`
+  (the fatal path's only wire effect is its alert), `appClose_no_emit`,
+  `alertForParseError_is_fatal`, `alertForParseError_not_closeNotify`,
+  `alertForProtocolError_fatal_unless_close`. The three alert-mapping facts use no
+  axioms at all. The M0 action-discipline proofs were updated for the refined
+  `appClose` and still hold. ~52 total.
+
+### Added — tests
+
+- `Tests/Close.lean` (`kroopt-close-test`) — 16 checks: graceful/fatal/abortive
+  close, EOF truncation, inbound close_notify, post-terminal idempotence
+  (`appClose`/`appSend`), no buffered plaintext after fatal close, the alert
+  mapping, and `TlsConn.close` idempotence through the public API.
+
 ## [0.9.0-dev] — M8 SNI/ALPN configuration + server certificate presentation — 2026-06-11
 
 Ninth implementation milestone (RFC 011 / 012). Replaces the hardcoded suite

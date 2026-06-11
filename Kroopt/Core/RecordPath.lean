@@ -4,6 +4,7 @@ import Kroopt.Core.Action
 import Kroopt.Parse.Record
 import Kroopt.Core.Handshake
 import Kroopt.Parse.Handshake
+import Kroopt.Core.Alert
 
 /-!
 # Kroopt.Core.RecordPath
@@ -68,7 +69,7 @@ application plaintext (`Kroopt.Proofs.RecordPath`). -/
 def handshakeOnPlaintextRecord (s : State) (body : ByteArray) : RecordStepResult :=
   if s.handshake = .start then
     match Kroopt.Parse.parseClientHello body with
-    | .error e => recordFailAlert s .decodeError (.parse e.toPublic)
+    | .error e => recordFailAlert s (alertForParseError e.toPublic) (.parse e.toPublic)
     | .ok wb => handshakeOnClientHello s wb.value body
   else if s.handshake = .sentServerFinished then
     onClientFinishedBytes s body
@@ -80,7 +81,7 @@ by outer content type (RFC 004 §5). -/
 def handleTransportBytes (s0 : State) (b : ByteArray) : RecordStepResult :=
   let s := { s0 with inboundCiphertext := s0.inboundCiphertext ++ b }
   match (Kroopt.Parse.Reader.ofBytes s.inboundCiphertext).tryTakeRecord with
-  | .error e => recordFailAlert s .decodeError (.parse e.toPublic)
+  | .error e => recordFailAlert s (alertForParseError e.toPublic) (.parse e.toPublic)
   | .ok (none, _) =>
       -- Not a full record yet: ask the interpreter to read more.
       .ok (s, [OutputAction.readTransport s.connId])
@@ -110,7 +111,7 @@ def handleTransportBytes (s0 : State) (b : ByteArray) : RecordStepResult :=
           .ok ({ s with handshake := .closing, closeState := .receivedCloseNotify },
                [OutputAction.closeTransport s.connId .graceful])
       | .invalid =>
-          recordFailAlert s .decodeError (.parse .invalidContentType)
+          recordFailAlert s (alertForParseError .invalidContentType) (.parse .invalidContentType)
 
 /-- Handle a *correlated* crypto result for the record layer (RFC 004 §5.6, §6.6):
 the operation id has already been checked outstanding by `handleCryptoResult`.
@@ -126,7 +127,7 @@ def handleCryptoResultCorrelated (s : State) (op : OperationId) (r : CryptoResul
   | .aeadOpened pt =>
       if s.handshake.isConnected then
         match parseInnerPlaintext pt with
-        | .error e => recordFailAlert s .decodeError (.parse e.toPublic)
+        | .error e => recordFailAlert s (alertForParseError e.toPublic) (.parse e.toPublic)
         | .ok inner =>
             match inner.ctype with
             | .applicationData =>
