@@ -3,6 +3,68 @@
 All notable changes to kroopt are recorded here. RFC lifecycle transitions are
 governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycle-policy.md).
 
+## [0.3.0-dev] — M2 TLS 1.3 record model — 2026-06-11
+
+Third implementation milestone (RFC 004). Adds the TLS 1.3 record model — the
+outer/inner content-type distinction, the read/write record paths as core
+actions, and the *no unauthenticated plaintext* proof — on top of the M0 core and
+M1 parser. Still no real crypto and no sockets: AEAD seal/open are *requested* by
+the core and their results fed back as events, exactly as the interpreter will
+later drive them.
+
+### Added — record model (`Kroopt.Core.Record`, `Kroopt.Parse.Record`)
+
+- `ContentType` with wire-byte `toByte`/`ofByte` (unknown bytes decode to the
+  explicit `invalid`, never a real type).
+- `BoundedBytes max` — a byte string whose length bound is a field, so an
+  over-length record body is unconstructable; record size limits are enforced
+  *by construction*.
+- `TLSPlaintext` / `TLSInnerPlaintext` / `TLSCiphertext` — the three record
+  shapes keeping the outer `application_data` vs real inner content type
+  distinct.
+- Record framing: `takeRecordHeader` (rejects oversize length at the header,
+  before allocation), `tryTakeRecord` (returns "need more" until a full record is
+  buffered — reassembly), `parseInnerPlaintext` (strip padding, read inner type;
+  safe list ops, no unchecked indexing), and `classifyCcs` (accept only the
+  `0x01` compatibility CCS).
+
+### Added — record path (`Kroopt.Core.RecordPath`, wired into `step`)
+
+- Inbound: reassemble → frame → request `aeadOpen` → on success validate inner
+  type and buffer application content → deliver via the existing connected
+  `recv` path; auth failure is fatal with no plaintext.
+- Outbound: connected `send` fragments to ≤ 2¹⁴, requests `aeadSeal`, and
+  acknowledges ownership with `acceptPlaintextBytes`.
+- Sequence numbers advance per direction with overflow checked before use; the
+  core requests crypto and never calls it.
+
+### Added — proofs (`Kroopt.Proofs.RecordPath`)
+
+- `buffered_plaintext_authenticated` / `buffered_plaintext_provenance` — **no
+  unauthenticated plaintext**: buffered application plaintext arises only from a
+  successful `aeadOpened` result in `connected` state.
+- `aead_open_failure_no_plaintext` — open failure emits no plaintext and is
+  terminal.
+- Handler no-emit / no-accept lemmas; the M0 `no_plaintext_emit_unless_connected`
+  re-proved over the extended `step`, plus `accept_plaintext_only_connected`.
+- All machine-checked, no `sorry`/`axiom`/`unsafe`; `#print axioms` shows only
+  `propext` (some also `Quot.sound`).
+
+### Added — tests, docs
+
+- `Tests/Record.lean` (`kroopt-record-test`) — 19 checks: header parse, oversize
+  reject, reassembly split points, inner-type validation, CCS accept/reject, and
+  fake AEAD-open success (buffers plaintext) vs failure (buffers none, goes
+  terminal); all passing.
+- `docs/src/record-model.md`; expanded theorem inventory and proof-assumptions.
+
+### Changed
+
+- `Core.State` gained record buffers (`inboundCiphertext`, `outboundCiphertext`)
+  and an op-id counter; `step`'s M0 placeholder arms became real record
+  transitions. The proof-hygiene and dependency gates now cover the record
+  modules (19 pure-zone files).
+
 ## [0.2.0-dev] — M1 bounds-safe parser foundation — 2026-06-11
 
 Second implementation milestone (RFC 003). Adds the pure parsing/framing

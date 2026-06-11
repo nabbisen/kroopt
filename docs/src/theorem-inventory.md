@@ -55,6 +55,34 @@ input-preservation. They live in `Kroopt.Parse.Proofs` (module
 All confirmed via `#print axioms` to depend only on `propext` (some also on
 `Quot.sound`, introduced by `simp`/`contradiction`), never on `sorryAx`.
 
+## M2 — proved (TLS 1.3 record model)
+
+The record-layer safety theorems (RFC 004 §10, RFC 015 §15.1). The headline is
+*no unauthenticated plaintext*: application plaintext is buffered only by a
+successful, authenticated AEAD open in `connected` state, and the sole emitter
+reads that buffer — so nothing reaches the application that did not come from an
+authenticated, connected-state record open. They live in `Kroopt.Core.Proofs`
+(module `Kroopt.Proofs.RecordPath`), and the M0 *no early plaintext* theorem was
+re-proved over the extended `step`.
+
+| # | Theorem | Property | RFC | Axioms | Status |
+|---|---------|----------|-----|--------|--------|
+| 13 | `buffered_plaintext_authenticated` | Newly-buffered application plaintext implies a successful `aeadOpened` result in `connected` state — the no-unauthenticated-plaintext headline. | RFC 004 §10, RFC 015 §15.1 | propext | proved |
+| 14 | `buffered_plaintext_provenance` | Step-level form: a step that newly buffers plaintext was processing an `aeadOpened` result while `connected`. | RFC 004 §10 | propext, Quot.sound | proved |
+| 15 | `aead_open_failure_no_plaintext` | An AEAD-open verification failure emits no plaintext, clears the buffer, and is terminal (`bad_record_mac`). | RFC 004 §12 | propext, Quot.sound | proved |
+| 16 | `handleTransportBytes_no_plaintext` / `handleCryptoResult_no_plaintext` / `handleAppSend_no_plaintext` | No record handler ever emits `emitPlaintext` (emission stays at the single connected-gated site). | RFC 004 §5.7 | propext (one also Quot.sound) | proved |
+| 17 | `handleTransportBytes_no_accept` / `handleCryptoResult_no_accept` | No inbound handler accepts application plaintext (only the connected send path does). | RFC 004 §9 | propext (one also Quot.sound) | proved |
+| 18 | `no_plaintext_emit_unless_connected` (re-proved) | Still holds over the extended `step`: plaintext is emitted only in `connected`. | RFC 002 §7 | propext, Quot.sound | proved |
+| 19 | `accept_plaintext_only_connected` | Application plaintext is accepted (ownership taken) only in `connected`. | RFC 002 §7, RFC 004 §9 | propext, Quot.sound | proved |
+
+All confirmed via `#print axioms` to depend only on `propext` (some also
+`Quot.sound`), never `sorryAx`.
+
+Note on the trust boundary: `aeadOpened` standing for an *authenticated* open is
+the crypto provider's contract (ASSUMED — HACL\*/EverCrypt), not something kroopt
+proves. What kroopt proves is that buffered/emitted plaintext is reachable
+*only* through that authenticated path — the structural half of the guarantee.
+
 ## Planned — later milestones
 
 These are required by the RFCs and tracked here so the inventory shows the whole
@@ -67,9 +95,7 @@ target, not only what is done. They are absent from the tree (not stubbed with
 | `seq_overflow_fatal` | A sequence at `UInt64` max forces failure before nonce derivation. | RFC 005 §7.2 | M3 |
 | `nonce_unique_per_key` | No two seals under one key/epoch use the same nonce. | RFC 005 §7.3 | M3 |
 | `key_separation` | Read/write and handshake/application key material never alias. | RFC 005 §7.5 | M3 |
-| `no_unauth_plaintext` | Plaintext is emitted only after a successful AEAD open + inner content-type check. | RFC 004 §9, RFC 002 §7 | M2 |
 | `handshake_transitions_legal` | Every reachable `HandshakeState` transition is an allowed edge. | RFC 006 §4 | M4 |
 | `transcript_exact_bytes` | The transcript binds exactly the wire bytes, in order. | RFC 007 §5 | M4 |
 | `takeCountedItems_bounds` | The fuel-bounded item combinator is bounds-safe given a bounds-safe item parser (composition lemma). | RFC 003 §9.3 | M4 |
-| `accept_plaintext_only_connected` | `acceptPlaintextBytes` occurs only when `connected`. | RFC 002 §7 | M2 |
 | `crypto_result_correlation` | A `cryptoResult` is consumed only if its id/kind/epoch/direction matches an outstanding op. | RFC 008 §5 | M6 |

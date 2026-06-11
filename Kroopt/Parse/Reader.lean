@@ -55,6 +55,7 @@ inductive ParseError where
   | lengthExceedsMax (len : Nat) (maxLen : Nat)
   | valueOutOfRange
   | malformedDer
+  | malformedInnerPlaintext
   | budgetExceeded
   deriving Repr, DecidableEq, Inhabited
 
@@ -69,6 +70,7 @@ def toPublic : ParseError → Kroopt.ParseError
   | lengthExceedsMax _ _ => .oversizedRecord
   | valueOutOfRange      => .valueOutOfRange
   | malformedDer         => .invalidDer
+  | malformedInnerPlaintext => .invalidContentType
   | budgetExceeded       => .oversizedRecord
 
 end ParseError

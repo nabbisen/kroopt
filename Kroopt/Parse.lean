@@ -1,4 +1,5 @@
 import Kroopt.Parse.Reader
+import Kroopt.Parse.Record
 
 /-!
 # Kroopt.Parse

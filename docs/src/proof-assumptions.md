@@ -20,10 +20,17 @@ No proof depends on `sorryAx`. This is enforced two ways:
 
 ## Project-local assumptions
 
-**None at M0–M1.** The core and parser foundation are self-contained: no `axiom`
-declarations, no appeals to unproven lemmas, no trusted external facts. Every
-parser primitive that runs in a strict zone carries a bounds-safety proof (see
-`theorem-inventory.md`).
+**None at M0–M2.** The core, parser foundation, and record model are
+self-contained: no `axiom` declarations, no appeals to unproven lemmas, no
+trusted project-local facts. Every parser primitive and every record transition
+that runs in a strict zone carries a proof (see `theorem-inventory.md`).
+
+The one *external* assumption the record proofs lean on is the crypto provider's
+contract — that a `CryptoResult.aeadOpened` is returned only for a record whose
+AEAD tag verified. That is the ASSUMED tier (HACL\*/EverCrypt), tracked in the
+trust/test/proof matrix, not a project-local Lean assumption. kroopt proves the
+*structural* half: buffered and emitted plaintext is reachable only through that
+authenticated path.
 
 ### Tested-but-not-yet-proved helpers (explicit follow-up tasks)
 

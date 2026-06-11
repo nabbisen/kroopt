@@ -103,6 +103,13 @@ def isPlaintextAccept : OutputAction → Bool
 @[simp] theorem isPlaintextEmit_closeTransport (c : ConnId) (m : CloseMode) :
     isPlaintextEmit (closeTransport c m) = false := rfl
 
+/-- If an action is classified as a plaintext emit, it is literally an
+`emitPlaintext`. Lets proofs reduce "emits plaintext" to a membership fact about
+that one constructor. -/
+theorem isPlaintextEmit_eq_true {a : OutputAction} (h : a.isPlaintextEmit = true) :
+    ∃ (c : ConnId) (b : ByteArray), a = emitPlaintext c b := by
+  cases a <;> first | exact ⟨_, _, rfl⟩ | simp [isPlaintextEmit] at h
+
 end OutputAction
 
 end Kroopt.Core

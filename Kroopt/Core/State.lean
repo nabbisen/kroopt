@@ -132,6 +132,9 @@ structure State where
   readEpoch : EpochState
   writeEpoch : EpochState
   pendingOps : PendingCryptoOps
+  nextOpId : UInt64
+  inboundCiphertext : ByteArray
+  outboundCiphertext : ByteArray
   pendingPlainOut : Option ByteArray
   transcript : TranscriptState
   negotiated : NegotiationState
@@ -141,8 +144,8 @@ structure State where
 namespace State
 
 /-- The initial handshaking state for a freshly accepted connection (RFC 010 §4.2):
-phase `start`, both directions in the plaintext initial epoch, no buffered
-plaintext, no pending crypto, default budgets. -/
+phase `start`, both directions in the plaintext initial epoch, empty buffers, no
+buffered plaintext, no pending crypto, default budgets. -/
 def initial (conn : ConnId) (cfg : ConfigGeneration) (alg : HashAlgorithm) : State :=
   { connId := conn
     configGen := cfg
@@ -150,6 +153,9 @@ def initial (conn : ConnId) (cfg : ConfigGeneration) (alg : HashAlgorithm) : Sta
     readEpoch := EpochState.fresh
     writeEpoch := EpochState.fresh
     pendingOps := PendingCryptoOps.empty
+    nextOpId := 0
+    inboundCiphertext := ByteArray.mk #[]
+    outboundCiphertext := ByteArray.mk #[]
     pendingPlainOut := none
     transcript := TranscriptState.fresh alg
     negotiated := NegotiationState.empty
@@ -166,6 +172,21 @@ def redactedSummary (s : State) : String :=
      readEpoch={repr s.readEpoch.epoch} writeEpoch={repr s.writeEpoch.epoch} \
      pendingPlaintext={plain} \
      pendingCryptoOps={s.pendingOps.ops.length}"
+
+/-- Allocate a fresh operation id and register a pending crypto operation with
+its expected metadata, so the returning result can be correlated and stale or
+wrong-kind results rejected (RFC 008 §5). Returns the id and the updated state. -/
+def allocOp (s : State) (kind : CryptoOpKind) (epoch : Epoch)
+    (dir : Option Direction) : OperationId × State :=
+  let oid : OperationId := ⟨s.nextOpId⟩
+  let pend : PendingCryptoOp :=
+    { id := oid, expectedKind := kind, expectedEpoch := epoch, expectedDirection := dir }
+  (oid, { s with nextOpId := s.nextOpId + 1
+                 pendingOps := ⟨pend :: s.pendingOps.ops⟩ })
+
+/-- Remove a pending crypto operation by id once its result has been handled. -/
+def clearOp (s : State) (op : OperationId) : State :=
+  { s with pendingOps := ⟨s.pendingOps.ops.filter (fun o => o.id != op)⟩ }
 
 end State
 

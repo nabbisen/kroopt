@@ -43,6 +43,11 @@ lean_exe «kroopt-model-test» where
 lean_exe «kroopt-parse-test» where
   root := `Tests.Parse
 
+/-- Unit and negative tests for the TLS 1.3 record model (RFC 004 §13). -/
+@[default_target]
+lean_exe «kroopt-record-test» where
+  root := `Tests.Record
+
 /-- Bounded smoke fuzzer for the parser primitives (RFC 003 §11, RFC 023). -/
 @[default_target]
 lean_exe «kroopt-parse-fuzz» where

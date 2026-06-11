@@ -2,6 +2,7 @@ import Kroopt.Error
 import Kroopt.Core.State
 import Kroopt.Core.Event
 import Kroopt.Core.Action
+import Kroopt.Core.RecordPath
 
 /-!
 # Kroopt.Core.Step
@@ -75,12 +76,10 @@ def step (s : State) (ev : InputEvent) : StepResult :=
       else
         -- No plaintext before `connected`: nothing to deliver, no error.
         .ok (s, [])
-    | .appSend _ _ =>
+    | .appSend _ b =>
       if s.handshake.isConnected then
-        -- M0: the record send path is not built yet; accept zero bytes.
-        -- (At M2/M4 this fragments + seals; ownership is acknowledged via
-        --  `acceptPlaintextBytes`, still only in `connected`.)
-        .ok (s, [])
+        -- Connected: fragment, seal, and accept ownership (record write path).
+        handleAppSend s b
       else
         -- Send before `connected` consumes zero plaintext and fails cleanly.
         failAlert s .unexpectedMessage (.protocol .illegalMessageForState)
@@ -99,10 +98,20 @@ def step (s : State) (ev : InputEvent) : StepResult :=
     | .timeout _ _ =>
       -- Handshake/idle budget elapsed: fail (RFC 019).
       failAlert s .internalError (.resourceLimit .handshakeTimeout)
-    | _ =>
-      -- M0: other events (transportBytes, readiness hints, cryptoResult, flush)
-      -- are accepted with no protocol effect yet — shape placeholders that the
-      -- M1–M4 milestones replace with real transitions.
+    | .transportBytes _ b =>
+      -- Inbound record path (RFC 004 §5): reassemble and frame a record.
+      handleTransportBytes s b
+    | .cryptoResult _ op r =>
+      -- A requested crypto operation returned: drive the record/handshake path.
+      handleCryptoResult s op r
+    | .transportReadable _ =>
+      -- Readiness is a hint: ask the interpreter to actually read.
+      .ok (s, [OutputAction.readTransport s.connId])
+    | .transportWritable _ =>
+      -- Socket writable: the interpreter drains pending ciphertext; no core change.
+      .ok (s, [])
+    | .appFlush _ =>
+      -- Flush is driven by the interpreter against pending output; no core change.
       .ok (s, [])
 
 end Kroopt.Core

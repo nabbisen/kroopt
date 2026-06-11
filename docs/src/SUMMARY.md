@@ -6,6 +6,7 @@
 
 - [Boundary and non-goals](boundary.md)
 - [Parser foundation](parser.md)
+- [Record model](record-model.md)
 
 # Verification
 
