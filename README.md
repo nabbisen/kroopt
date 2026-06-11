@@ -9,7 +9,7 @@ actions; a thin interpreter executes those actions over real crypto and sockets
 and never makes protocol decisions of its own. That separation carries
 machine-checked safety properties into the running code.
 
-## Status: M0 + M1 + M2 + M3 + M4 + M5 + M6 (verified core → live handshake + crypto provider boundary)
+## Status: M0 + M1 + M2 + M3 + M4 + M5 + M6 + M7 (verified core → live handshake → TlsConn runtime)
 
 This tree implements milestones **M0**–**M5** from the [ROADMAP](ROADMAP.md). M0
 fixes the pure-core/interpreter architecture; M1 adds the bounds-safe parsing
@@ -23,8 +23,11 @@ and fake crypto provider — closing the v0.1 synthetic-core line. M6 adds the c
 provider trusted boundary with the **operation-id correlation guard** proved over
 the live handshake; the native HACL\*/EverCrypt shim is contracted with its build
 deferred until HACL\* is vendored, so the deterministic fake provider still stands
-in and there are no sockets yet. These layers are built and proven first so the
-protocol model and the running code cannot drift apart later (RFC 001–009, 014,
+in and there are no sockets yet. M7 adds the runtime layer — the `TlsConn` API
+and the thin interpreter, which executes the core's actions over a (fake)
+transport and provider and carries no protocol logic; the real iotakt binding is
+a thin deferred adapter. These layers are built and proven first so the
+protocol model and the running code cannot drift apart later (RFC 001–010, 014,
 022, 024).
 
 The headline M5 result: every M2/M3 safety theorem — above all *no early
@@ -50,7 +53,8 @@ What builds and is checked today:
   depending only on `propext` (some also `Quot.sound`, several on no axioms);
 - deterministic tests — model (9), parser (18), record (19), nonce/seq (12),
   handshake/transcript (10), end-to-end through `step` (12), crypto provider +
-  correlation (11), all green, plus a parser/ClientHello fuzz harness;
+  correlation (11), TlsConn + interpreter (13), all green, plus a parser/ClientHello
+  fuzz harness;
 - two CI gates that run from M0: proof hygiene and module-dependency isolation.
 
 See the [theorem inventory](docs/src/theorem-inventory.md) and
@@ -71,6 +75,7 @@ lake exe kroopt-nonce-test    # M3 sequence/nonce/key-separation tests
 lake exe kroopt-handshake-test # M4 synthetic handshake + transcript tests
 lake exe kroopt-e2e-test      # M5 full handshake end-to-end through `step`
 lake exe kroopt-crypto-test   # M6 crypto provider + operation-id correlation tests
+lake exe kroopt-conn-test     # M7 TlsConn API + non-blocking interpreter tests
 lake exe kroopt-parse-fuzz    # parser + ClientHello smoke fuzzer (optional arg: iterations)
 ./scripts/check-hygiene.sh    # RFC 022 proof-hygiene gate
 ./scripts/check-deps.sh       # RFC 022 module-dependency gate
@@ -86,6 +91,7 @@ Kroopt/
   Parse/               pure bounds-safe parser/framer foundation (Reader, …)
   Crypto/              trusted boundary: provider capability model + fake provider
   Native/              C shim contract (kroopt.h) — HACL* build deferred
+  Conn/                runtime layer: TlsConn API + thin interpreter + transport
   Proofs/              structural proofs over `step` and the parser
 Tests/
   Model.lean           deterministic model test (drives `step`)
@@ -95,6 +101,7 @@ Tests/
   Handshake.lean       synthetic handshake + transcript tests
   EndToEnd.lean        full handshake end-to-end through `step` (fake crypto/transport)
   Crypto.lean          provider capability + operation-id correlation tests
+  Conn.lean            TlsConn + interpreter faithfulness tests
   Fuzz.lean            parser + ClientHello smoke fuzzer
 scripts/               CI gates (hygiene, module dependencies)
 docs/src/              mdbook documentation (incl. theorem inventory)

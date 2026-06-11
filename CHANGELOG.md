@@ -3,6 +3,40 @@
 All notable changes to kroopt are recorded here. RFC lifecycle transitions are
 governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycle-policy.md).
 
+## [0.8.0-dev] — M7 TlsConn API + non-blocking interpreter — 2026-06-11
+
+Eighth implementation milestone (RFC 010). Adds the runtime layer: the public
+`TlsConn` API and the thin imperative interpreter that executes the core's
+`OutputAction`s over the transport and crypto provider and feeds results back as
+events. The transport is a pure, deterministic fake for this milestone (the real
+iotakt binding is a thin deferred adapter, v0.3); the interpreter and API carry
+no protocol logic.
+
+### Added — runtime layer (`Kroopt.Conn`)
+
+- `Conn.Transport` — the transport abstraction (the generic non-blocking
+  capabilities kroopt requires: `recv`/`send`/`enableWrite`/`disableWrite`/
+  `closeConnection`, a generation-protected `FdKey`) and a pure `FakeTransport`
+  with scriptable partial writes and EOF. No TLS-specific transport API.
+- `Conn.Interpreter` — `execAction` (dispatches on the `OutputAction` variant
+  alone; **does not take the core `State`**, so it structurally cannot make a
+  protocol decision), `drainOutbound` (partial-write-safe), and the fuel-bounded
+  `driveEvents` loop (never spins on `wouldBlock`).
+- `Conn.TlsConn` — `server`/`recv`/`send`/`flush`/`close`/`progress`/`metadata`
+  with the mandated semantics: `wrote n` = plaintext ownership (not delivery),
+  `wouldBlock` consumes zero, `recv` returns authenticated plaintext only after
+  `connected`.
+
+### Added — tests, docs
+
+- `Tests/Conn.lean` (`kroopt-conn-test`) — 13 checks: a **full handshake driven
+  through the public `TlsConn` API** to `connected`, the write/flush/read
+  semantics, partial-write ordering, `wouldBlock`-consumes-zero, progress-budget
+  termination, and stale-crypto-result rejection at the runtime boundary.
+- `docs/src/tlsconn-interpreter.md`; theorem-inventory note (M7 is interpreter
+  *faithfulness*, classed TESTED — the proved guarantees stay in force because the
+  interpreter cannot branch on protocol state).
+
 ## [0.7.0-dev] — M6 crypto provider, FFI contract, operation-id correlation — 2026-06-11
 
 Seventh implementation milestone (RFC 008 / 009). Adds the crypto provider

@@ -186,4 +186,16 @@ and still hold; `aead_open_failure_no_plaintext` now carries an explicit
 theorem above). Capability negotiation (`validateCapabilities`) is a total
 deterministic function exercised by `kroopt-crypto-test`, not a proof target.
 
+## M7 — interpreter faithfulness (TESTED, not new theorems)
+
+M7 adds the runtime layer (RFC 010): the `TlsConn` API and the thin interpreter.
+It introduces **no new core theorems** — by design. The interpreter's correctness
+is the *faithfulness* of action execution, which the trust matrix classes as
+TESTED, not PROVEN (`kroopt-conn-test`: full handshake through `TlsConn`, write
+ownership / `wouldBlock`-consumes-zero, flush drains, partial-write ordering,
+progress-budget termination, stale-event rejection). What keeps the *proved*
+guarantees in force over the running connection is structural: `execAction` does
+not take the core `State`, so the interpreter cannot make a protocol decision —
+all protocol truth remains in `step`, which every M0–M6 theorem constrains.
+
 ## Planned — later milestones

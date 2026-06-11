@@ -68,6 +68,11 @@ lean_exe «kroopt-e2e-test» where
 lean_exe «kroopt-crypto-test» where
   root := `Tests.Crypto
 
+/-- TlsConn API + non-blocking interpreter tests (RFC 010). -/
+@[default_target]
+lean_exe «kroopt-conn-test» where
+  root := `Tests.Conn
+
 /-- Bounded smoke fuzzer for the parser primitives (RFC 003 §11, RFC 023). -/
 @[default_target]
 lean_exe «kroopt-parse-fuzz» where
