@@ -1,7 +1,6 @@
 import Kroopt.Core.State
 import Kroopt.Core.Event
 import Kroopt.Core.Action
-import Kroopt.Core.RecordPath
 
 /-!
 # Kroopt.Core.Handshake
@@ -157,7 +156,7 @@ verification. -/
 def onClientFinishedBytes (s : State) (cfWire : ByteArray) : HsResult :=
   if s.handshake = .sentServerFinished then
     let (snap, ts) := s.transcript.snapshot
-    let s := { s with transcript := ts }
+    let s := { s with transcript := ts, pendingClientFinished := some cfWire }
     let (oid, s) := s.allocOp .verifyFinished .application (some .read)
     .ok ({ s with handshake := .requestedClientFinishedVerify },
          [ OutputAction.callCrypto s.connId oid
@@ -182,5 +181,38 @@ def onClientFinishedVerified (s : State) (verified : Bool) (cfWire : ByteArray) 
       hsFail s .decryptError (.protocol .badFinished)
   else
     hsFail s .unexpectedMessage (.protocol .illegalMessageForState)
+
+/-- Route a returning crypto result that *gates* a handshake phase change to the
+right transition (RFC 006 §7, §10). The pending op is cleared first. ECDHE,
+the CertificateVerify signature, and the client-Finished verification each
+advance exactly one phase; an unexpected result for the current phase is ignored
+(the op is already cleared). This dispatch emits no application plaintext. -/
+def handshakeOnGatingResult (s0 : State) (op : OperationId) (r : CryptoResult) : HsResult :=
+  let s := s0.clearOp op
+  match r with
+  | .sharedSecret h =>
+      if s.handshake = .requestedEcdhe then onEcdheDone s h else .ok (s, [])
+  | .signature sig =>
+      if s.handshake = .requestedCertificateVerifySignature then onCertVerifySigned s sig
+      else .ok (s, [])
+  | .verified =>
+      if s.handshake = .requestedClientFinishedVerify then
+        onClientFinishedVerified s true (s.pendingClientFinished.getD (ByteArray.mk #[]))
+      else .ok (s, [])
+  | .randomBytes _ => .ok (s, [])
+  | .hkdfSecret _ => .ok (s, [])
+  | .aeadSealed _ => .ok (s, [])
+  | .aeadOpened _ => .ok (s, [])
+  | .verifyFailed => .ok (s, [])
+  | .failed _ => .ok (s, [])
+
+/-- Route a plaintext handshake record to the right transition by phase
+(RFC 006 §5, §10). In `start` it is the ClientHello (parsed and validated); in
+`sentServerFinished` it is the client Finished. Other phases ignore it. Parsing
+is the caller's responsibility (it lives above the import boundary); this takes
+an already-parsed `ValidClientHello` for the ClientHello case. Emits no
+application plaintext. -/
+def handshakeOnClientHello (s : State) (vch : ValidClientHello) (chWire : ByteArray) : HsResult :=
+  onClientHello s vch chWire
 
 end Kroopt.Core

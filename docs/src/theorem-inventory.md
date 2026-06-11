@@ -140,5 +140,31 @@ is a provider action (RFC 007 §9.1 permits this hybrid). The synthetic handshak
 drives the transition functions directly to `connected`; wiring them into the
 live `step` event loop against the fake transport/provider is M5.
 
+## M5 — proved (live handshake preserves no early plaintext)
+
+M5 wires the handshake transition functions into the live `step` dispatcher (via
+the record handlers) and drives the full synthetic handshake end-to-end through
+`step` against a fake transport and fake crypto provider (RFC 014). The headline
+guarantee is that the M2/M3 safety theorems — above all *no early plaintext* —
+**still hold over the live handshake**: that is the proof/runtime correspondence
+contract (RFC 002 §5). New supporting lemmas, in `Kroopt.Proofs.Handshake` and
+`Kroopt.Proofs.RecordPath`:
+
+| # | Theorem | Property | RFC | Axioms | Status |
+|---|---------|----------|-----|--------|--------|
+| 33 | `handshakeOnPlaintextRecord_no_emit` / `_no_accept` | The plaintext-handshake-record dispatch (ClientHello / client Finished) emits and accepts no application plaintext. | RFC 002 §7 | propext, Quot.sound | proved |
+| 34 | `handshakeOnGatingResult_no_emit` / `_no_accept` | The gating-result dispatch (ECDHE / signature / verify) emits and accepts no application plaintext. | RFC 002 §7 | propext | proved |
+| 35 | `handshakeOnPlaintextRecord_no_aeadOpen` | The handshake dispatch requests no AEAD-open, so `aeadOpen_uses_read_keys` still characterises every record open. | RFC 005 §6 | propext, Quot.sound | proved |
+| 36 | `onClientHello_no_emit` … `onClientFinishedVerified` (transition no-emit/no-accept/no-aeadOpen family) | Each handshake transition emits only `callCrypto`/`writeTransport`/`reportHandshakeComplete`/alerts. | RFC 006 §10 | propext | proved |
+
+The pre-existing headline theorems were re-checked unchanged over the new live
+handshake: `no_plaintext_emit_unless_connected`, `accept_plaintext_only_connected`,
+`buffered_plaintext_authenticated`, `aead_open_failure_no_plaintext`,
+`aeadOpen_uses_read_keys`, and `successful_open_increments_read_seq` all still
+build and depend only on `propext` (+ `Quot.sound`). The end-to-end harness
+(`kroopt-e2e-test`) drives a real ClientHello byte sequence through `step` to
+`connected`, and the negative traces (malformed ClientHello, early application
+data, bad client Finished) fail deterministically and emit no plaintext.
+
 ## Planned — later milestones
 | `crypto_result_correlation` | A `cryptoResult` is consumed only if its id/kind/epoch/direction matches an outstanding op. | RFC 008 §5 | M6 |

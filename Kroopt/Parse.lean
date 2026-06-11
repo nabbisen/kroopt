@@ -1,5 +1,6 @@
 import Kroopt.Parse.Reader
 import Kroopt.Parse.Record
+import Kroopt.Parse.Handshake
 
 /-!
 # Kroopt.Parse

@@ -58,6 +58,11 @@ lean_exe «kroopt-nonce-test» where
 lean_exe «kroopt-handshake-test» where
   root := `Tests.Handshake
 
+/-- Full handshake end-to-end through `step` with fake crypto/transport (RFC 014). -/
+@[default_target]
+lean_exe «kroopt-e2e-test» where
+  root := `Tests.EndToEnd
+
 /-- Bounded smoke fuzzer for the parser primitives (RFC 003 §11, RFC 023). -/
 @[default_target]
 lean_exe «kroopt-parse-fuzz» where

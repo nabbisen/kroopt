@@ -3,6 +3,58 @@
 All notable changes to kroopt are recorded here. RFC lifecycle transitions are
 governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycle-policy.md).
 
+## [0.6.0-dev] — M5 live handshake through `step`, fakes, end-to-end — 2026-06-11
+
+Sixth implementation milestone (RFC 014). Wires the M4 handshake transition
+functions into the live `step` dispatcher and drives the **full synthetic
+handshake end-to-end through `step`** against a fake transport and a
+deterministic fake crypto provider. This closes the v0.1 synthetic-core line
+(M1–M5): the protocol now runs as it will in production, with only the provider
+and sockets faked. Still no real cryptography.
+
+### Added — ClientHello parser (`Kroopt.Parse.Handshake`, RFC 006 §5)
+
+- `parseClientHello` validates a ClientHello on the bounds-safe `Reader`
+  primitives (reusing the proved `takeCountedItems`): handshake header, the
+  legacy fields, cipher suites, and extensions, requiring TLS 1.3 in
+  `supported_versions`, an X25519 `key_share`, an acceptable cipher suite, and no
+  duplicate extensions. Returns a `WireBound` carrying the exact consumed bytes.
+
+### Changed — handshake wired into the live handlers
+
+- A plaintext handshake record now routes through `handshakeOnPlaintextRecord`
+  (ClientHello in `start`, client Finished in `sentServerFinished`); a gating
+  crypto result routes through `handshakeOnGatingResult` (ECDHE / signature /
+  verify). `step` and its proof keep their shape — dispatch lives in the record
+  handlers (`Kroopt.Core.RecordPath`).
+
+### Added — proofs (the headline: safety survives the live handshake)
+
+- `handshakeOnPlaintextRecord_no_emit` / `_no_accept` / `_no_aeadOpen`,
+  `handshakeOnGatingResult_no_emit` / `_no_accept`, and the per-transition
+  no-emit/no-accept/no-aeadOpen family.
+- Every M2/M3 safety theorem re-checked unchanged over the live handshake:
+  `no_plaintext_emit_unless_connected`, `accept_plaintext_only_connected`,
+  `buffered_plaintext_authenticated`, `aead_open_failure_no_plaintext`,
+  `aeadOpen_uses_read_keys`, `successful_open_increments_read_seq` — all still
+  `sorry`/`axiom`-free (`propext`, some `Quot.sound`). ~36 theorems total.
+
+### Added — fakes, end-to-end harness, fuzz
+
+- `Tests/EndToEnd.lean` (`kroopt-e2e-test`) — a deterministic fake crypto
+  provider and fake transport, a driver loop over `step`, and 12 checks: a real
+  ClientHello byte sequence driven to `connected` with completion reported and no
+  plaintext emitted, plus negative traces (malformed ClientHello, early
+  application data, bad client Finished) that fail cleanly with no plaintext.
+- `Tests/Fuzz.lean` extended with ClientHello and record-reassembly targets
+  (RFC 014 §7); buffers widened to 0–255 bytes.
+
+### Added — docs
+
+- `docs/src/end-to-end.md`; expanded theorem inventory and proof-assumptions
+  (incl. a note on the fake provider and the synthetic `verifyFailed →
+  bad_record_mac` alert-code detail).
+
 ## [0.5.0-dev] — M4 handshake state model + transcript binding — 2026-06-11
 
 Fifth implementation milestone (RFC 006 + RFC 007). Adds the TLS 1.3 **server**

@@ -10,6 +10,7 @@
 - [Nonce, sequence, key separation](nonce-sequence.md)
 - [Handshake state model](handshake.md)
 - [Transcript model](transcript.md)
+- [End-to-end handshake (fakes)](end-to-end.md)
 
 # Verification
 

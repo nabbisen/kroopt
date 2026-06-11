@@ -1,4 +1,5 @@
 import Kroopt.Core.Step
+import Kroopt.Proofs.Handshake
 
 /-!
 # Kroopt.Proofs.RecordPath
@@ -22,6 +23,69 @@ namespace Proofs
 
 open Kroopt
 
+/-- The plaintext-handshake-record dispatch emits no application plaintext: it
+routes to handshake transitions (each proved no-emit) or a clean decode failure. -/
+theorem handshakeOnPlaintextRecord_no_emit
+    (s s' : State) (body : ByteArray) (acts : List OutputAction)
+    (h : handshakeOnPlaintextRecord s body = .ok (s', acts))
+    (c : ConnId) (bb : ByteArray) : OutputAction.emitPlaintext c bb ∉ acts := by
+  intro hmem
+  unfold handshakeOnPlaintextRecord recordFailAlert at h
+  split at h
+  · split at h
+    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+      obtain ⟨-, rfl⟩ := h
+      simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+        or_self, or_false, false_or] at hmem
+    · exact handshakeOnClientHello_no_emit _ _ _ _ _ h c bb hmem
+  · split at h
+    · exact onClientFinishedBytes_no_emit _ _ _ _ h c bb hmem
+    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+      obtain ⟨-, rfl⟩ := h
+      simp only [List.not_mem_nil] at hmem
+
+/-- The plaintext-handshake-record dispatch accepts no application plaintext. -/
+theorem handshakeOnPlaintextRecord_no_accept
+    (s s' : State) (body : ByteArray) (acts : List OutputAction)
+    (h : handshakeOnPlaintextRecord s body = .ok (s', acts))
+    (c : ConnId) (n : Nat) : OutputAction.acceptPlaintextBytes c n ∉ acts := by
+  intro hmem
+  unfold handshakeOnPlaintextRecord recordFailAlert at h
+  split at h
+  · split at h
+    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+      obtain ⟨-, rfl⟩ := h
+      simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+        or_self, or_false, false_or] at hmem
+    · exact handshakeOnClientHello_no_accept _ _ _ _ _ h c n hmem
+  · split at h
+    · exact onClientFinishedBytes_no_accept _ _ _ _ h c n hmem
+    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+      obtain ⟨-, rfl⟩ := h
+      simp only [List.not_mem_nil] at hmem
+
+/-- The plaintext-handshake-record dispatch requests no AEAD-open: it routes to
+ECDHE / Finished-verify requests, never an application record open. -/
+theorem handshakeOnPlaintextRecord_no_aeadOpen
+    (s s' : State) (body : ByteArray) (acts : List OutputAction)
+    (h : handshakeOnPlaintextRecord s body = .ok (s', acts))
+    (c : ConnId) (oid : OperationId) (meta : RecordCryptoMeta) (aad ct : ByteArray) :
+    OutputAction.callCrypto c oid (CryptoOp.aeadOpen meta aad ct) ∉ acts := by
+  intro hmem
+  unfold handshakeOnPlaintextRecord recordFailAlert at h
+  split at h
+  · split at h
+    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+      obtain ⟨-, rfl⟩ := h
+      simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+        or_self, or_false, false_or] at hmem
+    · exact handshakeOnClientHello_no_aeadOpen _ _ _ _ _ h c oid meta aad ct hmem
+  · split at h
+    · exact onClientFinishedBytes_no_aeadOpen _ _ _ _ h c oid meta aad ct hmem
+    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+      obtain ⟨-, rfl⟩ := h
+      simp only [List.not_mem_nil] at hmem
+
 /-- Shared closer: after splitting a handler into its leaves, each leaf returns a
 concrete action list with no `emitPlaintext`, contradicting membership. -/
 private theorem handleTransportBytes_no_emit
@@ -40,10 +104,15 @@ private theorem handleTransportBytes_no_emit
   all_goals (try split at h)
   all_goals (try split at h)
   all_goals (
-    simp only [Except.ok.injEq, Prod.mk.injEq] at h
-    obtain ⟨-, rfl⟩ := h
-    simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
-      or_self, or_false, false_or] at hmem)
+    first
+    | exact handshakeOnPlaintextRecord_no_emit _ _ _ _ h _ _ hmem
+    | exact handshakeOnGatingResult_no_emit _ _ _ _ _ h _ _ hmem
+    | exact handshakeOnPlaintextRecord_no_accept _ _ _ _ h _ _ hmem
+    | exact handshakeOnGatingResult_no_accept _ _ _ _ _ h _ _ hmem
+    | (simp only [Except.ok.injEq, Prod.mk.injEq] at h
+       obtain ⟨-, rfl⟩ := h
+       simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+         or_self, or_false, false_or] at hmem))
 
 /-- `handleCryptoResult` never emits application plaintext — decrypted content is
 buffered, not emitted (RFC 004 §5.7). -/
@@ -62,10 +131,15 @@ private theorem handleCryptoResult_no_emit
   all_goals (try split at h)
   all_goals (try split at h)
   all_goals (
-    simp only [Except.ok.injEq, Prod.mk.injEq] at h
-    obtain ⟨-, rfl⟩ := h
-    simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
-      or_self, or_false, false_or] at hmem)
+    first
+    | exact handshakeOnPlaintextRecord_no_emit _ _ _ _ h _ _ hmem
+    | exact handshakeOnGatingResult_no_emit _ _ _ _ _ h _ _ hmem
+    | exact handshakeOnPlaintextRecord_no_accept _ _ _ _ h _ _ hmem
+    | exact handshakeOnGatingResult_no_accept _ _ _ _ _ h _ _ hmem
+    | (simp only [Except.ok.injEq, Prod.mk.injEq] at h
+       obtain ⟨-, rfl⟩ := h
+       simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+         or_self, or_false, false_or] at hmem))
 
 /-- `handleAppSend` never emits application plaintext (it requests a seal and
 acknowledges ownership). -/
@@ -85,10 +159,15 @@ private theorem handleAppSend_no_emit
   all_goals (try split at h)
   all_goals (try split at h)
   all_goals (
-    simp only [Except.ok.injEq, Prod.mk.injEq] at h
-    obtain ⟨-, rfl⟩ := h
-    simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
-      or_self, or_false, false_or] at hmem)
+    first
+    | exact handshakeOnPlaintextRecord_no_emit _ _ _ _ h _ _ hmem
+    | exact handshakeOnGatingResult_no_emit _ _ _ _ _ h _ _ hmem
+    | exact handshakeOnPlaintextRecord_no_accept _ _ _ _ h _ _ hmem
+    | exact handshakeOnGatingResult_no_accept _ _ _ _ _ h _ _ hmem
+    | (simp only [Except.ok.injEq, Prod.mk.injEq] at h
+       obtain ⟨-, rfl⟩ := h
+       simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+         or_self, or_false, false_or] at hmem))
 
 private theorem handleTransportBytes_no_accept'
     (s s' : State) (b : ByteArray) (acts : List OutputAction)
@@ -106,10 +185,15 @@ private theorem handleTransportBytes_no_accept'
   all_goals (try split at h)
   all_goals (try split at h)
   all_goals (
-    simp only [Except.ok.injEq, Prod.mk.injEq] at h
-    obtain ⟨-, rfl⟩ := h
-    simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
-      or_self, or_false, false_or] at hmem)
+    first
+    | exact handshakeOnPlaintextRecord_no_emit _ _ _ _ h _ _ hmem
+    | exact handshakeOnGatingResult_no_emit _ _ _ _ _ h _ _ hmem
+    | exact handshakeOnPlaintextRecord_no_accept _ _ _ _ h _ _ hmem
+    | exact handshakeOnGatingResult_no_accept _ _ _ _ _ h _ _ hmem
+    | (simp only [Except.ok.injEq, Prod.mk.injEq] at h
+       obtain ⟨-, rfl⟩ := h
+       simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+         or_self, or_false, false_or] at hmem))
 
 private theorem handleCryptoResult_no_accept'
     (s s' : State) (op : OperationId) (r : CryptoResult) (acts : List OutputAction)
@@ -126,10 +210,15 @@ private theorem handleCryptoResult_no_accept'
   all_goals (try split at h)
   all_goals (try split at h)
   all_goals (
-    simp only [Except.ok.injEq, Prod.mk.injEq] at h
-    obtain ⟨-, rfl⟩ := h
-    simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
-      or_self, or_false, false_or] at hmem)
+    first
+    | exact handshakeOnPlaintextRecord_no_emit _ _ _ _ h _ _ hmem
+    | exact handshakeOnGatingResult_no_emit _ _ _ _ _ h _ _ hmem
+    | exact handshakeOnPlaintextRecord_no_accept _ _ _ _ h _ _ hmem
+    | exact handshakeOnGatingResult_no_accept _ _ _ _ _ h _ _ hmem
+    | (simp only [Except.ok.injEq, Prod.mk.injEq] at h
+       obtain ⟨-, rfl⟩ := h
+       simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+         or_self, or_false, false_or] at hmem))
 
 /-- The three handlers, packaged for `ActionDiscipline`: none emits plaintext. -/
 theorem handleTransportBytes_no_plaintext
@@ -204,6 +293,7 @@ theorem buffered_plaintext_authenticated
     (hne : s.pendingPlainOut ≠ some b) :
     s.handshake.isConnected = true := by
   unfold handleCryptoResult recordFailAlert at h
+  simp only [] at h
   all_goals (try split at h)
   all_goals (try split at h)
   all_goals (try split at h)
@@ -213,13 +303,15 @@ theorem buffered_plaintext_authenticated
   all_goals (try split at h)
   all_goals (try split at h)
   all_goals (
-    simp only [Except.ok.injEq, Prod.mk.injEq] at h
-    obtain ⟨hs, -⟩ := h
-    rw [← hs] at hb
     first
     | assumption
-    | exact absurd hb hne
-    | simp only [reduceCtorEq] at hb)
+    | (simp only [Except.ok.injEq, Prod.mk.injEq] at h
+       obtain ⟨hs, -⟩ := h
+       rw [← hs] at hb
+       first
+       | assumption
+       | exact absurd hb hne
+       | simp only [reduceCtorEq] at hb))
 
 /-- **Step-level provenance of newly-buffered plaintext.** If processing an
 `aeadOpened` crypto result newly buffers application plaintext, the connection

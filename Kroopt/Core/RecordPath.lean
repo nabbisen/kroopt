@@ -2,6 +2,8 @@ import Kroopt.Core.State
 import Kroopt.Core.Event
 import Kroopt.Core.Action
 import Kroopt.Parse.Record
+import Kroopt.Core.Handshake
+import Kroopt.Parse.Handshake
 
 /-!
 # Kroopt.Core.RecordPath
@@ -58,11 +60,23 @@ def writeMeta (s : State) : RecordCryptoMeta :=
     suite := s.negotiated.selectedSuite.getD .aes128GcmSha256
     contentRole := .applicationData }
 
-/-- Handle freshly received transport bytes (RFC 004 §5). Append to the inbound
-reassembly buffer, then frame at most one complete record. A protected record in
-`connected` state triggers an AEAD-open *request*; a partial record asks for more
-input; a compatibility CCS is accepted-and-ignored; anything malformed fails. No
-branch emits application plaintext. -/
+/-- Route a plaintext handshake record to the handshake model by phase
+(RFC 006 §5, §10): in `start` it is the ClientHello (parsed and validated, else a
+clean decode failure); in `sentServerFinished` it is the client Finished; other
+phases ignore it. Uses decidable phase tests so it case-splits cleanly. Emits no
+application plaintext (`Kroopt.Proofs.RecordPath`). -/
+def handshakeOnPlaintextRecord (s : State) (body : ByteArray) : RecordStepResult :=
+  if s.handshake = .start then
+    match Kroopt.Parse.parseClientHello body with
+    | .error e => recordFailAlert s .decodeError (.parse e.toPublic)
+    | .ok wb => handshakeOnClientHello s wb.value body
+  else if s.handshake = .sentServerFinished then
+    onClientFinishedBytes s body
+  else
+    .ok (s, [])
+
+/-- Handle inbound transport bytes: reassemble and frame one record, then route
+by outer content type (RFC 004 §5). -/
 def handleTransportBytes (s0 : State) (b : ByteArray) : RecordStepResult :=
   let s := { s0 with inboundCiphertext := s0.inboundCiphertext ++ b }
   match (Kroopt.Parse.Reader.ofBytes s.inboundCiphertext).tryTakeRecord with
@@ -89,8 +103,8 @@ def handleTransportBytes (s0 : State) (b : ByteArray) : RecordStepResult :=
           | .rejected =>
               recordFailAlert s .unexpectedMessage (.protocol .illegalMessageForState)
       | .handshake =>
-          -- Plaintext handshake records are handled at M4.
-          .ok (s, [])
+          -- Drive the handshake from a plaintext handshake record (RFC 006 §5, §10).
+          handshakeOnPlaintextRecord s body
       | .alert =>
           -- Minimal inbound-alert handling: begin close (full policy at M9).
           .ok ({ s with handshake := .closing, closeState := .receivedCloseNotify },
@@ -142,10 +156,10 @@ def handleCryptoResult (s : State) (op : OperationId) (r : CryptoResult) :
   | .failed e =>
       recordFailAlert s .internalError (.crypto e)
   | .randomBytes _ => .ok (s.clearOp op, [])
-  | .sharedSecret _ => .ok (s.clearOp op, [])
+  | .sharedSecret h => handshakeOnGatingResult s op (.sharedSecret h)
   | .hkdfSecret _ => .ok (s.clearOp op, [])
-  | .signature _ => .ok (s.clearOp op, [])
-  | .verified => .ok (s.clearOp op, [])
+  | .signature sig => handshakeOnGatingResult s op (.signature sig)
+  | .verified => handshakeOnGatingResult s op .verified
 
 /-- Handle an application send in `connected` state (RFC 004 §6). Accept a bounded
 prefix (one fragment ≤ 2¹⁴), build the inner plaintext, advance the write

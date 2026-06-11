@@ -1,4 +1,6 @@
 import Kroopt.Parse.Reader
+import Kroopt.Parse.Record
+import Kroopt.Parse.Handshake
 
 /-!
 # Tests.Fuzz
@@ -62,16 +64,28 @@ def stepOk (buf : ByteArray) : Bool :=
     && check (r.takeVectorBytes .len24 16777216)
     && check (r.takeCountedItems 64 (fun rr => rr.takeU8))
 
+/-- Handshake-surface fuzz targets (RFC 014 §7): the ClientHello parser, the
+extension list (reached through it), and the record reassembly framer. All are
+total, budget-bounded functions, so the invariant is that any buffer yields a
+typed result with no panic, non-termination, or unbounded work. -/
+def hsStepOk (buf : ByteArray) : Bool :=
+  (match Kroopt.Parse.parseClientHello buf with | .ok _ => true | .error _ => true)
+    && (match (Reader.ofBytes buf).tryTakeRecord with
+        | .ok (some (_, body), r') => readerOk (Reader.ofBytes buf).offset r' && body.size ≤ buf.size
+        | .ok (none, _) => true
+        | .error _ => true)
+
 def run (iterations : Nat) : IO UInt32 := do
   let mut g : Rng := { state := 0x123456789ABCDEF0 }
   let mut failures := 0
   for i in [0:iterations] do
-    -- vary buffer length 0..63 pseudo-randomly
+    -- vary buffer length 0..255 pseudo-randomly (larger buffers exercise the
+    -- ClientHello extension/cipher-suite lists)
     let (lenByte, g1) := g.next
     g := g1
-    let (buf, g2) := g.bytes (lenByte.toNat % 64)
+    let (buf, g2) := g.bytes (lenByte.toNat % 256)
     g := g2
-    if !stepOk buf then
+    if !(stepOk buf && hsStepOk buf) then
       IO.println s!"  FAIL  iteration {i}: invariant violated on a {buf.size}-byte buffer"
       failures := failures + 1
   if failures == 0 then

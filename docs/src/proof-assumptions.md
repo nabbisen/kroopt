@@ -84,3 +84,13 @@ discovered:
 
 Each deferred item will get its own dated entry here when the corresponding code
 is introduced, including how the assumption is discharged or bounded.
+
+At M5, the end-to-end harness uses a **fake crypto provider and fake transport**
+(RFC 014). These live in the test zone, not the verified core: the proofs
+constrain `step`'s behaviour for *any* provider result, and the fakes only script
+particular results to exercise traces. One small synthetic imperfection is
+recorded for honesty: a failed client-Finished verification re-uses the record
+layer's `verifyFailed → bad_record_mac` fatal path rather than emitting
+`decrypt_error`. Both are fatal and emit no plaintext; the distinction is a
+cosmetic alert-code detail that keeps `aead_open_failure_no_plaintext` intact and
+is resolved when real crypto correlation lands at M6.

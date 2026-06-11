@@ -133,5 +133,251 @@ theorem connected_requires_finished_verified
     obtain ⟨hs, -⟩ := h
     rw [← hs] at hc; simp only [reduceCtorEq] at hc
 
+/-! ## Handshake transitions emit no application plaintext
+
+These feed the record-handler no-emit/no-accept proofs once the handshake is
+wired into the live handlers (M5): every handshake transition emits only
+`callCrypto` / `writeTransport` / `reportHandshakeComplete` / `failWithAlert` /
+`reportError`, never `emitPlaintext` or `acceptPlaintextBytes`. -/
+
+/-- Tactic-shared refutation: after reducing a handshake transition to its
+concrete action list, a plaintext-emit/accept membership is impossible. -/
+private theorem hs_no_emit_onClientHello
+    (s s' : State) (vch : ValidClientHello) (w : ByteArray) (acts : List OutputAction)
+    (h : onClientHello s vch w = .ok (s', acts)) (c : ConnId) (bb : ByteArray) :
+    OutputAction.emitPlaintext c bb ∉ acts := by
+  intro hmem
+  unfold onClientHello hsFail at h
+  split at h <;>
+    (simp only [State.allocOp, Except.ok.injEq, Prod.mk.injEq] at h
+     obtain ⟨-, rfl⟩ := h
+     simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+       or_self, or_false] at hmem)
+
+private theorem hs_no_emit_onEcdheDone
+    (s s' : State) (secret : SecretKeyHandle) (acts : List OutputAction)
+    (h : onEcdheDone s secret = .ok (s', acts)) (c : ConnId) (bb : ByteArray) :
+    OutputAction.emitPlaintext c bb ∉ acts := by
+  intro hmem
+  unfold onEcdheDone hsFail at h
+  split at h <;>
+    (simp only [State.allocOp, TranscriptState.snapshot, Except.ok.injEq, Prod.mk.injEq] at h
+     obtain ⟨-, rfl⟩ := h
+     simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+       or_self, or_false] at hmem)
+
+private theorem hs_no_emit_onCertVerifySigned
+    (s s' : State) (sig : ByteArray) (acts : List OutputAction)
+    (h : onCertVerifySigned s sig = .ok (s', acts)) (c : ConnId) (bb : ByteArray) :
+    OutputAction.emitPlaintext c bb ∉ acts := by
+  intro hmem
+  unfold onCertVerifySigned hsFail at h
+  split at h <;>
+    (simp only [Except.ok.injEq, Prod.mk.injEq] at h
+     obtain ⟨-, rfl⟩ := h
+     simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+       or_self, or_false] at hmem)
+
+private theorem hs_no_emit_onClientFinishedBytes
+    (s s' : State) (cf : ByteArray) (acts : List OutputAction)
+    (h : onClientFinishedBytes s cf = .ok (s', acts)) (c : ConnId) (bb : ByteArray) :
+    OutputAction.emitPlaintext c bb ∉ acts := by
+  intro hmem
+  unfold onClientFinishedBytes hsFail at h
+  split at h <;>
+    (simp only [State.allocOp, TranscriptState.snapshot, Except.ok.injEq, Prod.mk.injEq] at h
+     obtain ⟨-, rfl⟩ := h
+     simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+       or_self, or_false] at hmem)
+
+private theorem hs_no_emit_onClientFinishedVerified
+    (s s' : State) (v : Bool) (cf : ByteArray) (acts : List OutputAction)
+    (h : onClientFinishedVerified s v cf = .ok (s', acts)) (c : ConnId) (bb : ByteArray) :
+    OutputAction.emitPlaintext c bb ∉ acts := by
+  intro hmem
+  unfold onClientFinishedVerified hsFail at h
+  split at h
+  · split at h <;>
+      (simp only [Except.ok.injEq, Prod.mk.injEq] at h
+       obtain ⟨-, rfl⟩ := h
+       simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+         or_self, or_false] at hmem)
+  · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+    obtain ⟨-, rfl⟩ := h
+    simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+      or_self, or_false] at hmem
+
+/-- The gating-result dispatch emits no application plaintext. -/
+theorem handshakeOnGatingResult_no_emit
+    (s s' : State) (op : OperationId) (r : CryptoResult) (acts : List OutputAction)
+    (h : handshakeOnGatingResult s op r = .ok (s', acts)) (c : ConnId) (bb : ByteArray) :
+    OutputAction.emitPlaintext c bb ∉ acts := by
+  intro hmem
+  unfold handshakeOnGatingResult at h
+  simp only [] at h
+  split at h
+  all_goals (try split at h)
+  all_goals (
+    first
+    | exact hs_no_emit_onEcdheDone _ _ _ _ h c bb hmem
+    | exact hs_no_emit_onCertVerifySigned _ _ _ _ h c bb hmem
+    | exact hs_no_emit_onClientFinishedVerified _ _ _ _ _ h c bb hmem
+    | (simp only [Except.ok.injEq, Prod.mk.injEq] at h
+       obtain ⟨-, rfl⟩ := h
+       simp only [List.not_mem_nil] at hmem))
+
+/-- The ClientHello transition emits no application plaintext. -/
+theorem handshakeOnClientHello_no_emit
+    (s s' : State) (vch : ValidClientHello) (w : ByteArray) (acts : List OutputAction)
+    (h : handshakeOnClientHello s vch w = .ok (s', acts)) (c : ConnId) (bb : ByteArray) :
+    OutputAction.emitPlaintext c bb ∉ acts :=
+  hs_no_emit_onClientHello s s' vch w acts h c bb
+
+/-- The client-Finished plaintext transition emits no application plaintext. -/
+theorem onClientFinishedBytes_no_emit
+    (s s' : State) (cf : ByteArray) (acts : List OutputAction)
+    (h : onClientFinishedBytes s cf = .ok (s', acts)) (c : ConnId) (bb : ByteArray) :
+    OutputAction.emitPlaintext c bb ∉ acts :=
+  hs_no_emit_onClientFinishedBytes s s' cf acts h c bb
+
+/-! ### …and accept no application plaintext -/
+
+private theorem hs_no_accept_generic_onClientHello
+    (s s' : State) (vch : ValidClientHello) (w : ByteArray) (acts : List OutputAction)
+    (h : onClientHello s vch w = .ok (s', acts)) (c : ConnId) (n : Nat) :
+    OutputAction.acceptPlaintextBytes c n ∉ acts := by
+  intro hmem
+  unfold onClientHello hsFail at h
+  split at h <;>
+    (simp only [State.allocOp, Except.ok.injEq, Prod.mk.injEq] at h
+     obtain ⟨-, rfl⟩ := h
+     simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+       or_self, or_false] at hmem)
+
+private theorem hs_no_accept_onEcdheDone
+    (s s' : State) (secret : SecretKeyHandle) (acts : List OutputAction)
+    (h : onEcdheDone s secret = .ok (s', acts)) (c : ConnId) (n : Nat) :
+    OutputAction.acceptPlaintextBytes c n ∉ acts := by
+  intro hmem
+  unfold onEcdheDone hsFail at h
+  split at h <;>
+    (simp only [State.allocOp, TranscriptState.snapshot, Except.ok.injEq, Prod.mk.injEq] at h
+     obtain ⟨-, rfl⟩ := h
+     simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+       or_self, or_false] at hmem)
+
+private theorem hs_no_accept_onCertVerifySigned
+    (s s' : State) (sig : ByteArray) (acts : List OutputAction)
+    (h : onCertVerifySigned s sig = .ok (s', acts)) (c : ConnId) (n : Nat) :
+    OutputAction.acceptPlaintextBytes c n ∉ acts := by
+  intro hmem
+  unfold onCertVerifySigned hsFail at h
+  split at h <;>
+    (simp only [Except.ok.injEq, Prod.mk.injEq] at h
+     obtain ⟨-, rfl⟩ := h
+     simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+       or_self, or_false] at hmem)
+
+private theorem hs_no_accept_onClientFinishedVerified
+    (s s' : State) (v : Bool) (cf : ByteArray) (acts : List OutputAction)
+    (h : onClientFinishedVerified s v cf = .ok (s', acts)) (c : ConnId) (n : Nat) :
+    OutputAction.acceptPlaintextBytes c n ∉ acts := by
+  intro hmem
+  unfold onClientFinishedVerified hsFail at h
+  split at h
+  · split at h <;>
+      (simp only [Except.ok.injEq, Prod.mk.injEq] at h
+       obtain ⟨-, rfl⟩ := h
+       simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+         or_self, or_false] at hmem)
+  · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+    obtain ⟨-, rfl⟩ := h
+    simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+      or_self, or_false] at hmem
+
+theorem handshakeOnGatingResult_no_accept
+    (s s' : State) (op : OperationId) (r : CryptoResult) (acts : List OutputAction)
+    (h : handshakeOnGatingResult s op r = .ok (s', acts)) (c : ConnId) (n : Nat) :
+    OutputAction.acceptPlaintextBytes c n ∉ acts := by
+  intro hmem
+  unfold handshakeOnGatingResult at h
+  simp only [] at h
+  split at h
+  all_goals (try split at h)
+  all_goals (
+    first
+    | exact hs_no_accept_onEcdheDone _ _ _ _ h c n hmem
+    | exact hs_no_accept_onCertVerifySigned _ _ _ _ h c n hmem
+    | exact hs_no_accept_onClientFinishedVerified _ _ _ _ _ h c n hmem
+    | (simp only [Except.ok.injEq, Prod.mk.injEq] at h
+       obtain ⟨-, rfl⟩ := h
+       simp only [List.not_mem_nil] at hmem))
+
+theorem handshakeOnClientHello_no_accept
+    (s s' : State) (vch : ValidClientHello) (w : ByteArray) (acts : List OutputAction)
+    (h : handshakeOnClientHello s vch w = .ok (s', acts)) (c : ConnId) (n : Nat) :
+    OutputAction.acceptPlaintextBytes c n ∉ acts :=
+  hs_no_accept_generic_onClientHello s s' vch w acts h c n
+
+theorem onClientFinishedBytes_no_accept
+    (s s' : State) (cf : ByteArray) (acts : List OutputAction)
+    (h : onClientFinishedBytes s cf = .ok (s', acts)) (c : ConnId) (n : Nat) :
+    OutputAction.acceptPlaintextBytes c n ∉ acts := by
+  intro hmem
+  unfold onClientFinishedBytes hsFail at h
+  split at h <;>
+    (simp only [State.allocOp, TranscriptState.snapshot, Except.ok.injEq, Prod.mk.injEq] at h
+     obtain ⟨-, rfl⟩ := h
+     simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+       or_self, or_false] at hmem)
+
+/-! ### …and request no AEAD-open (the handshake never opens application records)
+
+`aeadOpen` callCryptos come only from the connected record path; the handshake
+transitions request `ecdhe` / `signCertificateVerify` / `verifyFinished`. This
+feeds `KeySeparation.aeadOpen_uses_read_keys` once the handshake shares the
+inbound handler. -/
+
+private theorem hs_no_aeadOpen_onClientHello
+    (s s' : State) (vch : ValidClientHello) (w : ByteArray) (acts : List OutputAction)
+    (h : onClientHello s vch w = .ok (s', acts))
+    (c : ConnId) (oid : OperationId) (meta : RecordCryptoMeta) (aad ct : ByteArray) :
+    OutputAction.callCrypto c oid (CryptoOp.aeadOpen meta aad ct) ∉ acts := by
+  intro hmem
+  unfold onClientHello hsFail at h
+  split at h <;>
+    (simp only [State.allocOp, Except.ok.injEq, Prod.mk.injEq] at h
+     obtain ⟨-, rfl⟩ := h
+     simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+       or_self, or_false, and_false, OutputAction.callCrypto.injEq] at hmem)
+
+private theorem hs_no_aeadOpen_onClientFinishedBytes
+    (s s' : State) (cf : ByteArray) (acts : List OutputAction)
+    (h : onClientFinishedBytes s cf = .ok (s', acts))
+    (c : ConnId) (oid : OperationId) (meta : RecordCryptoMeta) (aad ct : ByteArray) :
+    OutputAction.callCrypto c oid (CryptoOp.aeadOpen meta aad ct) ∉ acts := by
+  intro hmem
+  unfold onClientFinishedBytes hsFail at h
+  split at h <;>
+    (simp only [State.allocOp, TranscriptState.snapshot, Except.ok.injEq, Prod.mk.injEq] at h
+     obtain ⟨-, rfl⟩ := h
+     simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+       or_self, or_false, and_false, OutputAction.callCrypto.injEq] at hmem)
+
+/-- The plaintext-handshake-record dispatch requests no AEAD-open. -/
+theorem handshakeOnClientHello_no_aeadOpen
+    (s s' : State) (vch : ValidClientHello) (w : ByteArray) (acts : List OutputAction)
+    (h : handshakeOnClientHello s vch w = .ok (s', acts))
+    (c : ConnId) (oid : OperationId) (meta : RecordCryptoMeta) (aad ct : ByteArray) :
+    OutputAction.callCrypto c oid (CryptoOp.aeadOpen meta aad ct) ∉ acts :=
+  hs_no_aeadOpen_onClientHello s s' vch w acts h c oid meta aad ct
+
+theorem onClientFinishedBytes_no_aeadOpen
+    (s s' : State) (cf : ByteArray) (acts : List OutputAction)
+    (h : onClientFinishedBytes s cf = .ok (s', acts))
+    (c : ConnId) (oid : OperationId) (meta : RecordCryptoMeta) (aad ct : ByteArray) :
+    OutputAction.callCrypto c oid (CryptoOp.aeadOpen meta aad ct) ∉ acts :=
+  hs_no_aeadOpen_onClientFinishedBytes s s' cf acts h c oid meta aad ct
+
 end Proofs
 end Kroopt.Core

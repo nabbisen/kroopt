@@ -1,4 +1,5 @@
 import Kroopt.Core.Step
+import Kroopt.Proofs.RecordPath
 
 /-!
 # Kroopt.Proofs.KeySeparation
@@ -71,6 +72,7 @@ theorem aeadOpen_uses_read_keys
   all_goals (try split at h)
   all_goals (
     first
+    | exact absurd hmem (handshakeOnPlaintextRecord_no_aeadOpen _ _ _ _ h c oid meta aad ct)
     | (simp only [Except.ok.injEq, Prod.mk.injEq] at h
        obtain ⟨-, ha⟩ := h
        rw [← ha] at hmem

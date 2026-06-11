@@ -136,6 +136,7 @@ structure State where
   inboundCiphertext : ByteArray
   outboundCiphertext : ByteArray
   pendingPlainOut : Option ByteArray
+  pendingClientFinished : Option ByteArray
   transcript : TranscriptState
   negotiated : NegotiationState
   closeState : CloseState
@@ -157,6 +158,7 @@ def initial (conn : ConnId) (cfg : ConfigGeneration) (alg : HashAlgorithm) : Sta
     inboundCiphertext := ByteArray.mk #[]
     outboundCiphertext := ByteArray.mk #[]
     pendingPlainOut := none
+    pendingClientFinished := none
     transcript := TranscriptState.fresh alg
     negotiated := NegotiationState.empty
     closeState := .open
