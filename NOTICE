@@ -1,0 +1,13 @@
+kroopt
+Copyright 2026 nabbisen
+
+Licensed under the Apache License, Version 2.0.
+
+kroopt is a Lean 4 TLS 1.3 secure-channel library. It is designed to run on top
+of iotakt (https://github.com/nabbisen/iotakt) for byte transport and beneath an
+HTTP layer such as jemmet. Those dependencies are integrated at later milestones
+and are not bundled here.
+
+When the native crypto provider is added (M6), kroopt links HACL*/EverCrypt,
+which carries its own license; that attribution will be added to this NOTICE at
+that time.
