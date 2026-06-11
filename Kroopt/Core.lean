@@ -17,5 +17,5 @@ import Kroopt.Core.Step
 
 The pure verified protocol core: identity and primitive types, the connection
 state, input events, output actions, and the `step` transition function. No
-crypto, no FFI, no iotakt (RFC 001 §9, RFC 022 §3).
+crypto, no FFI, no transport binding (RFC 001 §9, RFC 022 §3).
 -/

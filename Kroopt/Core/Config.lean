@@ -6,7 +6,7 @@ import Kroopt.Core.Cert
 The immutable server-configuration model for SNI certificate selection and ALPN
 negotiation (RFC 011). The initial release line uses a *validated table*, not
 callbacks — so selection is deterministic, non-blocking, reentrancy-free, and
-provable. jemmet owns ALPN *policy* (which protocols to offer and what to do with
+provable. The consuming application owns ALPN *policy* (which protocols to offer and what to do with
 the result); kroopt owns the deterministic *mechanism*.
 
 `selectEndpoint` and `negotiateAlpn` are pure functions the verified core uses

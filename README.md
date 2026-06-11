@@ -2,14 +2,17 @@
 
 A Lean 4 TLS 1.3 secure-channel library with a **pure verified protocol core**.
 
-kroopt sits between [iotakt](https://github.com/nabbisen/iotakt) (non-blocking
-byte transport) and a higher-level HTTP layer such as jemmet. The TLS state
+kroopt consumes an abstract non-blocking byte-transport interface
+(`Kroopt.Conn.Transport`; [iotakt](https://github.com/nabbisen/iotakt) is one
+instance) and presents a uniform plaintext connection interface upward to a
+consumer such as an HTTP server (jemmet is one such consumer). It depends on
+those *interfaces*, not on either project. The TLS state
 machine is a total Lean function, `Kroopt.Core.step`, that emits explicit output
 actions; a thin interpreter executes those actions over real crypto and sockets
 and never makes protocol decisions of its own. That separation carries
 machine-checked safety properties into the running code.
 
-## Status: M0–M11 (verified core → handshake → TlsConn → config → alerts/close → jemmet HTTPS → hardening)
+## Status: M0–M12 (verified core → handshake → TlsConn → config → alerts/close → jemmet HTTPS → hardening → native crypto binding)
 
 This tree implements milestones **M0**–**M5** from the [ROADMAP](ROADMAP.md). M0
 fixes the pure-core/interpreter architecture; M1 adds the bounds-safe parsing
@@ -33,7 +36,7 @@ proved (notably that ALPN never selects an unoffered protocol). M9 makes alert
 mapping and close behaviour explicit and proved: a centralized deterministic
 alert mapping, explicit graceful/fatal/abortive close states, truncation kept
 distinct from clean close, and proved terminal discipline. M10 closes the v0.x
-acceptance target: jemmet consumes kroopt through one uniform connection
+acceptance target: a consumer (e.g. jemmet) consumes kroopt through one uniform connection
 abstraction (the same handler path for plaintext and TLS), with a full HTTPS
 request served end-to-end over the fakes, ALPN handoff, redacted error views, and
 negative inputs proven never to reach the handler as plaintext. M11 hardens
@@ -41,6 +44,18 @@ the edge: a resource-budget model with proved DoS bounds, deferred-feature scope
 control, a documented threat model, and a third proof gate (axiom audit, no
 `sorryAx`) wired into CI. These layers are built and proven first so the
 protocol model and the running code cannot drift apart later (RFC 001–022, 024).
+
+M12 begins the native crypto binding (v0.3): a vendored, portable-C subset of
+HACL\* (Project Everest) is built through Lake and its verified primitives —
+SHA-256/384, X25519, ChaCha20-Poly1305, HKDF/HMAC-SHA256, Ed25519 — are called
+from Lean over a thin FFI and checked against RFC known-answer vectors
+end-to-end (`kroopt-hacl-test`). This delivers the primitives layer; wiring it
+into the stateful TLS key schedule is a scoped next step (a provider-arena
+refactor), because the pure, handle-returning crypto provider the proofs rely on
+cannot thread real key material on its own. See
+[`docs/src/native-crypto.md`](docs/src/native-crypto.md) for the honest
+boundary. The pure verified core still builds with no C toolchain; only the FFI
+library and its KAT executable need a C compiler.
 
 The headline M5 result: every M2/M3 safety theorem — above all *no early
 plaintext* — **still holds over the live handshake**, which is the
@@ -96,6 +111,7 @@ lake exe kroopt-config-test   # M8 SNI/ALPN config + certificate presentation te
 lake exe kroopt-close-test    # M9 alerts, close_notify, and terminal-policy tests
 lake exe kroopt-https-test    # M10 jemmet integration + end-to-end HTTPS acceptance
 lake exe kroopt-hardening-test# M11 resource budgets + deferred-feature scope control
+lake exe kroopt-hacl-test     # M12 native HACL* crypto KATs through the Lean FFI (needs a C compiler)
 ./scripts/check-axioms.sh     # proof gate: no sorryAx across all public theorems
 lake exe kroopt-parse-fuzz    # parser + ClientHello smoke fuzzer (optional arg: iterations)
 ./scripts/check-hygiene.sh    # RFC 022 proof-hygiene gate
@@ -141,3 +157,9 @@ The development plan lives in the [RFC set](rfcs/README.md) and the
 ## License
 
 Apache-2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+kroopt vendors a portable-C subset of HACL\* (MIT) with the kremlin headers
+(Apache-2.0) under `Kroopt/Native/hacl/`, redistributed verbatim with headers
+intact. See [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md),
+[`Kroopt/Native/hacl/LICENSE`](Kroopt/Native/hacl/LICENSE), and the
+[provenance docs](docs/src/third-party.md).

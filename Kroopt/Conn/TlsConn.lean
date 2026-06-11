@@ -3,7 +3,7 @@ import Kroopt.Conn.Interpreter
 /-!
 # Kroopt.Conn.TlsConn
 
-The public connection API jemmet depends on (RFC 010 §3). `TlsConn` is a small
+The public connection API a consumer drives (RFC 010 §3). `TlsConn` is a small
 handle around the core protocol `State`, the interpreter's `RuntimeState`, the
 transport, and the crypto provider (RFC 010 §9). The semantics that matter:
 
@@ -75,7 +75,7 @@ def server (fd : FdKey) (conn : ConnId) (cfg : ConfigGeneration)
     tr   := { fd := fd, inbound := [] }
     prov := prov }
 
-/-- Feed scripted inbound bytes (the model's stand-in for iotakt delivering a
+/-- Feed scripted inbound bytes (the model's stand-in for the transport delivering a
 readable event with data). -/
 def feedInbound (c : TlsConn) (chunks : List ByteArray) : TlsConn :=
   { c with tr := { c.tr with inbound := c.tr.inbound ++ chunks } }
@@ -158,7 +158,7 @@ def metadata (c : TlsConn) : Option HandshakeInfo := c.rt.metadata
 def cipherSuite (c : TlsConn) : Option CipherSuite := c.rt.metadata.map (·.suite)
 
 /-- The negotiated ALPN protocol, if any (RFC 011 §5). Meaningful after
-`connected`; jemmet uses it to choose its protocol handler. -/
+`connected`; a consumer uses it to choose its protocol handler. -/
 def negotiatedAlpn (c : TlsConn) : Option AlpnProtocol := c.core.negotiated.selectedAlpn
 
 /-- The certificate chain selected for this connection by SNI (RFC 012 §6). -/

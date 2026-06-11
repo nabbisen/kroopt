@@ -36,7 +36,7 @@ inductive OutputAction where
   | readTransport (conn : ConnId)
   /-- Queue ciphertext the core has authorised for transport write. -/
   | writeTransport (conn : ConnId) (b : ByteArray)
-  /-- Register write interest with iotakt. -/
+  /-- Register write interest with the transport. -/
   | enableWriteInterest (conn : ConnId)
   /-- Drop write interest (queue empty). -/
   | disableWriteInterest (conn : ConnId)
@@ -52,7 +52,7 @@ inductive OutputAction where
   | reportError (conn : ConnId) (e : TlsError)
   /-- Fail terminally and (best-effort) send a fatal alert. -/
   | failWithAlert (conn : ConnId) (a : AlertDescription)
-  /-- Close the transport through iotakt. -/
+  /-- Close the transport. -/
   | closeTransport (conn : ConnId) (mode : CloseMode)
   /-- Release (and best-effort zeroize) a secret handle. -/
   | releaseSecret (handle : SecretKeyHandle)

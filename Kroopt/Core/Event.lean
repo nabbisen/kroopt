@@ -24,15 +24,15 @@ arrives as one of these (RFC 002 §5 rule 1). -/
 inductive InputEvent where
   /-- Bytes actually read from the transport for this connection. -/
   | transportBytes (conn : ConnId) (b : ByteArray)
-  /-- iotakt signalled the fd may be readable (a hint). -/
+  /-- The transport signalled the fd may be readable (a hint). -/
   | transportReadable (conn : ConnId)
-  /-- iotakt signalled the fd may be writable (a hint). -/
+  /-- The transport signalled the fd may be writable (a hint). -/
   | transportWritable (conn : ConnId)
   /-- Peer end-of-stream on the transport. -/
   | transportEof (conn : ConnId)
   /-- A previously requested crypto operation completed. -/
   | cryptoResult (conn : ConnId) (op : OperationId) (r : CryptoResult)
-  /-- The application (jemmet) wants to send plaintext. -/
+  /-- The application (the consumer) wants to send plaintext. -/
   | appSend (conn : ConnId) (b : ByteArray)
   /-- The application requested available plaintext. -/
   | appRecvRequested (conn : ConnId)

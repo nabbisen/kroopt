@@ -97,3 +97,44 @@ lean_exe «kroopt-hardening-test» where
 @[default_target]
 lean_exe «kroopt-parse-fuzz» where
   root := `Tests.Fuzz
+
+/-- v0.3 native crypto: compile the vendored HACL* portable-C subset and the
+Lean FFI glue into a static library linked into the FFI-using executables.
+Requires a C toolchain (gcc/clang). The pure verified core never depends on this;
+only the real `Hacl` provider path and its KAT test do. -/
+extern_lib krooptCrypto (pkg : NPackage _package.name) := do
+  let nativeDir := pkg.dir / "Kroopt" / "Native"
+  let haclDir   := nativeDir / "hacl"
+  let leanInc   ← getLeanIncludeDir
+  let cFlags := #[
+    "-I" ++ haclDir.toString, "-I" ++ (haclDir / "internal").toString,
+    "-I" ++ (haclDir / "include").toString, "-I" ++ (haclDir / "minimal").toString,
+    "-I" ++ nativeDir.toString, "-I" ++ leanInc.toString,
+    "-std=c11", "-O2", "-fPIC", "-fwrapv", "-D_GNU_SOURCE", "-w",
+    "-ffunction-sections", "-fdata-sections"]
+  let cFiles : Array (String × String) := #[
+    ("hacl/Hacl_Curve25519_51.c",      "Hacl_Curve25519_51.o"),
+    ("hacl/Hacl_Chacha20Poly1305_32.c","Hacl_Chacha20Poly1305_32.o"),
+    ("hacl/Hacl_Chacha20.c",           "Hacl_Chacha20.o"),
+    ("hacl/Hacl_Poly1305_32.c",        "Hacl_Poly1305_32.o"),
+    ("hacl/Hacl_Hash_SHA2.c",          "Hacl_Hash_SHA2.o"),
+    ("hacl/Hacl_Streaming_SHA2.c",     "Hacl_Streaming_SHA2.o"),
+    ("hacl/Hacl_HKDF.c",               "Hacl_HKDF.o"),
+    ("hacl/Hacl_HMAC.c",               "Hacl_HMAC.o"),
+    ("hacl/Hacl_Ed25519.c",            "Hacl_Ed25519.o"),
+    ("hacl/Lib_Memzero0.c",            "Lib_Memzero0.o"),
+    ("kroopt_ffi.c",                   "kroopt_ffi.o")]
+  let oJobs ← cFiles.mapM fun (cFile, oFile) => do
+    let src    := nativeDir / cFile
+    let obj    := pkg.buildDir / "c" / oFile
+    let srcJob ← inputFile src false
+    buildO obj srcJob cFlags
+  buildStaticLib (pkg.buildDir / "lib" / "libkroopt_crypto.a") oJobs
+
+/-- Native HACL* crypto known-answer tests (v0.3 binding). Links `krooptCrypto`.
+`--gc-sections` drops the agile-HMAC hash variants (SHA-1/Blake2) the suite never
+calls, which would otherwise be undefined at link. -/
+@[default_target]
+lean_exe «kroopt-hacl-test» where
+  root := `Tests.Hacl
+  moreLinkArgs := #["-Wl,--gc-sections"]

@@ -12,6 +12,8 @@
 - [Transcript model](transcript.md)
 - [End-to-end handshake (fakes)](end-to-end.md)
 - [Crypto provider and FFI contract](crypto-ffi-contract.md)
+- [Native crypto binding (v0.3): HACL* through Lean FFI](native-crypto.md)
+- [Vendored crypto: provenance and licensing](third-party.md)
 - [TlsConn API and the interpreter](tlsconn-interpreter.md)
 - [SNI/ALPN config and certificate presentation](config-cert.md)
 - [Alerts, close_notify, and terminal policy](alerts-close.md)

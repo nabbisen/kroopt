@@ -6,7 +6,7 @@ Public error and alert taxonomy (RFC 013 §13, RFC 002).
 Every error here is a plain enumeration. By construction these types carry **no**
 secret material, no plaintext, and no raw attacker-controlled bytes — only
 coarse categories (RFC 018 data classification; RFC 020 redaction). That keeps
-`TlsError` safe to log, return to jemmet, and derive `Repr` on.
+`TlsError` safe to log, return to a consumer, and derive `Repr` on.
 -/
 
 namespace Kroopt
@@ -101,7 +101,7 @@ inductive ResourceLimitError where
   | handshakeTimeout
   deriving DecidableEq, Repr, Inhabited
 
-/-- Transport-layer failures surfaced from iotakt. `eofBeforeCloseNotify` is the
+/-- Transport-layer failures surfaced from the transport. `eofBeforeCloseNotify` is the
 truncation condition that must never be treated as a clean close (RFC 013 §6). -/
 inductive TransportError where
   | eofBeforeCloseNotify

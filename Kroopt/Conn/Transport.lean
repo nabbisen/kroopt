@@ -3,18 +3,21 @@ import Kroopt.Error
 /-!
 # Kroopt.Conn.Transport
 
-The transport abstraction kroopt drives (RFC 010 §6, §10.1). kroopt performs no
-syscalls; it requires only the generic non-blocking capabilities iotakt already
-offers — `recv`, `send`, `enableWrite`/`disableWrite`, `closeConnection`, and a
-generation-protected `FdKey`. **kroopt requires no TLS-specific iotakt API**
-(Requirements §2.3): if it did, the boundary would be violated.
+The abstract transport interface kroopt drives (RFC 010 §6, §10.1). kroopt
+performs no syscalls and names no concrete transport: it requires only a generic
+non-blocking byte channel — `recv`, `send`, `enableWrite`/`disableWrite`,
+`closeConnection`, and a generation-protected `FdKey`. **kroopt requires no
+TLS-specific API from the transport** (Requirements §2.3); if it did, the
+boundary would be violated.
 
-For the M7 model this is a *pure, state-threaded* fake transport, which makes the
-interpreter fully deterministic and testable without IO or sockets. The real
-iotakt binding is a thin adapter that lifts the very same action-mapping
-(`Kroopt.Conn.Interpreter`) into iotakt's IO calls; it carries no protocol logic,
-so it adds nothing the proofs depend on. (Real iotakt integration is the
-deferred binding — Requirements §21 v0.3.)
+That contract is the `Transport` typeclass below. `FakeTransport` is the
+deterministic, pure in-model *instance* used by the tests, which makes the
+interpreter fully deterministic without IO or sockets. A real deployment
+supplies another instance — for example a thin adapter over a non-blocking I/O
+reactor such as iotakt — that lifts the very same action-mapping
+(`Kroopt.Conn.Interpreter`) into IO calls. Such an adapter carries no protocol
+logic, so it adds nothing the proofs depend on. (The real transport adapter is
+the deferred binding — Requirements §21 v0.3.)
 -/
 
 namespace Kroopt.Conn
@@ -45,8 +48,21 @@ inductive SendOutcome where
   | error (e : TransportError)
   deriving Inhabited
 
-/-- A deterministic, pure fake transport (RFC 014 §3). `inbound` is a queue of
-chunks delivered one per `recv`; `outbound` logs everything written; the
+/-- The abstract transport interface kroopt requires (RFC 010 §6, §10.1): a
+non-blocking byte channel with a generation-protected identity. The interpreter
+is generic over *this interface* — it never names a concrete transport. The
+in-model `FakeTransport` is one instance; a real I/O reactor (e.g. iotakt)
+provides another. -/
+class Transport (τ : Type) where
+  fd              : τ → FdKey
+  recv            : τ → FdKey → Nat → RecvOutcome × τ
+  send            : τ → FdKey → ByteArray → SendOutcome × τ
+  enableWrite     : τ → FdKey → τ
+  disableWrite    : τ → FdKey → τ
+  closeConnection : τ → FdKey → τ
+
+/-- A deterministic, pure fake transport (RFC 014 §3) — the in-model `Transport`
+instance. `inbound` is a queue of chunks delivered one per `recv`; `outbound` logs everything written; the
 `writeSchedule` models partial writes and back-pressure so retry/ordering tests
 are reproducible. `eofAfter` delivers EOF once `inbound` is exhausted and that
 many further reads have occurred. -/
@@ -101,5 +117,15 @@ def writtenBytes (t : FakeTransport) : ByteArray :=
   t.outbound.foldl (· ++ ·) (ByteArray.mk #[])
 
 end FakeTransport
+
+/-- `FakeTransport` as the deterministic in-model instance of the `Transport`
+interface. -/
+instance : Transport FakeTransport where
+  fd              := FakeTransport.fd
+  recv            := FakeTransport.recv
+  send            := FakeTransport.send
+  enableWrite     := FakeTransport.enableWrite
+  disableWrite    := FakeTransport.disableWrite
+  closeConnection := FakeTransport.closeConnection
 
 end Kroopt.Conn

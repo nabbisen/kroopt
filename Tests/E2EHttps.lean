@@ -103,10 +103,10 @@ def checks : List Check :=
              c.tr.writtenBytes.size > connectedWithRequest.tr.writtenBytes.size) }
     -- the SAME handler serves a plaintext connection (RFC 015 §3, §4)
   , { name := "the same jemmet handler serves a plaintext connection"
-    , ok := (let plain : PlainIotaktConn := { inbound := [httpRequest] }
+    , ok := (let plain : PlaintextConn := { inbound := [httpRequest] }
              (jemmetServeOnce plain).2) }
   , { name := "plaintext connection reports no ALPN"
-    , ok := (PlainConn.negotiatedProtocol ({ inbound := [] } : PlainIotaktConn)).isNone }
+    , ok := (PlainConn.negotiatedProtocol ({ inbound := [] } : PlaintextConn)).isNone }
     -- ALPN handoff (RFC 015 §5)
   , { name := "negotiated ALPN (http/1.1) is reported to jemmet after connected"
     , ok := (match PlainConn.negotiatedProtocol connectedWithAlpn with

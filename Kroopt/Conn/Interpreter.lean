@@ -44,10 +44,10 @@ structure RuntimeState where
 /-- Try to push the pending ciphertext queue toward the transport, honouring
 partial writes and `wouldBlock` (RFC 010 §4). Bytes already sent are removed from
 the head of the queue, preserving order. -/
-partial def drainOutbound (rt : RuntimeState) (tr : FakeTransport) : RuntimeState × FakeTransport :=
+partial def drainOutbound {τ : Type} [Transport τ] (rt : RuntimeState) (tr : τ) : RuntimeState × τ :=
   if rt.outbound.isEmpty then (rt, tr)
   else
-    match tr.send tr.fd rt.outbound with
+    match Transport.send tr (Transport.fd tr) rt.outbound with
     | (.sent n, tr') =>
         if n = 0 ∨ n ≥ rt.outbound.size then
           ({ rt with outbound := rt.outbound.extract n rt.outbound.size }, tr')
@@ -59,10 +59,10 @@ partial def drainOutbound (rt : RuntimeState) (tr : FakeTransport) : RuntimeStat
 /-- Execute one action (RFC 010 §6). Dispatches on the action **variant only** —
 no protocol-state branching. Returns the updated runtime/transport and any
 follow-up `InputEvent`s to feed back to the core. -/
-def execAction (prov : CryptoProvider) (rt : RuntimeState) (tr : FakeTransport) :
-    OutputAction → RuntimeState × FakeTransport × List InputEvent
+def execAction {τ : Type} [Transport τ] (prov : CryptoProvider) (rt : RuntimeState) (tr : τ) :
+    OutputAction → RuntimeState × τ × List InputEvent
   | .readTransport conn =>
-      match tr.recv tr.fd maxReadChunk with
+      match Transport.recv tr (Transport.fd tr) maxReadChunk with
       | (.bytes b, tr')   => (rt, tr', [InputEvent.transportBytes conn b])
       | (.wouldBlock, tr') => (rt, tr', [])
       | (.eof, tr')        => (rt, tr', [InputEvent.transportEof conn])
@@ -71,8 +71,8 @@ def execAction (prov : CryptoProvider) (rt : RuntimeState) (tr : FakeTransport) 
   | .writeTransport _ b =>
       let (rt', tr') := drainOutbound { rt with outbound := rt.outbound ++ b } tr
       (rt', tr', [])
-  | .enableWriteInterest _  => ({ rt with writeInterest := true }, tr.enableWrite tr.fd, [])
-  | .disableWriteInterest _ => ({ rt with writeInterest := false }, tr.disableWrite tr.fd, [])
+  | .enableWriteInterest _  => ({ rt with writeInterest := true }, Transport.enableWrite tr (Transport.fd tr), [])
+  | .disableWriteInterest _ => ({ rt with writeInterest := false }, Transport.disableWrite tr (Transport.fd tr), [])
   | .callCrypto conn op req =>
       match prov.submit op req with
       | .ok r    => (rt, tr, [InputEvent.cryptoResult conn op r])
@@ -82,14 +82,14 @@ def execAction (prov : CryptoProvider) (rt : RuntimeState) (tr : FakeTransport) 
   | .reportHandshakeComplete _ info => ({ rt with metadata := some info }, tr, [])
   | .reportError _ e          => ({ rt with lastError := some e, terminal := true }, tr, [])
   | .failWithAlert _ _        => ({ rt with terminal := true }, tr, [])
-  | .closeTransport _ _       => ({ rt with terminal := true }, tr.closeConnection tr.fd, [])
+  | .closeTransport _ _       => ({ rt with terminal := true }, Transport.closeConnection tr (Transport.fd tr), [])
   | .releaseSecret _          => (rt, tr, [])
 
 /-- Execute a list of actions in order, accumulating follow-up events. -/
-def execActions (prov : CryptoProvider) (rt : RuntimeState) (tr : FakeTransport)
-    (acts : List OutputAction) : RuntimeState × FakeTransport × List InputEvent :=
+def execActions {τ : Type} [Transport τ] (prov : CryptoProvider) (rt : RuntimeState) (tr : τ)
+    (acts : List OutputAction) : RuntimeState × τ × List InputEvent :=
   acts.foldl
-    (fun (acc : RuntimeState × FakeTransport × List InputEvent) a =>
+    (fun (acc : RuntimeState × τ × List InputEvent) a =>
       let (rt', tr', evs) := execAction prov acc.1 acc.2.1 a
       (rt', tr', acc.2.2 ++ evs))
     (rt, tr, [])
@@ -97,9 +97,9 @@ def execActions (prov : CryptoProvider) (rt : RuntimeState) (tr : FakeTransport)
 /-- The fuel-bounded drive loop (RFC 010 §6, §10 — *never spin on wouldBlock*).
 Process events FIFO, but feed each step's follow-up events **before** the
 remaining external events, so a crypto/transport cascade completes in phase. -/
-def driveEvents (prov : CryptoProvider) :
-    Nat → State → RuntimeState → FakeTransport → List InputEvent →
-    State × RuntimeState × FakeTransport
+def driveEvents {τ : Type} [Transport τ] (prov : CryptoProvider) :
+    Nat → State → RuntimeState → τ → List InputEvent →
+    State × RuntimeState × τ
   | 0, core, rt, tr, _ => (core, rt, tr)
   | _, core, rt, tr, [] => (core, rt, tr)
   | fuel + 1, core, rt, tr, ev :: rest =>

@@ -6,7 +6,7 @@ import Kroopt.Proofs.RecordPath
 
 The action-discipline safety theorems (RFC 002 §7, RFC 015 §15.1, RFC 022 §7).
 
-The headline guarantee a dependent such as jemmet relies on is **no early
+The headline guarantee a consumer of the plaintext channel relies on is **no early
 plaintext**: the core never emits application plaintext (`emitPlaintext`) or
 accepts application plaintext (`acceptPlaintextBytes`) unless it is `connected`.
 These theorems are proved over the real `step`, so they constrain every future

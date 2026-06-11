@@ -3,7 +3,96 @@
 All notable changes to kroopt are recorded here. RFC lifecycle transitions are
 governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycle-policy.md).
 
-## [0.12.0-dev] — M11 cross-cutting hardening: budgets, threat model, scope, proof gates — 2026-06-11
+## [0.13.0-dev] — M12 native crypto binding: HACL* primitives callable and KAT-verified through Lean — 2026-06-11
+
+- The vendored HACL* generated C files are
+  in fact under the **MIT** license
+  (per their retained per-file headers,
+  Copyright (c) 2016-2020 INRIA, CMU and
+  Microsoft Corporation);
+  the kremlin headers are **Apache-2.0**. `NOTICE` states this accurately.
+- Added `Kroopt/Native/hacl/LICENSE` reproducing the full MIT text and the
+  Apache-2.0 reference next to the vendored sources, a repository-root
+  `THIRD-PARTY-NOTICES.md` with upstream/version/subset/no-modifications
+  provenance, and a `docs/src/third-party.md` page. The vendored files remain
+  verbatim with headers intact, which is what MIT requires.
+
+### Changed — interface-first decoupling (depend on interfaces, not implementations)
+
+- The transport dependency is now an explicit abstract interface,
+  `Kroopt.Conn.Transport` (a typeclass: `recv`/`send`/`enableWrite`/
+  `disableWrite`/`closeConnection` over a generation-protected `FdKey`). The
+  interpreter (`drainOutbound`, `execAction`, `execActions`, `driveEvents`) is
+  now **generic over `[Transport τ]`** and names no concrete transport.
+  `FakeTransport` is the in-model instance; a real I/O reactor such as iotakt is
+  simply another instance of the same interface.
+- Removed concrete-project coupling from kroopt's contracts: **jemmet** (which
+  depends on kroopt, never the reverse) no longer appears in any code contract —
+  it survives only as an example consumer in prose. **iotakt** appears only as an
+  example `Transport` instance. The upward plaintext adapter was renamed
+  `PlainIotaktConn` → `PlaintextConn` to reflect that it is a plaintext (non-TLS)
+  connection, not an iotakt-specific type.
+- This reshapes the deferred transport work: rather than "wire kroopt to iotakt,"
+  it becomes "provide an iotakt adapter as one `Transport` instance" — the same
+  generic interpreter drives it unchanged.
+
+Historical RFC documents under `rfcs/` retain their original iotakt/jemmet
+framing as dated design records; the *contracts* (code and the boundary docs) are
+now interface-first.
+
+
+
+The first **native crypto** milestone (v0.3 binding). Vendors a portable-C subset
+of HACL* (Project Everest), builds it through Lake, and calls the verified
+primitives from Lean over a thin FFI — proving the real crypto path works
+end-to-end, offline and reproducibly, inside the Lean build. This is the
+primitives layer; wiring it into the stateful TLS key schedule is scoped as the
+next step (a provider-arena refactor), documented honestly below.
+
+### Added — vendored HACL* subset (`Kroopt/Native/hacl/`)
+
+- A portable-C subset of HACL* covering exactly the `TLS_CHACHA20_POLY1305_SHA256`
+  suite with X25519 and Ed25519: SHA-256/384, X25519 (public + ECDH with
+  low-order rejection), ChaCha20-Poly1305, HKDF/HMAC-SHA256, Ed25519. No vale
+  assembly (AES paths omitted) — pure portable C, reproducible on any C11
+  compiler. License attribution added to `NOTICE` (Apache-2.0).
+
+### Added — FFI glue and Lean wrappers
+
+- `Kroopt/Native/kroopt_ffi.c`: boring buffer marshalling between Lean
+  `ByteArray`s and the HACL* primitives; no crypto logic of its own.
+- `Kroopt.Crypto.Hacl`: Lean wrappers — deterministic primitives as pure
+  `@[extern]`, `randomBytes` as `IO` (OS CSPRNG via `getrandom`). Lives in the
+  trusted `Crypto` zone; never imported by the pure verified core (deps gate
+  unchanged: 33 pure-zone files clean).
+
+### Added — build wiring and KATs
+
+- `extern_lib krooptCrypto` in `lakefile.lean` compiles the vendored C + glue
+  into `libkroopt_crypto.a`; `kroopt-hacl-test` links it (`--gc-sections` drops
+  the unused agile-HMAC SHA-1/Blake2 variants).
+- `Tests.Hacl` (14 checks): SHA-256 (FIPS 180-4), X25519 (RFC 7748), HKDF
+  (RFC 5869 TC1), HMAC (RFC 4231 TC1), AEAD and Ed25519 round-trips with
+  tamper/forgery rejection, CSPRNG length and non-constancy — all run **through
+  the FFI** over the real HACL* object code.
+
+### Documentation
+
+- `docs/src/native-crypto.md`: the binding, the primitive map, and the honest
+  boundary — why a *pure, handle-returning* `CryptoProvider.submit` cannot thread
+  real key material through the key schedule, and what the next-step
+  provider-arena refactor must do while preserving handle opacity for the proofs.
+
+### Unchanged
+
+- 78 machine-checked public theorems; all three proof gates green (hygiene,
+  deps, axiom audit — no `sorryAx`, axioms within `{propext, Quot.sound,
+  Classical.choice}`). The verified core and its proofs are untouched: this
+  milestone adds a trusted native seam beside them, it does not modify them.
+- The pure Lean core still builds with no C toolchain; only the FFI library and
+  its KAT executable require a C compiler.
+
+
 
 Cross-cutting hardening milestone (RFC 016, 017, 019, 022). Adds the resource-
 budget model with proved DoS bounds, deferred-feature scope control, the threat

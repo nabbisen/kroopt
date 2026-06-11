@@ -22,7 +22,7 @@ jobs:
 
       - name: Tests
         run: |
-          for t in model parse record nonce handshake e2e crypto conn config close https; do
+          for t in model parse record nonce handshake e2e crypto conn config close https hardening hacl; do
             lake exe "kroopt-$t-test"
           done
 

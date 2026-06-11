@@ -3,18 +3,19 @@ import Kroopt.Conn.TlsConn
 /-!
 # Kroopt.Conn.Uniform
 
-The jemmet-facing integration surface (RFC 015). jemmet must not grow a separate
-HTTPS handler path: it consumes one **uniform plaintext connection abstraction**
-whose implementation is either a raw iotakt connection or a kroopt `TlsConn`,
-chosen by listener wiring (RFC 015 §3, §4). Whichever it is, jemmet runs a single
-handler over the same `recv`/`send`/`flush`/`close` shape and reads the negotiated
-ALPN to pick its protocol handler.
+The consumer-facing integration surface (RFC 015). A consumer (such as an HTTP
+server) must not need a separate HTTPS handler path: it consumes one **uniform
+plaintext connection abstraction** whose implementation is either a plaintext
+connection or a kroopt `TlsConn`, chosen by listener wiring (RFC 015 §3, §4).
+Whichever it is, the consumer runs a single handler over the same
+`recv`/`send`/`flush`/`close` shape and reads the negotiated ALPN to pick its
+protocol handler.
 
 This module defines that abstraction (`PlainConn`), a plaintext adapter
-(`PlainIotaktConn`) for the `:80` path, the `TlsConn` instance for the `:443`
-path, a redacted error view for diagnostics, and bounded metrics. Real iotakt and
-real interop (curl / OpenSSL) are the deferred v0.3 binding; the abstraction and
-adapters here are exercised against the fakes.
+(`PlaintextConn`) for the `:80` path, the `TlsConn` instance for the `:443`
+path, a redacted error view for diagnostics, and bounded metrics. A real
+transport binding and real interop (curl / OpenSSL) are the deferred v0.3
+binding; the abstraction and adapters here are exercised against the fakes.
 -/
 
 namespace Kroopt.Conn
@@ -23,10 +24,10 @@ open Kroopt (TlsError AlertDescription ProtocolError ParseError CryptoError
   ConfigError ResourceLimitError TransportError)
 open Kroopt.Core (AlpnProtocol CloseMode ConfigGeneration)
 
-/-- The uniform connection shape jemmet depends on (RFC 015 §4). Both a plaintext
-iotakt connection and a TLS `TlsConn` implement it, so jemmet runs one path. The
-operations thread the connection state purely (the real iotakt binding lifts the
-identical shape into IO). -/
+/-- The uniform connection shape a consumer depends on (RFC 015 §4). Both a
+plaintext connection and a TLS `TlsConn` implement it, so the consumer runs one
+path. The operations thread the connection state purely (a real transport
+binding lifts the identical shape into IO). -/
 class PlainConn (σ : Type) where
   recv : σ → σ × TlsReadResult
   send : σ → ByteArray → σ × TlsWriteResult
@@ -48,15 +49,15 @@ instance : PlainConn TlsConn where
   negotiatedProtocol c := c.negotiatedAlpn
   isConnected c := c.isConnected
 
-/-- A plaintext iotakt connection adapter — the `:80` path (RFC 015 §3). No TLS,
+/-- A plaintext (non-TLS) connection adapter — the `:80` path (RFC 015 §3). No TLS,
 no handshake: application bytes flow immediately and no ALPN is negotiated. -/
-structure PlainIotaktConn where
+structure PlaintextConn where
   inbound  : List ByteArray
   outbound : ByteArray := ByteArray.mk #[]
   closed   : Bool := false
   deriving Inhabited
 
-instance : PlainConn PlainIotaktConn where
+instance : PlainConn PlaintextConn where
   recv c :=
     match c.inbound with
     | chunk :: rest => ({ c with inbound := rest }, .bytes chunk)
@@ -71,7 +72,7 @@ instance : PlainConn PlainIotaktConn where
 
 /-! ## Redacted error view (RFC 015 §6) -/
 
-/-- The coarse error category exposed to jemmet for logging. -/
+/-- The coarse error category exposed to the consumer for logging. -/
 inductive ErrorCategory where
   | protocol | parse | crypto | config | resource | transport | closed | internal
   deriving DecidableEq, Repr, Inhabited
@@ -86,7 +87,7 @@ def categoryOf : TlsError → ErrorCategory
   | .closed                  => .closed
   | .internalInvariantFailure => .internal
 
-/-- The redacted, typed failure view jemmet may log (RFC 015 §6, §9). It carries a
+/-- The redacted, typed failure view a consumer may log (RFC 015 §6, §9). It carries a
 category, the alert sent/received if any, and the config generation — and **by
 construction** no secrets, no decrypted plaintext, and no raw attacker-controlled
 bytes (there are simply no such fields). A raw SNI is reduced to its length. -/

@@ -2,15 +2,26 @@
 
 kroopt owns the TLS 1.3 secure channel and nothing else (RFC 001).
 
-* **iotakt** owns sockets, readiness, and byte transport. kroopt never opens,
-  closes, or polls a file descriptor directly; it asks the interpreter to read,
-  write, or close through iotakt. No change to iotakt is permitted for kroopt's
-  convenience (RFC 001 §1).
+**Interfaces, not named dependencies.** kroopt depends on *interfaces*, never on
+concrete projects. Downward it requires an abstract transport interface
+(`Kroopt.Conn.Transport`: non-blocking `recv`/`send`/`enableWrite`/
+`disableWrite`/`closeConnection` over a generation-protected `FdKey`) and the
+interpreter is generic over it. Upward it presents a uniform plaintext connection
+interface (`Kroopt.Conn.PlainConn`). The projects below are named only as
+*example instances/consumers* of those interfaces — kroopt's code and proofs name
+neither.
+
+* **The transport** owns sockets, readiness, and byte transport. kroopt never
+  opens, closes, or polls a file descriptor directly; it asks the interpreter to
+  read, write, or close through the `Transport` interface. iotakt is one
+  instance, and no change to it is permitted for kroopt's convenience
+  (RFC 001 §1).
 * **kroopt** owns the record layer, handshake, key schedule, alerts, and the
   secure-channel API. Its verified core decides *what* happens; the interpreter
   decides *how* to carry it out.
-* **jemmet** owns HTTP semantics and ALPN policy. kroopt surfaces the negotiated
-  ALPN protocol but never interprets it (RFC 011).
+* **The consumer** (an HTTP server such as jemmet) owns HTTP semantics and ALPN
+  policy. kroopt surfaces the negotiated ALPN protocol but never interprets it
+  (RFC 011). A consumer depends on kroopt; kroopt never depends on a consumer.
 
 ## The core/interpreter contract
 
