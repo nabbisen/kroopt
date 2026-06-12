@@ -33,13 +33,24 @@ secret the handshake produced and protects a real application-data record with
 `Record13`, confirming it round-trips and that the record body is genuine
 ciphertext. The negotiated keys from the live handshake protect real records.
 
+## The flight is encrypted on the wire
+
+`Tests.RealHandshake` now applies record protection across the whole live handshake,
+in the interpreter layer where the production driver will host it. The ServerHello
+goes in the clear; the rest of the server flight (EncryptedExtensions, Certificate,
+CertificateVerify, Finished) is sealed as four real `TLSCiphertext` records under the
+server handshake-traffic key with handshake-epoch sequence numbers 0–3, and each is
+checked to decrypt back to its plaintext handshake message. Inbound, the client's
+Finished arrives as a real encrypted record; the interpreter opens it with the client
+handshake-traffic key and feeds the recovered plaintext to the core, which works on
+plaintext handshake messages plus crypto operations (its design). The transcript hash
+is still taken over the plaintext messages (RFC 8446 §4.4.1), not the records.
+
 ## Scope
 
-This is the record-protection framing and a demonstration over the live handshake's
-keys. The verified core does not yet emit the seal/open actions for the handshake
-flight itself (the flight is still assembled in the clear in the driver), and the
-records are not yet driven over a socket. Wiring record protection into the core's
-send/receive path and the iotakt socket transport (RFC 010) is next, after which
-OpenSSL/curl interop (RFC 015 / 026) becomes testable. The verified core and its 87
-theorems are untouched by this milestone; `Record13` is an impure-zone module plus
-its test.
+The wire is now genuine TLS 1.3 records, but the seal/open still lives in the test
+driver rather than the production `Conn.Interpreter`, and the records are exchanged
+in memory rather than over a socket. Folding this into the production send/receive
+path and the iotakt socket transport (RFC 010) is next, after which OpenSSL/curl
+interop (RFC 015 / 026) becomes testable. The verified core and its 87 theorems are
+untouched; `Record13` and the driver wiring are impure-zone code.

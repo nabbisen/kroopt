@@ -178,6 +178,15 @@ placeholders in `Core/Handshake.lean`); real record encryption; the iotakt
 P-256 (no `Hacl_P256.c` vendored — header only), ASan/UBSan jobs, and
 microbenchmarks.
 
+*M32 put the encrypted flight on the wire:* the live `step`-driven handshake now
+exchanges real TLS 1.3 records — the server flight after ServerHello is sealed as
+`TLSCiphertext` records (seqs 0–3) under the server handshake-traffic key, and the
+inbound client Finished is opened by the interpreter, while the core works on
+plaintext. The seal/open lives in the test driver where the production interpreter
+will host it; records are still exchanged in memory. Next: fold this into the
+production `Conn.Interpreter` send/receive path and the iotakt socket transport
+(RFC 010), then OpenSSL/curl interop (RFC 015 / 026).
+
 *M31 shipped real TLS 1.3 record protection:* `Kroopt/Conn/Record13.lean`
 (ChaCha20-Poly1305) frames the inner plaintext, the §5.2 AAD, and the per-record
 nonce into a real `TLSCiphertext` and back — round-tripped, with tamper/wrong-key/

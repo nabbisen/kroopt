@@ -92,6 +92,9 @@ structure RD where
   sHsTraffic : ByteArray
   cHsTraffic : ByteArray
   sApTraffic : ByteArray
+  writeSeq : Nat
+  sealedFlight : List (Nat × ByteArray × ByteArray)
+  cfWireSealed : ByteArray
   hCHSH : ByteArray
   hCHCert : ByteArray
   hCHCertVerify : ByteArray
@@ -140,13 +143,23 @@ def appendReal (d : RD) (placeholder : ByteArray) : RD :=
   if placeholder.size == 0 then d else
   let tag := placeholder.get! 0
   let msg : ByteArray :=
-    if tag == 2 then Flight.serverHelloMessage serverRandom d.serverShare 0x1301 0x001d 0x0304
+    if tag == 2 then Flight.serverHelloMessage serverRandom d.serverShare 0x1303 0x001d 0x0304
     else if tag == 8 then Wire.encryptedExtensions ByteArray.empty
     else if tag == 11 then Wire.certificate ByteArray.empty (Wire.certificateEntry placeholderDer ByteArray.empty)
     else if tag == 15 then Wire.certificateVerify 0x0807 d.lastSig
     else if tag == 20 then Flight.serverFinishedMessage d.sHsTraffic d.hCHCertVerify
     else placeholder
   let transcript' := d.transcript ++ msg
+  -- Wire record protection (interpreter): ServerHello goes in the clear; the rest of
+  -- the flight is sealed as real TLSCiphertext records under the server
+  -- handshake-traffic key, one record per message with an increasing sequence.
+  let d :=
+    if tag == 8 || tag == 11 || tag == 15 || tag == 20 then
+      let hsKey := KeySchedule.trafficKey .chacha20Poly1305Sha256 d.sHsTraffic
+      let hsIv  := KeySchedule.trafficIv d.sHsTraffic
+      let sealed := Record13.sealRecord hsKey hsIv d.writeSeq.toUInt64 msg .handshake 0
+      { d with sealedFlight := d.sealedFlight ++ [(d.writeSeq, msg, sealed)], writeSeq := d.writeSeq + 1 }
+    else d
   let d := { d with transcript := transcript', outbound := d.outbound ++ [msg] }
   if tag == 2 then { d with hCHSH := Hacl.sha256 transcript' }
   else if tag == 11 then { d with hCHCert := Hacl.sha256 transcript' }
@@ -187,6 +200,7 @@ def fresh : RD :=
     arena := SecretArena.empty
     transcript := clientHelloMsg
     serverShare := ByteArray.empty, lastSig := ByteArray.empty, sHsTraffic := ByteArray.empty, cHsTraffic := ByteArray.empty, sApTraffic := ByteArray.empty
+    writeSeq := 0, sealedFlight := [], cfWireSealed := ByteArray.empty
     hCHSH := ByteArray.empty, hCHCert := ByteArray.empty
     hCHCertVerify := ByteArray.empty, hCHSF := ByteArray.empty
     outbound := [], errored := false }
@@ -197,7 +211,13 @@ def run : RD :=
   -- Real client Finished = HMAC(finished_key(client hs-traffic), Transcript-Hash(CH‥ServerFinished)).
   let cfVerifyData := Hacl.hmac256 (KeySchedule.finishedKey d1.cHsTraffic) d1.hCHSF
   let clientFinished := Wire.finished cfVerifyData
-  driveFuel 64 d1 [InputEvent.transportBytes ⟨0, 0⟩ (recordWrap clientFinished)]
+  -- The client sends its Finished as an encrypted handshake record; the interpreter
+  -- opens it with the client handshake-traffic key and feeds the plaintext to the core.
+  let cKey := KeySchedule.trafficKey .chacha20Poly1305Sha256 d1.cHsTraffic
+  let cIv  := KeySchedule.trafficIv d1.cHsTraffic
+  let cfSealed := Record13.sealRecord cKey cIv 0 clientFinished .handshake 0
+  let cfPlain := match Record13.openRecord cKey cIv 0 cfSealed with | some (c, _) => c | none => ByteArray.empty
+  driveFuel 64 { d1 with cfWireSealed := cfSealed } [InputEvent.transportBytes ⟨0, 0⟩ (recordWrap cfPlain)]
 
 /-- Negative control: a wrong client Finished must be rejected (no `connected`). -/
 def runBadFinished : RD :=
@@ -218,8 +238,29 @@ def main : IO UInt32 := do
   let reached := phaseName d.st.handshake
   let reachedConnected := reached == "connected"
   let firstBytes := d.outbound.map (fun (m : ByteArray) => if m.size == 0 then 0xFF else m.get! 0)
-  let realSH := Flight.serverHelloMessage serverRandom d.serverShare 0x1301 0x001d 0x0304
+  let realSH := Flight.serverHelloMessage serverRandom d.serverShare 0x1303 0x001d 0x0304
   let fin := d.outbound.getD 4 ByteArray.empty
+
+  -- Wire record protection: the encrypted flight (EE/Cert/CertVerify/Finished) was
+  -- sealed as real TLSCiphertext records under the server handshake-traffic key.
+  let hsKey := KeySchedule.trafficKey .chacha20Poly1305Sha256 d.sHsTraffic
+  let hsIv  := KeySchedule.trafficIv d.sHsTraffic
+  let flightCount := d.sealedFlight.length == 4
+  let flightSeqs := (d.sealedFlight.map (fun (t : Nat × ByteArray × ByteArray) => t.1)) == [0, 1, 2, 3]
+  let flightIsCiphertext := d.sealedFlight.all (fun (t : Nat × ByteArray × ByteArray) =>
+    let sealed := t.2.2; sealed.size > 5 && sealed.get! 0 == 0x17 && !(eqB sealed t.2.1))
+  let flightOpensBack := d.sealedFlight.all (fun (t : Nat × ByteArray × ByteArray) =>
+    match Record13.openRecord hsKey hsIv t.1.toUInt64 t.2.2 with
+    | some (c, ct) => eqB c t.2.1 && ct == ContentType.handshake
+    | none => false)
+
+  -- Inbound: the client's encrypted Finished record opens to the plaintext Finished.
+  let cKey := KeySchedule.trafficKey .chacha20Poly1305Sha256 d.cHsTraffic
+  let cIv  := KeySchedule.trafficIv d.cHsTraffic
+  let inboundIsCiphertext := d.cfWireSealed.size > 5 && d.cfWireSealed.get! 0 == 0x17
+  let inboundOpensBack := match Record13.openRecord cKey cIv 0 d.cfWireSealed with
+    | some (c, ct) => ct == ContentType.handshake && c.size == 36 && c.get! 0 == 0x14
+    | none => false
 
   -- After `connected`, protect a real application-data record with the handshake's
   -- negotiated server application-traffic key/IV (ChaCha20-Poly1305).
@@ -257,6 +298,10 @@ def main : IO UInt32 := do
         phaseName runBadFinished.st.handshake != "connected")
     , ("after connected, a real application record round-trips under the negotiated keys", appRoundTrip)
     , ("the application record body is ciphertext, not plaintext", appEncrypted)
+    , ("the encrypted flight (EE/Cert/CertVerify/Finished) is sealed as 4 TLSCiphertext records", flightCount && flightIsCiphertext)
+    , ("the sealed flight records carry handshake-epoch sequences 0,1,2,3", flightSeqs)
+    , ("each sealed flight record opens back to its plaintext handshake message", flightOpensBack)
+    , ("the client's encrypted Finished record is ciphertext and opens to the plaintext Finished", inboundIsCiphertext && inboundOpensBack)
     ]
 
   let mut failed := 0

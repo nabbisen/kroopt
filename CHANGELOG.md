@@ -3,6 +3,32 @@
 All notable changes to kroopt are recorded here. RFC lifecycle transitions are
 governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycle-policy.md).
 
+## [0.32.0-dev] — M32 encrypted flight on the wire (record protection in the send/receive path) — 2026-06-12
+
+The live `step`-driven handshake now exchanges real TLS 1.3 records: the server
+flight after ServerHello is sealed, and the inbound client Finished is opened, in the
+interpreter layer, while the core works on plaintext (its design). No core, crypto,
+or proof changes — the 87 theorems are unchanged.
+
+### Added
+
+- `Tests/RealHandshake.lean` now applies `Record13` record protection across the
+  handshake (20 checks): the ServerHello goes in the clear; EncryptedExtensions,
+  Certificate, CertificateVerify, and Finished are sealed as four real `TLSCiphertext`
+  records under the server handshake-traffic key with handshake-epoch sequences 0–3,
+  each verified to decrypt back to its plaintext message; the client's Finished
+  arrives as a real encrypted record that the interpreter opens (with the client
+  handshake-traffic key) to drive the core to `connected`. The ServerHello now
+  advertises `TLS_CHACHA20_POLY1305_SHA256` so the negotiated record cipher matches
+  the wire protection. The transcript hash remains over the plaintext messages.
+
+### Notes
+
+The wire is now genuine TLS 1.3 records, but the seal/open lives in the test driver
+(not yet the production `Conn.Interpreter`) and records are exchanged in memory (not
+over a socket). Folding this into the production send/receive path and the iotakt
+socket transport (RFC 010) is next, enabling OpenSSL/curl interop (RFC 015 / 026).
+
 ## [0.31.0-dev] — M31 real TLS 1.3 record protection (ChaCha20-Poly1305) — 2026-06-12
 
 Adds the record-protection framing that turns a message + content type into a real
