@@ -3,6 +3,47 @@
 All notable changes to kroopt are recorded here. RFC lifecycle transitions are
 governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycle-policy.md).
 
+## [0.44.0-dev] — M36 (RFC 032 slice 2): typed CertificateVerify action — 2026-06-12
+
+Second step of RFC 032: CertificateVerify joins EncryptedExtensions as a typed
+handshake-output action, realizing the two-stage request/write rule for it.
+
+### Added
+
+- `Core/Action.lean`: `HandshakeOut.certificateVerify (scheme : UInt16) (signature :
+  ByteArray)`.
+- `Core/Handshake.lean`: `sigSchemeToU16` (SignatureScheme → wire code point) and the
+  CertificateVerify case of `serializeHandshakeOut`.
+
+### Changed
+
+- `Core/Handshake.lean`: `onCertVerifySigned` emits `writeHandshake (.certificateVerify
+  <scheme> <sig>)` instead of a placeholder `writeTransport`. The signature is the core's
+  own `signCertificateVerify` result and the scheme is a negotiated fact, so serialization
+  is authorized by the typed write action — not by bare crypto-result arrival (RFC 032 §4
+  two-stage rule). The abstract transcript contribution is unchanged.
+- `Tests/RealHandshake.lean`: the typed-message driver refreshes the post-CertificateVerify
+  transcript hash (over which the server Finished MAC is taken), matching the placeholder
+  path it replaces.
+
+### Proofs
+
+- Theorem set unchanged (91, axiom-clean). `writeHandshake` continues to be handled by the
+  existing wildcard classifiers; no proof edits.
+
+### Tests
+
+- 24/24 suites pass; the synthetic flight reaches `connected` with byte-identical
+  CertificateVerify, and the Ed25519 CertificateVerify interop check is unaffected.
+
+### RFC lifecycle
+
+- **RFC 032** stays in `proposed/`. Two of five server-flight messages
+  (EncryptedExtensions, CertificateVerify) are now typed and first-byte-free. Remaining:
+  Certificate (interpreter owns DER behind the chain handle), ServerHello + Finished
+  (need server-share / Finished-MAC crypto-op flow), the §5 transcript restatement, and
+  the §7 CI gate.
+
 ## [0.43.0-dev] — M36 (RFC 032 slice 1): typed EncryptedExtensions action — 2026-06-12
 
 First step of RFC 032 (Typed Handshake/Record Assembly Contract): the core begins emitting

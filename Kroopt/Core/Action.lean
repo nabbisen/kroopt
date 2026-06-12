@@ -39,6 +39,9 @@ crypto-result plumbing lands. -/
 inductive HandshakeOut where
   /-- EncryptedExtensions carrying the negotiated ALPN protocol id, if any. -/
   | encryptedExtensions (alpn : Option ByteArray)
+  /-- CertificateVerify carrying the negotiated signature scheme (wire code point) and
+  the signature produced by the core's `signCertificateVerify` crypto result. -/
+  | certificateVerify (scheme : UInt16) (signature : ByteArray)
 
 /-- Actions the core asks the interpreter to perform (RFC 002 §3). -/
 inductive OutputAction where

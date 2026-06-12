@@ -31,10 +31,17 @@ namespace Kroopt.Core
 
 open Kroopt (TlsError AlertDescription)
 
+/-- The TLS `SignatureScheme` wire code point (RFC 8446 §4.2.3). The constrained profile
+negotiates Ed25519 only; the other rows are correct for when the suite list widens. -/
+def sigSchemeToU16 : SignatureScheme → UInt16
+  | .ed25519              => 0x0807
+  | .ecdsaSecp256r1Sha256 => 0x0403
+  | .rsaPssRsaeSha256     => 0x0804
+
 /-- Realize a typed server-flight handshake message into its wire bytes (RFC 032 §3).
 A single pure serializer is the one source of byte layout: the interpreter and the
 test drivers all call it, so no production path recognizes a message by its first
-byte. Slice 1 covers EncryptedExtensions (ALPN). -/
+byte. Slice 1 covers EncryptedExtensions (ALPN); slice 2 adds CertificateVerify. -/
 def serializeHandshakeOut : HandshakeOut → ByteArray
   | .encryptedExtensions alpn =>
       let exts := match alpn with
@@ -42,6 +49,8 @@ def serializeHandshakeOut : HandshakeOut → ByteArray
         | some p => Kroopt.Parse.Wire.extension 0x10
                       (Kroopt.Parse.Wire.u16Len (Kroopt.Parse.Wire.u8Len p))
       Kroopt.Parse.Wire.encryptedExtensions exts
+  | .certificateVerify scheme signature =>
+      Kroopt.Parse.Wire.certificateVerify scheme signature
 
 /-- A validated ClientHello: the negotiated parameters the parser/policy checker
 produced (RFC 006 §5). Holding one is evidence the mandatory checks passed —
@@ -211,7 +220,9 @@ def onCertVerifySigned (s : State) (sig : ByteArray) : HsResult :=
           let s := { s with transcript := ts }
           let (oid, s) := s.allocOp op.kind .application (some .write)
           .ok ({ s with handshake := .sentCertificateVerify, keySched := some ksd },
-               [ OutputAction.writeTransport s.connId cv,
+               [ OutputAction.writeHandshake s.connId
+                   (.certificateVerify
+                     (sigSchemeToU16 (s.negotiated.selectedSigScheme.getD .ed25519)) sig),
                  OutputAction.writeTransport s.connId frameServerFinished,
                  OutputAction.callCrypto s.connId oid op ])
       | .ok (_, []) => hsFail s .internalError (.protocol .illegalMessageForState)

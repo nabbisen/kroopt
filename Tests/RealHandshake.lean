@@ -180,8 +180,12 @@ def appendRealHandshakeOut (d : RD) (m : Kroopt.Core.HandshakeOut) : RD :=
   let hsKey := KeySchedule.trafficKey .chacha20Poly1305Sha256 d.sHsTraffic
   let hsIv  := KeySchedule.trafficIv d.sHsTraffic
   let sealed := Record13.sealRecord hsKey hsIv d.writeSeq.toUInt64 msg .handshake 0
-  { d with sealedFlight := d.sealedFlight ++ [(d.writeSeq, msg, sealed)], writeSeq := d.writeSeq + 1,
-           transcript := transcript', outbound := d.outbound ++ [msg] }
+  let d := { d with sealedFlight := d.sealedFlight ++ [(d.writeSeq, msg, sealed)], writeSeq := d.writeSeq + 1,
+                    transcript := transcript', outbound := d.outbound ++ [msg] }
+  -- CertificateVerify binds the transcript hash the server Finished MAC is taken over.
+  match m with
+  | .certificateVerify _ _ => { d with hCHCertVerify := Hacl.sha256 transcript' }
+  | _ => d
 
 def applyAction (d : RD) : OutputAction → RD × List InputEvent
   | .writeTransport _ bytes => (appendReal d bytes, [])

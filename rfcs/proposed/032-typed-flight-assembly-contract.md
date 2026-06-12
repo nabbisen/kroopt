@@ -10,6 +10,19 @@
 
 ---
 
+> **Status note — partial (0.44.0-dev, M36 slice 2).** CertificateVerify is now a typed
+> action too. `HandshakeOut` gains `certificateVerify (scheme : UInt16) (signature :
+> ByteArray)`; `step` emits it from `onCertVerifySigned` as
+> `writeHandshake (.certificateVerify <scheme> <sig>)`, carrying the negotiated scheme
+> and the signature the core already holds from its `signCertificateVerify` result —
+> realizing the two-stage rule (criterion 2) for this message: the request is the crypto
+> op, and serialization happens only on the core's subsequent typed write action, never on
+> bare result arrival. `serializeHandshakeOut` gains the CertificateVerify case (and a
+> `sigSchemeToU16` wire encoder), so the interpreter and drivers serialize it through the
+> same single function. Two of five server-flight messages (EncryptedExtensions,
+> CertificateVerify) are now first-byte-free; proofs unchanged (91, axiom-clean); 24/24
+> suites, flight still reaches `connected`.
+>
 > **Status note — partial (0.43.0-dev, M36 slice 1).** The first typed handshake-output
 > action landed. `Core/Action.lean` gains `inductive HandshakeOut` and
 > `OutputAction.writeHandshake (conn) (msg : HandshakeOut)`; the action classifiers
