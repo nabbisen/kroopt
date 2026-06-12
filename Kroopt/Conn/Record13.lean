@@ -1,0 +1,70 @@
+import Kroopt.Crypto.Hacl
+import Kroopt.Crypto.Real
+import Kroopt.Crypto.KeySchedule
+import Kroopt.Core.Record
+import Kroopt.Parse.Wire
+
+/-!
+# Kroopt.Conn.Record13 — real TLS 1.3 record protection (interpreter zone)
+
+Turns a plaintext message plus its content type into a real `TLSCiphertext` record
+on the wire, and back, using ChaCha20-Poly1305 (RFC 8446 §5.2). This is the framing
+the AEAD primitives (`Kroopt.Crypto.Real`, `Hacl`) sit under: the inner plaintext
+(`content || content_type || zero padding`), the additional_data (the TLSCiphertext
+header `opaque_type(23) || legacy_version(0x0303) || length`), the per-record nonce
+(`IV XOR seq`), and the outer record wrapping.
+
+It lives in the impure `Conn` zone because it calls FFI crypto; the verified core
+imports none of it. No plaintext escapes a failed open.
+-/
+
+namespace Kroopt.Conn.Record13
+
+open Kroopt.Crypto
+open Kroopt.Core (ContentType)
+open Kroopt.Parse
+
+/-- TLSInnerPlaintext (RFC 8446 §5.2): `content || content_type || zero*`. -/
+def innerPlaintext (content : ByteArray) (ctype : ContentType) (pad : Nat) : ByteArray :=
+  content ++ ByteArray.mk #[ctype.toByte] ++ ByteArray.mk (Array.mkArray pad (0x00 : UInt8))
+
+/-- TLS 1.3 record additional_data (RFC 8446 §5.2): the TLSCiphertext header —
+`opaque_type(23) || legacy_record_version(0x0303) || ciphertext_length`. -/
+def recordAAD (ciphertextLen : Nat) : ByteArray :=
+  ByteArray.mk #[(0x17 : UInt8), 0x03, 0x03] ++ Wire.be16 ciphertextLen.toUInt16
+
+/-- Seal a TLS 1.3 protected record: frame the inner plaintext, derive the
+per-record nonce, ChaCha20-Poly1305-seal under the header AAD, and wrap as a
+`TLSCiphertext` (outer type `application_data`). -/
+def sealRecord (key iv : ByteArray) (seq : UInt64) (content : ByteArray)
+    (ctype : ContentType) (pad : Nat := 0) : ByteArray :=
+  let inner := innerPlaintext content ctype pad
+  let ctLen := inner.size + 16                       -- + Poly1305 tag
+  let sealed := Hacl.chachaPolySeal key (Real.nonce iv seq) (recordAAD ctLen) inner
+  ByteArray.mk #[(0x17 : UInt8), 0x03, 0x03] ++ Wire.be16 ctLen.toUInt16 ++ sealed
+
+/-- Strip TLSInnerPlaintext zero padding: the last non-zero octet is the inner
+content type; everything before it is the content. -/
+def stripInner (inner : ByteArray) : Option (ByteArray × ContentType) := Id.run do
+  let mut i := inner.size
+  while i > 0 && inner.get! (i - 1) == 0 do
+    i := i - 1
+  if i == 0 then return none
+  return some (inner.extract 0 (i - 1), ContentType.ofByte (inner.get! (i - 1)))
+
+/-- Open a TLS 1.3 protected record: recompute the AAD from the header,
+ChaCha20-Poly1305-open, then strip padding to recover `(content, inner type)`.
+Returns `none` on any framing or authentication failure — no plaintext escapes. -/
+def openRecord (key iv : ByteArray) (seq : UInt64) (record : ByteArray)
+    : Option (ByteArray × ContentType) :=
+  if record.size < 5 then none
+  else if record.get! 0 != 0x17 then none
+  else
+    let ctLen := (record.get! 3).toNat * 256 + (record.get! 4).toNat
+    if record.size != 5 + ctLen then none
+    else
+      match Hacl.chachaPolyOpen key (Real.nonce iv seq) (record.extract 0 5) (record.extract 5 record.size) with
+      | none => none
+      | some inner => stripInner inner
+
+end Kroopt.Conn.Record13

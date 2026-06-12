@@ -3,6 +3,38 @@
 All notable changes to kroopt are recorded here. RFC lifecycle transitions are
 governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycle-policy.md).
 
+## [0.31.0-dev] — M31 real TLS 1.3 record protection (ChaCha20-Poly1305) — 2026-06-12
+
+Adds the record-protection framing that turns a message + content type into a real
+`TLSCiphertext` and back, and demonstrates it end-to-end over the live handshake's
+negotiated keys. The verified core and its 87 theorems are unchanged.
+
+### Added
+
+- `Kroopt/Conn/Record13.lean` (impure interpreter zone): `innerPlaintext`
+  (`content || content_type || zero*`), `recordAAD` (the §5.2 TLSCiphertext header),
+  and `sealRecord` / `openRecord` — ChaCha20-Poly1305 under that AAD with the
+  per-record nonce (`IV XOR seq`), wrapping/unwrapping the outer
+  `application_data` record and stripping padding on open. No plaintext escapes a
+  framing or authentication failure.
+- `kroopt-record13-test` (`Tests/Record13.lean`, 11 checks): round-trip, wire
+  structure, ciphertext-not-plaintext, padding stripping, content-type recovery, and
+  authentication failures (tamper, wrong key, wrong sequence — the nonce binds the
+  sequence).
+- `Tests/RealHandshake.lean` now protects a real application-data record under the
+  server application-traffic key derived by the live handshake after `connected`
+  (16 checks total), confirming the round-trip and that the body is ciphertext.
+- `docs/src/record-protection.md` (linked in `SUMMARY.md`). CI runs 21 suites.
+
+### Notes
+
+ChaCha20-Poly1305 is the record cipher (no AES-GCM in the vendored HACL subset), so
+these are self-consistent round-trips, not an RFC 8448 §3 (AES-128-GCM) replay. The
+verified core does not yet emit seal/open actions for the handshake flight (still
+assembled in the clear in the driver), and records are not yet driven over a socket;
+wiring record protection into the core's send/receive path and the iotakt socket
+transport (RFC 010) is next, enabling OpenSSL/curl interop (RFC 015 / 026).
+
 ## [0.30.0-dev] — M30 live `step`-driven handshake reaches `connected` — 2026-06-12
 
 The live `step`-driven real handshake (M29) now runs to **`connected`**: the driver

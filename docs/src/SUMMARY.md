@@ -13,6 +13,7 @@
 - [Handshake wire format (real serialization)](wire-format.md)
 - [Real server-flight assembly](server-flight.md)
 - [Live step-driven real handshake](live-handshake.md)
+- [Real TLS 1.3 record protection](record-protection.md)
 - [End-to-end handshake (fakes)](end-to-end.md)
 - [Crypto provider and FFI contract](crypto-ffi-contract.md)
 - [Native crypto binding (v0.3): HACL* through Lean FFI](native-crypto.md)

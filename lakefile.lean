@@ -181,3 +181,7 @@ lean_exe «kroopt-flight-test» where
 lean_exe «kroopt-realhandshake-test» where
   root := `Tests.RealHandshake
   moreLinkArgs := #["-Wl,--gc-sections"]
+
+lean_exe «kroopt-record13-test» where
+  root := `Tests.Record13
+  moreLinkArgs := #["-Wl,--gc-sections"]

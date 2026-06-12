@@ -178,6 +178,14 @@ placeholders in `Core/Handshake.lean`); real record encryption; the iotakt
 P-256 (no `Hacl_P256.c` vendored — header only), ASan/UBSan jobs, and
 microbenchmarks.
 
+*M31 shipped real TLS 1.3 record protection:* `Kroopt/Conn/Record13.lean`
+(ChaCha20-Poly1305) frames the inner plaintext, the §5.2 AAD, and the per-record
+nonce into a real `TLSCiphertext` and back — round-tripped, with tamper/wrong-key/
+wrong-sequence all yielding no plaintext, and demonstrated end-to-end protecting a
+real application record under the live handshake's negotiated keys after
+`connected`. Next: emit seal/open from the core's send/receive path and the iotakt
+socket transport (RFC 010), then OpenSSL/curl interop (RFC 015 / 026).
+
 *M29–M30 shipped the live wiring through to `connected`:* the verified core `step`
 machine is driven end-to-end against the **real** provider with a **real
 transcript** assembled by `Flight` (`Tests/RealHandshake.lean`). It parses the

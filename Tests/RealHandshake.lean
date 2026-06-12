@@ -5,6 +5,8 @@ import Kroopt.Crypto.RealProvider
 import Kroopt.Crypto.Arena
 import Kroopt.Crypto.Hacl
 import Kroopt.Conn.Flight
+import Kroopt.Conn.Record13
+import Kroopt.Crypto.KeySchedule
 
 /-!
 # Tests.RealHandshake
@@ -89,6 +91,7 @@ structure RD where
   lastSig : ByteArray
   sHsTraffic : ByteArray
   cHsTraffic : ByteArray
+  sApTraffic : ByteArray
   hCHSH : ByteArray
   hCHCert : ByteArray
   hCHCertVerify : ByteArray
@@ -125,6 +128,8 @@ def runReal (d : RD) (op : CryptoOp) : RD × CryptoResult :=
                 { d with sHsTraffic := (a'.getById h.id).getD ByteArray.empty }
             | .hkdfExpandLabel _ _ "c hs traffic" _ _ =>
                 { d with cHsTraffic := (a'.getById h.id).getD ByteArray.empty }
+            | .hkdfExpandLabel _ _ "s ap traffic" _ _ =>
+                { d with sApTraffic := (a'.getById h.id).getD ByteArray.empty }
             | _ => d
         | _ => d
       (d, r)
@@ -181,7 +186,7 @@ def fresh : RD :=
   { st := State.initial ⟨0, 0⟩ ⟨0⟩ .sha256
     arena := SecretArena.empty
     transcript := clientHelloMsg
-    serverShare := ByteArray.empty, lastSig := ByteArray.empty, sHsTraffic := ByteArray.empty, cHsTraffic := ByteArray.empty
+    serverShare := ByteArray.empty, lastSig := ByteArray.empty, sHsTraffic := ByteArray.empty, cHsTraffic := ByteArray.empty, sApTraffic := ByteArray.empty
     hCHSH := ByteArray.empty, hCHCert := ByteArray.empty
     hCHCertVerify := ByteArray.empty, hCHSF := ByteArray.empty
     outbound := [], errored := false }
@@ -216,6 +221,19 @@ def main : IO UInt32 := do
   let realSH := Flight.serverHelloMessage serverRandom d.serverShare 0x1301 0x001d 0x0304
   let fin := d.outbound.getD 4 ByteArray.empty
 
+  -- After `connected`, protect a real application-data record with the handshake's
+  -- negotiated server application-traffic key/IV (ChaCha20-Poly1305).
+  let appKey := KeySchedule.trafficKey .chacha20Poly1305Sha256 d.sApTraffic
+  let appIv  := KeySchedule.trafficIv d.sApTraffic
+  let appPlain := String.toUTF8 "HTTP/1.1 200 OK\r\n\r\nhello over kroopt TLS\n"
+  let appRecord := Record13.sealRecord appKey appIv 0 appPlain .applicationData 0
+  let appRoundTrip :=
+    reachedConnected &&
+    (match Record13.openRecord appKey appIv 0 appRecord with
+     | some (c, t) => eqB c appPlain && t == ContentType.applicationData
+     | none => false)
+  let appEncrypted := reachedConnected && !(eqB (appRecord.extract 5 appRecord.size) appPlain)
+
   let checks : List (String × Bool) :=
     [ ("live step handshake did not error", !d.errored)
     , (s!"reached connected (got {reached})", reachedConnected)
@@ -237,6 +255,8 @@ def main : IO UInt32 := do
         fin.size == 36 && fin.get! 0 == 0x14 && fin.get! 3 == 0x20)
     , ("a WRONG client Finished is rejected — does not reach connected",
         phaseName runBadFinished.st.handshake != "connected")
+    , ("after connected, a real application record round-trips under the negotiated keys", appRoundTrip)
+    , ("the application record body is ciphertext, not plaintext", appEncrypted)
     ]
 
   let mut failed := 0
