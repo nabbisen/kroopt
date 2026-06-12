@@ -178,6 +178,14 @@ placeholders in `Core/Handshake.lean`); real record encryption; the iotakt
 P-256 (no `Hacl_P256.c` vendored — header only), ASan/UBSan jobs, and
 microbenchmarks.
 
+*M34 cross-validated the record layer with an outside implementation:*
+`scripts/record-interop.sh` has Python's `cryptography` library independently derive
+the traffic key/IV (RFC 8446 §7.3) and decrypt kroopt's `Record13`-sealed records,
+recovering the exact plaintext + content type and rejecting a tampered record — so
+the record layer is standards-compliant, not merely self-consistent (RFC 026,
+partial). The remaining v0.3 work is productionizing the interpreter and the iotakt
+socket transport (RFC 010), after which a live `s_client`/`curl` handshake runs.
+
 *M33 made the presented certificate real:* the live handshake now presents a real,
 OpenSSL-parseable Ed25519 X.509 certificate whose leaf key is kroopt's signing key
 (`scripts/gen-test-cert.sh`), replacing the placeholder DER. `ed25519-interop.sh`

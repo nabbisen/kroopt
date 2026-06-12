@@ -33,6 +33,16 @@ secret the handshake produced and protects a real application-data record with
 `Record13`, confirming it round-trips and that the record body is genuine
 ciphertext. The negotiated keys from the live handshake protect real records.
 
+## Cross-implementation interop
+
+`scripts/record-interop.sh` checks the record layer against an outside
+implementation: `kroopt-wire-dump` emits real sealed records, and Python's
+`cryptography` library independently derives the traffic key/IV from the secret
+(RFC 8446 §7.3 HKDF-Expand-Label), reconstructs the §5.3 nonce and §5.2 AAD, and
+opens them — recovering the exact plaintext and inner content type, and rejecting a
+tampered record. Because a non-kroopt implementation decrypts kroopt's records, the
+record layer is standards-compliant, not merely self-consistent.
+
 ## The flight is encrypted on the wire
 
 `Tests.RealHandshake` now applies record protection across the whole live handshake,

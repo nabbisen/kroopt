@@ -3,6 +3,30 @@
 All notable changes to kroopt are recorded here. RFC lifecycle transitions are
 governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycle-policy.md).
 
+## [0.34.0-dev] — M34 record-layer cross-implementation interop — 2026-06-12
+
+An independent implementation now decrypts kroopt's TLS 1.3 records, establishing
+that the record layer is standards-compliant rather than only self-consistent. No
+core, crypto, or proof changes — the 87 theorems are unchanged.
+
+### Added
+
+- `kroopt-wire-dump` (`Tests/WireDump.lean`): emits real `Record13`-sealed records
+  (a handshake EncryptedExtensions at seq 0 and application data at seq 1, under the
+  RFC 8448 §3 server handshake-traffic secret) for an outside tool to open.
+- `scripts/record-interop.sh`: Python's `cryptography` library independently derives
+  the traffic key/IV (RFC 8446 §7.3 HKDF-Expand-Label), reconstructs the §5.3 nonce
+  and §5.2 AAD, and decrypts kroopt's records — recovering the exact plaintext and
+  inner content type, and rejecting a tampered record. Added to CI.
+- `docs/src/record-protection.md`: a cross-implementation interop section.
+
+### Notes
+
+A non-kroopt implementation decrypting kroopt's records is interop-grade evidence for
+the record layer (RFC 026, partial). A full `openssl s_client` / `curl` handshake
+still awaits productionizing the interpreter and the iotakt socket transport
+(RFC 010).
+
 ## [0.33.0-dev] — M33 real Ed25519 X.509 certificate presentation — 2026-06-12
 
 The live handshake now presents a real, OpenSSL-parseable Ed25519 X.509 certificate

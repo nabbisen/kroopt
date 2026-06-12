@@ -31,6 +31,8 @@ jobs:
 
       - name: Ed25519 CertificateVerify interop (HACL* vs OpenSSL)
         run: bash scripts/ed25519-interop.sh
+      - name: TLS 1.3 record-layer interop (kroopt Record13 vs Python cryptography)
+        run: bash scripts/record-interop.sh
 
       - name: Hygiene gate (no sorry/axiom/unsafe in strict zones)
         run: ./scripts/check-hygiene.sh
