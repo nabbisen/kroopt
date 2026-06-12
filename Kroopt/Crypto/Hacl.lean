@@ -23,6 +23,9 @@ opaque sha256 (input : ByteArray) : ByteArray
 @[extern "kroopt_ffi_sha384"]
 opaque sha384 (input : ByteArray) : ByteArray
 
+@[extern "kroopt_ffi_sha512"]
+opaque sha512 (input : ByteArray) : ByteArray
+
 @[extern "kroopt_ffi_x25519_public"]
 opaque x25519Public (priv : ByteArray) : ByteArray
 

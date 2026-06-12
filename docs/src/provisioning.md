@@ -67,3 +67,45 @@ so M19 *surfaces and tracks* the defect rather than fixing it under time pressur
 This is the verification-first method working as intended: a KAT that should have
 existed from the start (SHA-384 by value, Ed25519 against RFC 8032) converted a
 silent interop bug into a tracked, test-guarded finding.
+
+## Root-cause localisation (M20)
+
+M20 narrows the defect to a single component and — by comparing against pristine
+upstream and reproducing outside Lean — corrects the M19 guess that the file had
+been hand-edited. The crypto KATs are now exhaustive around Ed25519's dependencies,
+and every one passes against its published vector:
+
+* **SHA-256, SHA-384, and SHA-512** all match FIPS 180-4 (SHA-512 was previously
+  unbound; SHA-384 was only size-checked). Ed25519's hash is correct.
+* **X25519** matches RFC 7748, so the shared 2²⁵⁵−19 field arithmetic is correct.
+* The **base-point constants** (`point_mul_g`'s `gx/gy/gz/gt` radix-2⁵¹ limbs), the
+  **scalar clamp** (`secret_expand`: `&0xf8`, `(&127)|64`), and the **point
+  compression** all read as standard, and `hash_512(input, len, dst)` matches the
+  vendored header.
+
+**The vendored Ed25519 is verbatim HACL 0.4.5, not hand-edited.** `Hacl_Ed25519.c`
+and every file it depends on (`Hacl_Curve25519_51.c`, `Hacl_Hash_SHA2.c`, and the
+`internal/*.h` headers) are *byte-identical* to the pristine 0.4.5 release at tag
+`ocaml-v0.4.5` (`diff` = 0). The `sign_expanded(…, uint32_t msg, uint8_t *len)`
+naming that looked like tampering is in fact the original 0.4.5 codegen — the
+pristine file has it too — so the M19 "hand-edited" hypothesis is **disproven**.
+
+**The defect reproduces in pristine upstream, outside Lean.** A standalone C
+program calling `Hacl_Ed25519_secret_to_public` on the RFC 8032 Test 1 seed —
+linking only the pristine 0.4.5 sources, no kroopt FFI — returns the same wrong
+public `bcd55c06…` instead of `d75a9801…`, and does so identically at `-O0`, `-O1`,
+`-O2`, and `-O2 -fno-strict-aliasing`. So the fault is **not** the Lean marshalling,
+**not** an optimisation level, and **not** strict aliasing. It is HACL 0.4.5's
+`dist/gcc-compatible` Ed25519 Edwards arithmetic as built in this environment,
+producing a self-consistent (sign verifies against the derived key) but non-RFC
+result — which is exactly why round-trip tests passed.
+
+**Remediation (a dedicated, validated re-vendor).** Because the kroopt FFI, build
+flags, and Ed25519's SHA/field dependencies are all confirmed correct, the fix is to
+replace the Ed25519 unit with a **known-correct** HACL Ed25519 — most likely a newer
+release — compiled and **KAT-validated standalone against RFC 8032 first**, then
+vendored as a quarantined unit with its own dependencies and provenance recorded.
+The newer `hacl-star` Ed25519 is not a blind drop-in (it renames krmllib, adds a
+precomputed-table header, and splits Bignum25519), so the re-vendor is scheduled as
+its own task. Until it lands, the RFC 8032 KAT tripwire in `kroopt-provision-test`
+guards the seam and flips the moment a correct Ed25519 is in place.

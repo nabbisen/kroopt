@@ -42,6 +42,8 @@ def rep (n : Nat) (v : UInt8) : ByteArray := ByteArray.mk (Array.mkArray n v)
 
 -- vectors
 def sha256_abc := "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+def sha384_abc := "cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7"
+def sha512_abc := "ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f"
 def x25519_priv := "a546e36bf0527c9d3b16154b82465edd62144c0ac1fc5a18506a2244ba449ac4"
 def x25519_peer := "e6db6867583030db3594c1a424b15f7c726624ec26b3353b10a903a6d0ab1c4c"
 def x25519_out  := "c3da55379de9c6908e94ea4df28d084f32eccf03491c71f754b4075577a28552"
@@ -72,8 +74,10 @@ def main : IO UInt32 := do
   let checks : List Check :=
     [ { name := "SHA-256(\"abc\") matches FIPS 180-4 vector"
       , ok := bytesEq (sha256 "abc".toUTF8) (hexToBytes sha256_abc) }
-    , { name := "SHA-384 produces 48 bytes"
-      , ok := (sha384 "abc".toUTF8).size == 48 }
+    , { name := "SHA-384(\"abc\") matches FIPS 180-4 vector"
+      , ok := bytesEq (sha384 "abc".toUTF8) (hexToBytes sha384_abc) }
+    , { name := "SHA-512(\"abc\") matches FIPS 180-4 vector"
+      , ok := bytesEq (sha512 "abc".toUTF8) (hexToBytes sha512_abc) }
     , { name := "X25519 ECDH matches RFC 7748 vector"
       , ok := (match x25519Shared (hexToBytes x25519_priv) (hexToBytes x25519_peer) with
                | some s => bytesEq s (hexToBytes x25519_out) | none => false) }

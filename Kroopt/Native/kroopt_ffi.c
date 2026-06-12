@@ -43,6 +43,12 @@ LEAN_EXPORT lean_object *kroopt_ffi_sha384(b_lean_obj_arg input) {
   return r;
 }
 
+LEAN_EXPORT lean_object *kroopt_ffi_sha512(b_lean_obj_arg input) {
+  lean_object *r = mk_ba(64);
+  Hacl_Hash_SHA2_hash_512(ba_ptr(input), (uint32_t)ba_len(input), lean_sarray_cptr(r));
+  return r;
+}
+
 LEAN_EXPORT lean_object *kroopt_ffi_x25519_public(b_lean_obj_arg priv) {
   lean_object *r = mk_ba(32);
   Hacl_Curve25519_51_secret_to_public(lean_sarray_cptr(r), ba_ptr(priv));

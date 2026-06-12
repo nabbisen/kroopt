@@ -3,6 +3,45 @@
 All notable changes to kroopt are recorded here. RFC lifecycle transitions are
 governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycle-policy.md).
 
+## [0.21.0-dev] — M20 Ed25519 root-cause isolation + SHA-512 KAT hardening — 2026-06-12
+
+Isolates the M19 Ed25519 interop defect to its true source and hardens the crypto
+known-answer tests. No functional protocol change; the build stays green at 87
+theorems. The Ed25519 binary fix is a scoped, dedicated re-vendor (below).
+
+### Root cause isolated (corrects the M19 guess)
+
+- **The vendored Ed25519 is verbatim HACL 0.4.5, not hand-edited.** `Hacl_Ed25519.c`
+  and every file it depends on are byte-identical (`diff` = 0) to the pristine 0.4.5
+  release at tag `ocaml-v0.4.5`. The `sign_expanded(…, uint32_t msg, uint8_t *len)`
+  naming that M19 flagged as possible tampering is the original 0.4.5 codegen — the
+  M19 "hand-edited" hypothesis is disproven.
+- **The defect reproduces in pristine upstream, outside Lean.** A standalone C KAT
+  calling `Hacl_Ed25519_secret_to_public` on the RFC 8032 Test 1 seed (pristine 0.4.5
+  sources only, no kroopt FFI) returns the wrong public `bcd55c06…` instead of
+  `d75a9801…`, identically at `-O0`, `-O1`, `-O2`, and `-O2 -fno-strict-aliasing`.
+  So it is not the FFI marshalling, not optimisation, and not strict aliasing — it is
+  HACL 0.4.5 `dist/gcc-compatible` Ed25519's Edwards arithmetic as built here.
+- SHA-256/384/512 (FIPS 180-4) and X25519 (RFC 7748) are confirmed correct, so the
+  rest of the crypto and the FFI seam are sound.
+
+### Added / changed — crypto KAT hardening
+
+- Bound `Hacl.sha512` (FFI shim + `opaque`) and added a **SHA-512("abc") FIPS 180-4**
+  value KAT; **upgraded SHA-384** from a size-only check to a value KAT. The HACL
+  suite (`kroopt-hacl-test`) is now 15 checks, exhaustive over Ed25519's hash
+  dependency. No new theorems (Crypto/Native zone); 87 unchanged.
+
+### Tracked
+
+- `THIRD-PARTY-NOTICES.md` records the verbatim-0.4.5 confirmation and the tracked
+  Ed25519 non-RFC behavior; `docs/src/provisioning.md` carries the full localisation.
+  Remediation: re-vendor a known-correct Ed25519 unit (newer HACL), KAT-validated
+  against RFC 8032 before integration — the top item before real interop. The
+  `kroopt-provision-test` tripwire guards the seam and flips when the fix lands.
+
+
+
 ## [0.20.0-dev] — M19 connection provisioning + crypto KAT hardening; Ed25519 defect found — 2026-06-11
 
 Adds production connection provisioning (fresh ephemeral entropy + certificate
