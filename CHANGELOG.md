@@ -3,6 +3,33 @@
 All notable changes to kroopt are recorded here. RFC lifecycle transitions are
 governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycle-policy.md).
 
+## [0.35.0-dev] — M35 TLS 1.3 records over a real OS socket — 2026-06-12
+
+A full server flight now traverses a real OS socket and opens on the peer,
+exercising the transport boundary with real kernel I/O for the first time. No core,
+crypto, or proof changes — the 87 theorems are unchanged.
+
+### Added
+
+- `Kroopt/Native/kroopt_socket.c`: minimal, test-only `AF_UNIX` socketpair plus
+  blocking read/write/close (no protocol logic), wired through the same IO FFI ABI as
+  `randomBytes`. kroopt's production core still performs no syscalls; this glue exists
+  only to drive a test over a real socket.
+- `kroopt-socket-test` (`Tests/SocketHandshake.lean`): seals a server flight
+  (cleartext ServerHello + four `TLSCiphertext` records for EE/Cert/CertVerify/
+  Finished under the server handshake key), writes it to the socket, and a peer reads
+  the records back and opens them; the peer's encrypted Finished and an application
+  record then round-trip the other way — all over the socketpair (5 checks). Added to
+  CI (now 22 suites).
+- `docs/src/socket-transport.md`.
+
+### Notes
+
+This de-risks the transport binding with real kernel I/O. The production iotakt
+socket adapter (RFC 010) and a live `openssl s_client` / `curl` handshake (RFC
+015/026) remain: they run the same record layer over a real, non-blocking,
+externally-driven peer.
+
 ## [0.34.0-dev] — M34 record-layer cross-implementation interop — 2026-06-12
 
 An independent implementation now decrypts kroopt's TLS 1.3 records, establishing

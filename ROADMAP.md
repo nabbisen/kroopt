@@ -178,6 +178,14 @@ placeholders in `Core/Handshake.lean`); real record encryption; the iotakt
 P-256 (no `Hacl_P256.c` vendored — header only), ASan/UBSan jobs, and
 microbenchmarks.
 
+*M35 ran a server flight over a real OS socket:* `kroopt-socket-test` seals the
+server flight (cleartext ServerHello + four ChaCha20-Poly1305 records) and exchanges
+it, plus the peer's encrypted Finished and application data, across an `AF_UNIX`
+socketpair — confirming the sealed records survive real kernel I/O and open on the
+peer. The socket glue is test-only; kroopt's core still performs no syscalls. This
+de-risks the transport boundary ahead of the production iotakt adapter (RFC 010) and
+a live `s_client`/`curl` handshake (RFC 015/026).
+
 *M34 cross-validated the record layer with an outside implementation:*
 `scripts/record-interop.sh` has Python's `cryptography` library independently derive
 the traffic key/IV (RFC 8446 §7.3) and decrypt kroopt's `Record13`-sealed records,

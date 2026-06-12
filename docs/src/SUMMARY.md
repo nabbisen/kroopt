@@ -15,6 +15,7 @@
 - [Live step-driven real handshake](live-handshake.md)
 - [Real TLS 1.3 record protection](record-protection.md)
 - [Certificate presentation and interop validation](cert-presentation.md)
+- [Records over a real OS socket](socket-transport.md)
 - [End-to-end handshake (fakes)](end-to-end.md)
 - [Crypto provider and FFI contract](crypto-ffi-contract.md)
 - [Native crypto binding (v0.3): HACL* through Lean FFI](native-crypto.md)

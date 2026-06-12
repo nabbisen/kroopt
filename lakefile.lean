@@ -128,7 +128,8 @@ extern_lib krooptCrypto (pkg : NPackage _package.name) := do
     ("hacl/Hacl_HMAC.c",               "Hacl_HMAC.o"),
     ("hacl/Hacl_Ed25519.c",            "Hacl_Ed25519.o"),
     ("hacl/Lib_Memzero0.c",            "Lib_Memzero0.o"),
-    ("kroopt_ffi.c",                   "kroopt_ffi.o")]
+    ("kroopt_ffi.c",                   "kroopt_ffi.o"),
+    ("kroopt_socket.c",                "kroopt_socket.o")]
   let oJobs ← cFiles.mapM fun (cFile, oFile) => do
     let src    := nativeDir / cFile
     let obj    := pkg.buildDir / "c" / oFile
@@ -189,4 +190,9 @@ lean_exe «kroopt-record13-test» where
 @[default_target]
 lean_exe «kroopt-wire-dump» where
   root := `Tests.WireDump
+  moreLinkArgs := #["-Wl,--gc-sections"]
+
+@[default_target]
+lean_exe «kroopt-socket-test» where
+  root := `Tests.SocketHandshake
   moreLinkArgs := #["-Wl,--gc-sections"]
