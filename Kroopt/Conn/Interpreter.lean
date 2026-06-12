@@ -1,6 +1,7 @@
 import Kroopt.Core.Step
 import Kroopt.Crypto.Provider
 import Kroopt.Conn.Transport
+import Kroopt.Parse.Wire
 
 /-!
 # Kroopt.Conn.Interpreter
@@ -76,6 +77,13 @@ def execAction {τ : Type} [Transport τ] (prov : CryptoProvider) (rt : RuntimeS
       -- Realize the typed handshake message via the shared serializer (RFC 032);
       -- no first-byte dispatch. Drains like any other authorized write.
       let (rt', tr') := drainOutbound { rt with outbound := rt.outbound ++ Kroopt.Core.serializeHandshakeOut msg } tr
+      (rt', tr', [])
+  | .writeCertificate _ _ =>
+      -- The interpreter owns Certificate serialization from the chain handle (RFC 032 §4).
+      -- Until the configured DER is wired into the runtime (RFC 031), production serializes
+      -- a structurally-valid empty Certificate rather than the old 4-byte placeholder.
+      let cert := Kroopt.Parse.Wire.certificate (ByteArray.mk #[]) (ByteArray.mk #[])
+      let (rt', tr') := drainOutbound { rt with outbound := rt.outbound ++ cert } tr
       (rt', tr', [])
   | .enableWriteInterest _  => ({ rt with writeInterest := true }, Transport.enableWrite tr (Transport.fd tr), [])
   | .disableWriteInterest _ => ({ rt with writeInterest := false }, Transport.disableWrite tr (Transport.fd tr), [])

@@ -204,6 +204,16 @@ external interop (RFC 015/026) are **frozen** until these gates pass, in this or
 - **post-M38 — browser-grade crypto surface (RFC 035).** AES-GCM/P-256/ECDSA/RSA and a
   practical public-certificate story, only after the above are green.
 
+*M36 RFC 032 slice 3 shipped — typed Certificate action (0.45.0-dev):* Certificate becomes a
+typed `OutputAction.writeCertificate (chain)` — a distinct action (not a `HandshakeOut` case)
+because the core holds only an opaque `CertificateChainHandle` (no DER), so the interpreter owns
+DER resolution (RFC 032 §4). `step` emits `writeCertificate (selectedCert)`; the test driver
+resolves the handle to its real chain (byte-identical to the placeholder it replaces), and
+production serializes a structurally-valid empty Certificate pending config-DER wiring (RFC 031).
+Three of five server-flight messages now first-byte-free; proofs unchanged (91, axiom-clean);
+24/24 suites incl. socket/wire. Remaining RFC 032: ServerHello + Finished (need server-share /
+Finished-MAC crypto-op flow), the §5 transcript restatement, and the §7 CI gate.
+
 *M36 RFC 032 slice 2 shipped — typed CertificateVerify action (0.44.0-dev):* CertificateVerify
 joins EncryptedExtensions as a typed `writeHandshake` action. `onCertVerifySigned` emits
 `writeHandshake (.certificateVerify <scheme> <sig>)` — the signature is already the core's

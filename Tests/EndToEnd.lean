@@ -1,4 +1,5 @@
 import Kroopt.Core.Step
+import Kroopt.Parse.Wire
 import Kroopt.Parse.Handshake
 
 /-!
@@ -75,6 +76,7 @@ structure Driver where
 def applyAction (d : Driver) : OutputAction → Driver × List InputEvent
   | .writeTransport _ bytes => ({ d with outbound := d.outbound ++ [bytes] }, [])
   | .writeHandshake _ msg => ({ d with outbound := d.outbound ++ [Kroopt.Core.serializeHandshakeOut msg] }, [])
+  | .writeCertificate _ _ => ({ d with outbound := d.outbound ++ [Kroopt.Parse.Wire.certificate (ByteArray.mk #[]) (ByteArray.mk #[])] }, [])
   | .callCrypto c op req => (d, [InputEvent.cryptoResult c op (fakeCrypto req)])
   | .reportHandshakeComplete _ _ => ({ d with completed := true }, [])
   | .emitPlaintext _ bytes => ({ d with emitted := d.emitted ++ [bytes] }, [])

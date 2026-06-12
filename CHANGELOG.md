@@ -3,6 +3,46 @@
 All notable changes to kroopt are recorded here. RFC lifecycle transitions are
 governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycle-policy.md).
 
+## [0.45.0-dev] — M36 (RFC 032 slice 3): typed Certificate action — 2026-06-12
+
+Third step of RFC 032: Certificate becomes a typed action. Because the core holds only an
+opaque chain handle (no DER), the interpreter owns the DER resolution.
+
+### Added
+
+- `Core/Action.lean`: `OutputAction.writeCertificate (conn) (chain :
+  CertificateChainHandle)` (a distinct action, not a `HandshakeOut` case, since its bytes
+  are not pure-serializable), with classifier simp lemmas. Action now imports
+  `Core.Cert` for the handle type (cycle-free).
+
+### Changed
+
+- `Core/Handshake.lean`: `step` emits `writeCertificate (selectedCert)` rather than a
+  placeholder `writeTransport`. The abstract transcript contribution is unchanged.
+- `Conn/Interpreter.lean`: a `writeCertificate` arm serializes the Certificate from the
+  handle. With no configured DER wired into the runtime yet (RFC 031), production
+  serializes a structurally-valid empty Certificate instead of the four-byte placeholder.
+- `Tests/RealHandshake.lean`, `Tests/EndToEnd.lean`: drivers resolve the handle to their
+  configured chain (the real test cert / an empty Certificate) and bind the
+  CH‥Certificate transcript hash, matching the placeholder path they replace.
+
+### Proofs
+
+- Theorem set unchanged (91, axiom-clean); the new constructor is handled by the existing
+  wildcard classifiers.
+
+### Tests
+
+- 24/24 suites pass, including socket and wire (which validate server-flight bytes); the
+  synthetic flight reaches `connected` with a byte-identical Certificate.
+
+### RFC lifecycle
+
+- **RFC 032** stays in `proposed/`. Three of five server-flight messages
+  (EncryptedExtensions, Certificate, CertificateVerify) are now typed and first-byte-free.
+  Remaining: ServerHello + Finished (need server-share / Finished-MAC crypto-op flow), the
+  §5 transcript restatement, and the §7 CI gate.
+
 ## [0.44.0-dev] — M36 (RFC 032 slice 2): typed CertificateVerify action — 2026-06-12
 
 Second step of RFC 032: CertificateVerify joins EncryptedExtensions as a typed

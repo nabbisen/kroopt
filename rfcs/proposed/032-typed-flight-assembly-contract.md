@@ -10,6 +10,20 @@
 
 ---
 
+> **Status note — partial (0.45.0-dev, M36 slice 3).** Certificate is now a typed action.
+> Unlike EncryptedExtensions/CertificateVerify it is *not* pure-serializable — the core
+> holds only an opaque `CertificateChainHandle` (no DER) — so it is a distinct
+> `OutputAction.writeCertificate (conn) (chain)` rather than a `HandshakeOut` case, and the
+> interpreter owns the DER resolution (RFC 032 §4: no generic byte payload under a
+> core-approved action; the chain is named by its typed handle). `step` emits
+> `writeCertificate (selectedCert)`. The test driver resolves the handle to its configured
+> chain and serializes the real Certificate (byte-identical to the placeholder path it
+> replaces); the production interpreter, which has no configured DER wired into its runtime
+> yet (that is RFC 031), serializes a structurally-valid empty Certificate instead of the
+> old four-byte placeholder. Three of five server-flight messages
+> (EncryptedExtensions, Certificate, CertificateVerify) are now first-byte-free; proofs
+> unchanged (91, axiom-clean); 24/24 suites including socket/wire.
+>
 > **Status note — partial (0.44.0-dev, M36 slice 2).** CertificateVerify is now a typed
 > action too. `HandshakeOut` gains `certificateVerify (scheme : UInt16) (signature :
 > ByteArray)`; `step` emits it from `onCertVerifySigned` as

@@ -187,9 +187,24 @@ def appendRealHandshakeOut (d : RD) (m : Kroopt.Core.HandshakeOut) : RD :=
   | .certificateVerify _ _ => { d with hCHCertVerify := Hacl.sha256 transcript' }
   | _ => d
 
+/-- Realize a typed `writeCertificate` action (RFC 032): the interpreter resolves the
+chain handle to DER. The test driver's configured chain is `certDer`; it serializes the
+real Certificate, seals it as a handshake-epoch record, commits it to the transcript, and
+binds the CH‥Certificate hash the CertificateVerify signature is taken over. -/
+def appendRealCert (d : RD) : RD :=
+  let msg := Wire.certificate ByteArray.empty (Wire.certificateEntry certDer ByteArray.empty)
+  let transcript' := d.transcript ++ msg
+  let hsKey := KeySchedule.trafficKey .chacha20Poly1305Sha256 d.sHsTraffic
+  let hsIv  := KeySchedule.trafficIv d.sHsTraffic
+  let sealed := Record13.sealRecord hsKey hsIv d.writeSeq.toUInt64 msg .handshake 0
+  { d with sealedFlight := d.sealedFlight ++ [(d.writeSeq, msg, sealed)], writeSeq := d.writeSeq + 1,
+           transcript := transcript', outbound := d.outbound ++ [msg],
+           hCHCert := Hacl.sha256 transcript' }
+
 def applyAction (d : RD) : OutputAction → RD × List InputEvent
   | .writeTransport _ bytes => (appendReal d bytes, [])
   | .writeHandshake _ msg => (appendRealHandshakeOut d msg, [])
+  | .writeCertificate _ _ => (appendRealCert d, [])
   | .callCrypto c op req =>
       let (d', r) := runReal d req
       (d', [InputEvent.cryptoResult c op r])

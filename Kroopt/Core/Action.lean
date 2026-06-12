@@ -3,6 +3,7 @@ import Kroopt.Core.Id
 import Kroopt.Core.Common
 import Kroopt.Core.CipherSuite
 import Kroopt.Core.Crypto
+import Kroopt.Core.Cert
 
 /-!
 # Kroopt.Core.Action
@@ -52,6 +53,10 @@ inductive OutputAction where
   /-- Emit a typed server-flight handshake message; the interpreter serializes it
   (RFC 032). No production path dispatches on the message's first byte. -/
   | writeHandshake (conn : ConnId) (msg : HandshakeOut)
+  /-- Emit the server Certificate from a configured chain *handle* (RFC 032 §4). The
+  core holds only the opaque handle; the interpreter resolves it to DER and serializes,
+  so the DER never enters the pure core. -/
+  | writeCertificate (conn : ConnId) (chain : CertificateChainHandle)
   /-- Register write interest with the transport. -/
   | enableWriteInterest (conn : ConnId)
   /-- Drop write interest (queue empty). -/
@@ -124,6 +129,12 @@ def isPlaintextAccept : OutputAction → Bool
 
 @[simp] theorem isOrdinaryTransportWrite_writeHandshake (c : ConnId) (m : HandshakeOut) :
     isOrdinaryTransportWrite (writeHandshake c m) = false := rfl
+
+@[simp] theorem isPlaintextEmit_writeCertificate (c : ConnId) (h : CertificateChainHandle) :
+    isPlaintextEmit (writeCertificate c h) = false := rfl
+
+@[simp] theorem isOrdinaryTransportWrite_writeCertificate (c : ConnId) (h : CertificateChainHandle) :
+    isOrdinaryTransportWrite (writeCertificate c h) = false := rfl
 
 /-- If an action is classified as a plaintext emit, it is literally an
 `emitPlaintext`. Lets proofs reduce "emits plaintext" to a membership fact about

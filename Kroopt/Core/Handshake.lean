@@ -192,7 +192,8 @@ def onHsScheduleResult (s : State) (r : CryptoResult) : HsResult :=
             .ok ({ s with handshake := .requestedCertificateVerifySignature },
                  [ OutputAction.writeHandshake s.connId
                      (.encryptedExtensions (s.negotiated.selectedAlpn.map (·.bytes))),
-                   OutputAction.writeTransport s.connId cert,
+                   OutputAction.writeCertificate s.connId
+                     (s.negotiated.selectedCert.getD default),
                    OutputAction.callCrypto s.connId oid
                      (CryptoOp.signCertificateVerify scheme
                        (ByteArray.mk #[snap.id.toUInt8])) ])
