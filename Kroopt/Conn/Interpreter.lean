@@ -72,6 +72,11 @@ def execAction {τ : Type} [Transport τ] (prov : CryptoProvider) (rt : RuntimeS
   | .writeTransport _ b =>
       let (rt', tr') := drainOutbound { rt with outbound := rt.outbound ++ b } tr
       (rt', tr', [])
+  | .writeHandshake _ msg =>
+      -- Realize the typed handshake message via the shared serializer (RFC 032);
+      -- no first-byte dispatch. Drains like any other authorized write.
+      let (rt', tr') := drainOutbound { rt with outbound := rt.outbound ++ Kroopt.Core.serializeHandshakeOut msg } tr
+      (rt', tr', [])
   | .enableWriteInterest _  => ({ rt with writeInterest := true }, Transport.enableWrite tr (Transport.fd tr), [])
   | .disableWriteInterest _ => ({ rt with writeInterest := false }, Transport.disableWrite tr (Transport.fd tr), [])
   | .callCrypto conn op req =>

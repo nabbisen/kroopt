@@ -204,6 +204,20 @@ external interop (RFC 015/026) are **frozen** until these gates pass, in this or
 - **post-M38 — browser-grade crypto surface (RFC 035).** AES-GCM/P-256/ECDSA/RSA and a
   practical public-certificate story, only after the above are green.
 
+*M36 RFC 032 slice 1 shipped — typed EncryptedExtensions action (0.43.0-dev):* the core
+begins replacing placeholder handshake frames with typed actions that carry protocol facts.
+`Core/Action.lean` adds `HandshakeOut` + `OutputAction.writeHandshake`; `step` emits
+EncryptedExtensions as `writeHandshake (.encryptedExtensions <ALPN>)`, and a single pure
+serializer (`Core.serializeHandshakeOut`) realizes the wire bytes — the production interpreter
+and both test drivers call it via total pattern matching, so nothing recognizes EE by its first
+byte. Action-discipline and transcript proofs hold unchanged (91 theorems, axiom-clean; 24/24
+suites; flight still reaches `connected` with identical bytes). Remaining RFC 032 slices:
+CertificateVerify (two-stage; sig already in-core), Certificate (interpreter owns DER behind the
+chain handle), ServerHello + Finished (need server-share / Finished-MAC crypto-op flow), the
+transcript-over-real-handshake-bytes restatement (§5), and the CI gate forbidding
+placeholder/first-byte dispatch (§7, only once all five are typed). Then RFC 031
+(production-interpreter correspondence + ledger).
+
 *M36 part 6 shipped — handshake-message reassembler; RFC 033 COMPLETE (0.42.0-dev):* the record
 path now reassembles handshake messages across records via a bounded `State.handshakeReasm`
 buffer + `frameHandshakeMessage`, so a ClientHello fragmented across records parses correctly

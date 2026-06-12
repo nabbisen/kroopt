@@ -56,3 +56,25 @@ interop (RFC 015 / 026).
 
 The verified state machine is untouched by this increment: the 87 theorems and the
 existing suites are unchanged; `Flight` is an impure-zone module plus one test.
+
+## Typed handshake-output actions (RFC 032, in progress)
+
+Historically the core emitted a four-byte structural *placeholder* for each server-flight
+message (`#[8,0,0,0]` for EncryptedExtensions, and so on) and the byte-accurate message
+was assembled outside the proof line by recognizing that first byte. RFC 032 replaces this
+with typed actions that carry protocol *facts*: the core decides what (selected suite,
+group, ALPN, certificate handle, epoch, ordering), and a single pure serializer realizes
+the bytes, so no path branches on a message's first byte.
+
+The first message converted is EncryptedExtensions. The core emits
+`OutputAction.writeHandshake conn (.encryptedExtensions <selected ALPN>)`; the production
+interpreter and the test drivers all call `Core.serializeHandshakeOut` to turn that typed
+plan into wire bytes. The action-discipline classifiers treat `writeHandshake` as neither a
+plaintext emit nor an ordinary transport write, so the safety lemmas carry over unchanged.
+
+The remaining messages convert as their inputs become available to the core:
+CertificateVerify next (the signature is already a core result, paired with the two-stage
+request/write rule), then Certificate (the interpreter owns the DER behind the chain
+handle), and finally ServerHello and Finished once the server share and Finished MAC are
+surfaced as core crypto results. The transcript-over-real-handshake-bytes restatement and
+the CI gate forbidding placeholder/first-byte dispatch land once every message is typed.

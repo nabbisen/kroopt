@@ -1,6 +1,7 @@
 import Kroopt.Core.State
 import Kroopt.Core.Event
 import Kroopt.Core.Action
+import Kroopt.Parse.Wire
 
 /-!
 # Kroopt.Core.Handshake
@@ -29,6 +30,18 @@ Safety-relevant structure, exploited by `Kroopt.Proofs.Handshake`:
 namespace Kroopt.Core
 
 open Kroopt (TlsError AlertDescription)
+
+/-- Realize a typed server-flight handshake message into its wire bytes (RFC 032 §3).
+A single pure serializer is the one source of byte layout: the interpreter and the
+test drivers all call it, so no production path recognizes a message by its first
+byte. Slice 1 covers EncryptedExtensions (ALPN). -/
+def serializeHandshakeOut : HandshakeOut → ByteArray
+  | .encryptedExtensions alpn =>
+      let exts := match alpn with
+        | none   => ByteArray.mk #[]
+        | some p => Kroopt.Parse.Wire.extension 0x10
+                      (Kroopt.Parse.Wire.u16Len (Kroopt.Parse.Wire.u8Len p))
+      Kroopt.Parse.Wire.encryptedExtensions exts
 
 /-- A validated ClientHello: the negotiated parameters the parser/policy checker
 produced (RFC 006 §5). Holding one is evidence the mandatory checks passed —
@@ -168,7 +181,8 @@ def onHsScheduleResult (s : State) (r : CryptoResult) : HsResult :=
             let (oid, s) := s.allocOp .signCertificateVerify .handshake (some .write)
             let scheme := s.negotiated.selectedSigScheme.getD .ed25519
             .ok ({ s with handshake := .requestedCertificateVerifySignature },
-                 [ OutputAction.writeTransport s.connId ee,
+                 [ OutputAction.writeHandshake s.connId
+                     (.encryptedExtensions (s.negotiated.selectedAlpn.map (·.bytes))),
                    OutputAction.writeTransport s.connId cert,
                    OutputAction.callCrypto s.connId oid
                      (CryptoOp.signCertificateVerify scheme

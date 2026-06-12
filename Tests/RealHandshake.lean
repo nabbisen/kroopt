@@ -170,8 +170,22 @@ def appendReal (d : RD) (placeholder : ByteArray) : RD :=
   else if tag == 20 then { d with hCHSF := Hacl.sha256 transcript' }
   else d
 
+/-- Realize a typed `writeHandshake` message (RFC 032) the same way `appendReal` realizes
+the EncryptedExtensions placeholder: serialize via the shared core serializer, seal it as
+a handshake-epoch record, and commit it to the real transcript and outbound. No first-byte
+dispatch. (Slice 1: EncryptedExtensions, which carries no bound transcript hash.) -/
+def appendRealHandshakeOut (d : RD) (m : Kroopt.Core.HandshakeOut) : RD :=
+  let msg := Kroopt.Core.serializeHandshakeOut m
+  let transcript' := d.transcript ++ msg
+  let hsKey := KeySchedule.trafficKey .chacha20Poly1305Sha256 d.sHsTraffic
+  let hsIv  := KeySchedule.trafficIv d.sHsTraffic
+  let sealed := Record13.sealRecord hsKey hsIv d.writeSeq.toUInt64 msg .handshake 0
+  { d with sealedFlight := d.sealedFlight ++ [(d.writeSeq, msg, sealed)], writeSeq := d.writeSeq + 1,
+           transcript := transcript', outbound := d.outbound ++ [msg] }
+
 def applyAction (d : RD) : OutputAction → RD × List InputEvent
   | .writeTransport _ bytes => (appendReal d bytes, [])
+  | .writeHandshake _ msg => (appendRealHandshakeOut d msg, [])
   | .callCrypto c op req =>
       let (d', r) := runReal d req
       (d', [InputEvent.cryptoResult c op r])

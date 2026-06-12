@@ -10,6 +10,38 @@
 
 ---
 
+> **Status note — partial (0.43.0-dev, M36 slice 1).** The first typed handshake-output
+> action landed. `Core/Action.lean` gains `inductive HandshakeOut` and
+> `OutputAction.writeHandshake (conn) (msg : HandshakeOut)`; the action classifiers
+> (`isPlaintextEmit`, `isOrdinaryTransportWrite`) treat it as a non-plaintext,
+> non-ordinary-write action, so the action-discipline lemmas hold unchanged. `step` now
+> emits EncryptedExtensions as `writeHandshake (.encryptedExtensions <selected ALPN>)`
+> instead of a placeholder `writeTransport`, and a single pure serializer
+> (`Core.serializeHandshakeOut`) realizes its wire bytes. The production interpreter and
+> both test drivers call that one serializer via total pattern matching on the typed
+> message — **no path recognizes EncryptedExtensions by its first byte.** This realizes
+> acceptance criterion 1 for one message and proves the typed-action → total-serializer
+> pattern end to end (91 theorems, axiom-clean; 24/24 suites; the server flight still
+> reaches `connected` with identical wire bytes).
+>
+> **Deliberately deferred (and why each is its own slice):**
+> - *ServerHello* and *Finished* — their wire bytes need the server's ephemeral public
+>   share and the Finished MAC, neither of which the pure core currently holds; surfacing
+>   them needs new crypto-op flow, not just payload typing. They stay on the placeholder
+>   path for now.
+> - *Certificate* — the core holds only an opaque `CertificateChainHandle` (no DER), so
+>   its typed action carries the handle and the interpreter owns the DER serialization;
+>   converted in a later slice alongside the interpreter-side chain resolver.
+> - *CertificateVerify* — the core does hold the signature (from `onCertVerifySigned`), so
+>   this converts next, paired with the two-stage request/write rule (criterion 2).
+> - *Transcript over real handshake-message bytes* (§5) and the *placeholder/first-byte CI
+>   gate* (§7) land only once all five messages are typed (the gate would otherwise fail
+>   on the still-present `frame*` helpers). The transcript currently keeps its abstract
+>   snapshot contribution unchanged, so transcript-consistency proofs are untouched.
+>
+> The RFC stays in `proposed/` until criteria 1–5 are all met.
+
+
 ## 1. Summary
 
 The verified core emits **structural placeholder frames** for handshake messages —

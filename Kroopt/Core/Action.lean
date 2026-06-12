@@ -30,12 +30,25 @@ structure HandshakeInfo where
   configGen : ConfigGeneration
   deriving Repr, Inhabited
 
+/-- A typed server-flight handshake message: the core supplies the protocol *facts*
+and the interpreter realizes the byte layout (RFC 032 §3–4). The byte fields are
+representation-level (e.g. an ALPN protocol id) so this stays in the low-level action
+module without importing the config/negotiation layer. Slice 1 covers
+EncryptedExtensions; the remaining server-flight messages migrate as their
+crypto-result plumbing lands. -/
+inductive HandshakeOut where
+  /-- EncryptedExtensions carrying the negotiated ALPN protocol id, if any. -/
+  | encryptedExtensions (alpn : Option ByteArray)
+
 /-- Actions the core asks the interpreter to perform (RFC 002 §3). -/
 inductive OutputAction where
   /-- Read from the transport. -/
   | readTransport (conn : ConnId)
   /-- Queue ciphertext the core has authorised for transport write. -/
   | writeTransport (conn : ConnId) (b : ByteArray)
+  /-- Emit a typed server-flight handshake message; the interpreter serializes it
+  (RFC 032). No production path dispatches on the message's first byte. -/
+  | writeHandshake (conn : ConnId) (msg : HandshakeOut)
   /-- Register write interest with the transport. -/
   | enableWriteInterest (conn : ConnId)
   /-- Drop write interest (queue empty). -/
@@ -102,6 +115,12 @@ def isPlaintextAccept : OutputAction → Bool
 
 @[simp] theorem isPlaintextEmit_closeTransport (c : ConnId) (m : CloseMode) :
     isPlaintextEmit (closeTransport c m) = false := rfl
+
+@[simp] theorem isPlaintextEmit_writeHandshake (c : ConnId) (m : HandshakeOut) :
+    isPlaintextEmit (writeHandshake c m) = false := rfl
+
+@[simp] theorem isOrdinaryTransportWrite_writeHandshake (c : ConnId) (m : HandshakeOut) :
+    isOrdinaryTransportWrite (writeHandshake c m) = false := rfl
 
 /-- If an action is classified as a plaintext emit, it is literally an
 `emitPlaintext`. Lets proofs reduce "emits plaintext" to a membership fact about

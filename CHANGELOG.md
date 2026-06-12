@@ -3,6 +3,51 @@
 All notable changes to kroopt are recorded here. RFC lifecycle transitions are
 governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycle-policy.md).
 
+## [0.43.0-dev] — M36 (RFC 032 slice 1): typed EncryptedExtensions action — 2026-06-12
+
+First step of RFC 032 (Typed Handshake/Record Assembly Contract): the core begins emitting
+typed handshake-output actions that carry protocol facts instead of placeholder frame
+bytes, with a single pure serializer realizing the wire bytes. EncryptedExtensions is
+converted; no path recognizes it by its first byte.
+
+### Added
+
+- `Core/Action.lean`: `inductive HandshakeOut` (slice 1: `encryptedExtensions (alpn :
+  Option ByteArray)`) and `OutputAction.writeHandshake (conn) (msg : HandshakeOut)`.
+  Classifier simp lemmas mark `writeHandshake` as neither a plaintext emit nor an ordinary
+  transport write.
+- `Core/Handshake.lean`: `serializeHandshakeOut`, the one pure serializer that realizes a
+  typed handshake message into wire bytes (EncryptedExtensions → ALPN-bearing exts).
+
+### Changed
+
+- `Core/Handshake.lean`: `step` emits EncryptedExtensions as `writeHandshake
+  (.encryptedExtensions <selected ALPN>)` rather than a placeholder `writeTransport`. The
+  abstract transcript contribution is unchanged (real-bytes transcript is a later slice).
+- `Conn/Interpreter.lean`, `Tests/EndToEnd.lean`, `Tests/RealHandshake.lean`: realize
+  `writeHandshake` via total pattern matching on the typed message through the shared
+  `serializeHandshakeOut` — no first-byte dispatch for EncryptedExtensions.
+
+### Proofs
+
+- Theorem set unchanged (91, axiom-clean). `writeHandshake` is handled by the existing
+  wildcard classifiers and the `isPlaintextEmit_eq_true` lemma's `simp` branch; the
+  action-discipline and transcript-consistency proofs hold without edits.
+
+### Tests
+
+- 24/24 suites pass. The synthetic server flight still reaches `connected` with identical
+  EncryptedExtensions wire bytes (the typed path serializes byte-for-byte what the
+  placeholder path produced); the e2e flight-count and seven-message-transcript checks are
+  unaffected.
+
+### RFC lifecycle
+
+- **RFC 032** stays in `proposed/`; this lands acceptance criterion 1 for one message.
+  Deferred to later slices: CertificateVerify (two-stage), Certificate (handle→DER in the
+  interpreter), ServerHello + Finished (need server-share / MAC crypto-op flow), the
+  transcript-over-real-bytes restatement (§5), and the placeholder/first-byte CI gate (§7).
+
 ## [0.42.0-dev] — M36 (part 6): handshake-message reassembler — RFC 033 complete — 2026-06-12
 
 The bounded handshake-message reassembler lands, completing RFC 033 (Real-Client
