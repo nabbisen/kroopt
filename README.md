@@ -12,7 +12,7 @@ actions; a thin interpreter executes those actions over real crypto and sockets
 and never makes protocol decisions of its own. That separation carries
 machine-checked safety properties into the running code.
 
-## Status: M0–M16 (verified core → handshake → TlsConn → config → alerts/close → HTTPS → hardening → native crypto → key schedule → real provider → key-schedule orchestrator → two-stage interleave)
+## Status: M0–M17 (verified core → handshake → TlsConn → config → alerts/close → HTTPS → hardening → native crypto → key schedule → real provider → orchestrator → two-stage interleave → wired into step)
 
 This tree implements milestones **M0**–**M5** from the [ROADMAP](ROADMAP.md). M0
 fixes the pure-core/interpreter architecture; M1 adds the bounds-safe parsing
@@ -106,6 +106,19 @@ stages (85 theorems), and `kroopt-scheduledriver-test` drives both through the r
 provider, checking each stage against RFC 8448. The orchestrator now matches the
 handshake's interleaving, so it can be driven exactly the way `step` will — the
 wiring itself is the next milestone.
+
+M17 takes that step: the handshake-key stage is now invoked by `Kroopt.Core.step`.
+`onEcdheDone` frames ServerHello and starts the stage (storing the orchestrator in
+the new `State.keySched` field, entering a `derivedHandshakeSecrets` pump phase);
+`onHsScheduleResult` feeds each returning HKDF/install result to the orchestrator
+and emits the next op, self-looping until the `handshakeKeysInstalled` pause, then
+frames EncryptedExtensions/Certificate and requests the CertificateVerify signature.
+The new phase's transitions are proved legal and the pump emits only
+`callCrypto`/`writeTransport` — never plaintext — so the handshake's absence-based
+safety proofs extend to it (86 theorems). The full synthetic handshake drives the
+stage end-to-end through `step` in `kroopt-e2e-test` and `kroopt-handshake-test`.
+The application-key stage (via `resumeApplication`, after the server Finished) and
+real transcript resolution are the next milestones.
 
 The headline M5 result: every M2/M3 safety theorem — above all *no early
 plaintext* — **still holds over the live handshake**, which is the

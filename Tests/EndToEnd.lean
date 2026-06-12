@@ -104,7 +104,7 @@ def fresh : Driver :=
 /-- Run the full handshake: feed the ClientHello record, then (after the server
 flight) the client Finished record; crypto results cascade automatically. -/
 def runE2E : Driver :=
-  driveFuel 64 fresh
+  driveFuel 256 fresh
     [InputEvent.transportBytes ⟨0, 0⟩ chRecord,
      InputEvent.transportBytes ⟨0, 0⟩ clientFinishedRecord]
 

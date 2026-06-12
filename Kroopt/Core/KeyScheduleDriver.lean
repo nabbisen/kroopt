@@ -127,6 +127,25 @@ def start (suite : CipherSuite) (peerShare emptyHash hsTranscript : ByteArray) :
      hsTranscript := hsTranscript },
    CryptoOp.ecdheX25519 peerShare)
 
+/-- SHA-256 of the empty string (RFC 8446 §7.1 "empty hash"), used as the context
+for the two Derive-Secret(_, "derived") steps. A fixed protocol constant for the
+SHA-256 suites; computing it from the transcript module is a later refinement. -/
+def emptyHashSha256 : ByteArray :=
+  ByteArray.mk #[0xe3, 0xb0, 0xc4, 0x42, 0x98, 0xfc, 0x1c, 0x14, 0x9a, 0xfb, 0xf4, 0xc8,
+    0x99, 0x6f, 0xb9, 0x24, 0x27, 0xae, 0x41, 0xe4, 0x64, 0x9b, 0x93, 0x4c, 0xa4, 0x95,
+    0x99, 0x1b, 0x78, 0x52, 0xb8, 0x55]
+
+/-- The handshake-key stage as entered post-ECDHE: the ECDHE op has already been
+emitted and answered (by the existing handshake), so this records the shared-secret
+handle and emits the Early-Secret extraction, landing at `awaitEarly`. Equivalent
+to `advance` of the `awaitShared` state on an `ecdheComplete` result, factored out
+so the handshake can start the stage with a concrete first op. -/
+def startPostEcdhe (suite : CipherSuite) (emptyHash hsTranscript : ByteArray)
+    (shared : SecretKeyHandle) : State × CryptoOp :=
+  ({ phase := .awaitEarly, handles := { shared := some shared }, suite := suite,
+     emptyHash := emptyHash, hsTranscript := hsTranscript },
+   CryptoOp.hkdfExtract .sha256 none none)
+
 /-- Helper: an HKDF-Expand-Label op for a 32-byte secret derivation. -/
 def expand (secret : SecretKeyHandle) (label : String) (ctx : ByteArray) :
     CryptoOp :=

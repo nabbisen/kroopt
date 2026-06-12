@@ -58,9 +58,41 @@ theorem onEcdheDone_legal
   unfold onEcdheDone at h
   split at h
   · rename_i hcond
-    simp only [State.allocOp, TranscriptState.snapshot, Except.ok.injEq, Prod.mk.injEq] at h
+    simp only [State.allocOp, TranscriptState.snapshot, KeyScheduleDriver.startPostEcdhe,
+      Except.ok.injEq, Prod.mk.injEq] at h
     obtain ⟨hs, -⟩ := h
     rw [← hs, hcond]; rfl
+  · exact hsFail_legal _ _ _ _ _ h hnt
+
+/-- `onHsScheduleResult` moves along a legal edge: it either self-loops in
+`derivedHandshakeSecrets` (pumping the schedule), advances to
+`requestedCertificateVerifySignature` (stage done), or fails. -/
+theorem onHsScheduleResult_legal
+    (s s' : State) (r : CryptoResult) (acts : List OutputAction)
+    (h : onHsScheduleResult s r = .ok (s', acts))
+    (hnt : s.handshake.isTerminal = false) :
+    legalEdge s.handshake s'.handshake = true := by
+  unfold onHsScheduleResult at h
+  split at h
+  · rename_i hcond
+    split at h
+    · exact hsFail_legal _ _ _ _ _ h hnt
+    · split at h
+      · exact hsFail_legal _ _ _ _ _ h hnt
+      · simp only [State.allocOp, Except.ok.injEq, Prod.mk.injEq] at h
+        obtain ⟨hs, -⟩ := h
+        have hsh : s'.handshake = s.handshake := by rw [← hs]
+        rw [hsh, hcond]; rfl
+      · split at h
+        · simp only [State.allocOp, TranscriptState.snapshot, Except.ok.injEq,
+            Prod.mk.injEq] at h
+          obtain ⟨hs, -⟩ := h
+          have hsh : s'.handshake = .requestedCertificateVerifySignature := by rw [← hs]
+          rw [hsh, hcond]; rfl
+        · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+          obtain ⟨hs, -⟩ := h
+          have hsh : s'.handshake = s.handshake := by rw [← hs]
+          rw [hsh, hcond]; rfl
   · exact hsFail_legal _ _ _ _ _ h hnt
 
 /-- `onCertVerifySigned` moves along a legal edge. -/
@@ -166,6 +198,19 @@ private theorem hs_no_emit_onEcdheDone
      simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
        or_self, or_false] at hmem)
 
+private theorem hs_no_emit_onHsScheduleResult
+    (s s' : State) (r : CryptoResult) (acts : List OutputAction)
+    (h : onHsScheduleResult s r = .ok (s', acts)) (c : ConnId) (bb : ByteArray) :
+    OutputAction.emitPlaintext c bb ∉ acts := by
+  intro hmem
+  unfold onHsScheduleResult hsFail at h
+  repeat' split at h
+  all_goals
+    (simp only [State.allocOp, TranscriptState.snapshot, Except.ok.injEq, Prod.mk.injEq] at h
+     obtain ⟨-, rfl⟩ := h
+     simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+       or_self, or_false] at hmem)
+
 private theorem hs_no_emit_onCertVerifySigned
     (s s' : State) (sig : ByteArray) (acts : List OutputAction)
     (h : onCertVerifySigned s sig = .ok (s', acts)) (c : ConnId) (bb : ByteArray) :
@@ -220,6 +265,7 @@ theorem handshakeOnGatingResult_no_emit
   all_goals (
     first
     | exact hs_no_emit_onEcdheDone _ _ _ _ h c bb hmem
+    | exact hs_no_emit_onHsScheduleResult _ _ _ _ h c bb hmem
     | exact hs_no_emit_onCertVerifySigned _ _ _ _ h c bb hmem
     | exact hs_no_emit_onClientFinishedVerified _ _ _ _ _ h c bb hmem
     | (simp only [Except.ok.injEq, Prod.mk.injEq] at h
@@ -266,6 +312,19 @@ private theorem hs_no_accept_onEcdheDone
      simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
        or_self, or_false] at hmem)
 
+private theorem hs_no_accept_onHsScheduleResult
+    (s s' : State) (r : CryptoResult) (acts : List OutputAction)
+    (h : onHsScheduleResult s r = .ok (s', acts)) (c : ConnId) (n : Nat) :
+    OutputAction.acceptPlaintextBytes c n ∉ acts := by
+  intro hmem
+  unfold onHsScheduleResult hsFail at h
+  repeat' split at h
+  all_goals
+    (simp only [State.allocOp, TranscriptState.snapshot, Except.ok.injEq, Prod.mk.injEq] at h
+     obtain ⟨-, rfl⟩ := h
+     simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+       or_self, or_false] at hmem)
+
 private theorem hs_no_accept_onCertVerifySigned
     (s s' : State) (sig : ByteArray) (acts : List OutputAction)
     (h : onCertVerifySigned s sig = .ok (s', acts)) (c : ConnId) (n : Nat) :
@@ -307,6 +366,7 @@ theorem handshakeOnGatingResult_no_accept
   all_goals (
     first
     | exact hs_no_accept_onEcdheDone _ _ _ _ h c n hmem
+    | exact hs_no_accept_onHsScheduleResult _ _ _ _ h c n hmem
     | exact hs_no_accept_onCertVerifySigned _ _ _ _ h c n hmem
     | exact hs_no_accept_onClientFinishedVerified _ _ _ _ _ h c n hmem
     | (simp only [Except.ok.injEq, Prod.mk.injEq] at h

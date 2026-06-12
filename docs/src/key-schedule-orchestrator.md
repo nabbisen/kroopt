@@ -80,14 +80,33 @@ handshake/application) are checked. The schedule logic is verified core code,
 interleaved exactly as the handshake will drive it, computing the published trace
 against real cryptography.
 
+## Wired into `step` (handshake-key stage)
+
+As of M17 the handshake-key stage is invoked by `Kroopt.Core.step`. When the ECDHE
+result returns, `onEcdheDone` frames ServerHello, installs the handshake epoch, and
+calls `startPostEcdhe` to begin the stage — storing the orchestrator `State` in the
+connection's `keySched` field and entering a `derivedHandshakeSecrets` pump phase.
+Each returning HKDF / install result is routed (through `handleCryptoResult` →
+`handshakeOnGatingResult`) to `onHsScheduleResult`, which feeds it to `advance` and
+emits the next schedule op — self-looping until the stage parks at
+`handshakeKeysInstalled`, at which point it frames EncryptedExtensions / Certificate
+and requests the CertificateVerify signature, rejoining the existing flight.
+
+The wiring preserves the handshake's safety invariants. The new phase's transitions
+are legal edges (`onHsScheduleResult_legal`, lifting the audited count to 86), and
+the pump emits only `callCrypto` / `writeTransport` actions — never application
+plaintext — so the absence-dominated discipline (`handshakeOnGatingResult_no_emit`
+/ `_no_accept`) extends to it unchanged. The full synthetic handshake drives the
+stage end-to-end through `step` in both `kroopt-e2e-test` and `kroopt-handshake-test`.
+
 ## The honest boundary (next)
 
-The orchestrator is built, proved, and shown to drive real crypto — but it is **not
-yet invoked by `Kroopt.Core.step`**. Wiring it into the live handshake is the next
-milestone: `onEcdheDone` and the gating-result dispatch must kick off and pump the
-schedule, threading its `State` through the handshake's negotiation state. Because
-the handshake's safety proofs are absence-dominated (no plaintext / no
-accept / no AEAD-open before `connected`) and the orchestrator is proved to emit
-only schedule ops, that integration should preserve them — but it does touch those
-proofs, which is why it is sequenced separately. After it, production entropy and
-certificate provisioning, then a real handshake against OpenSSL/curl.
+Two things remain. First, the **application-key stage is not yet driven by `step`**:
+the orchestrator parks at `handshakeKeysInstalled` and the current handlers still
+install application keys via a placeholder. Wiring `resumeApplication` (a second
+pump phase, after the server Finished is committed) is the next milestone. Second,
+the schedule's transcript contexts are the core's **abstract snapshot references**,
+not real hash bytes — the wiring is structural; resolving those to real transcript
+hashes (so a real run produces RFC-correct traffic keys) is a later milestone, after
+which come production entropy / certificate provisioning and a real handshake
+against OpenSSL/curl.

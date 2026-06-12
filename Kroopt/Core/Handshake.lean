@@ -54,7 +54,8 @@ def legalEdge (a b : HandshakeState) : Bool :=
   || (!a.isTerminal && b == .closing)
   || (a == .closing && b == .closed)
   || (a == .start && b == .requestedEcdhe)
-  || (a == .requestedEcdhe && b == .requestedCertificateVerifySignature)
+  || (a == .requestedEcdhe && b == .derivedHandshakeSecrets)
+  || (a == .derivedHandshakeSecrets && b == .requestedCertificateVerifySignature)
   || (a == .requestedCertificateVerifySignature && b == .sentServerFinished)
   || (a == .sentServerFinished && b == .requestedClientFinishedVerify)
   || (a == .requestedClientFinishedVerify && b == .connected)
@@ -110,11 +111,13 @@ def onClientHello (s : State) (vch : ValidClientHello) (chWire : ByteArray) : Hs
   else
     hsFail s .unexpectedMessage (.protocol .illegalMessageForState)
 
-/-- `requestedEcdhe → requestedCertificateVerifySignature`. Install handshake
-keys, frame ServerHello / EncryptedExtensions / Certificate (committing each to
-the transcript), and request the CertificateVerify signature over the transcript
-snapshot taken at this point. -/
-def onEcdheDone (s : State) (_secret : SecretKeyHandle) : HsResult :=
+/-- `requestedEcdhe → derivedHandshakeSecrets`. Frame ServerHello (committing it to
+the transcript), install the handshake epoch, and **start the handshake-key stage
+of the key schedule**: record the ECDHE shared-secret handle and request the
+Early-Secret extraction. The rest of the stage is pumped by `onHsScheduleResult`.
+(The transcript context is the core's abstract snapshot reference; the provider
+resolves it to the real hash in the real-transcript milestone.) -/
+def onEcdheDone (s : State) (secret : SecretKeyHandle) : HsResult :=
   if s.handshake = .requestedEcdhe then
     let sh := frameServerHello { selectedSuite := s.negotiated.selectedSuite.getD .aes128GcmSha256
                                  selectedGroup := s.negotiated.selectedGroup.getD .x25519
@@ -122,21 +125,55 @@ def onEcdheDone (s : State) (_secret : SecretKeyHandle) : HsResult :=
                                  selectedSigScheme := s.negotiated.selectedSigScheme.getD .ed25519
                                  sni := none, alpn := [] }
     let ts := s.transcript.appendFramed .serverHello .write sh
-    let ts := ts.appendFramed .encryptedExtensions .write frameEncryptedExtensions
-    let ts := ts.appendFramed .certificate .write frameCertificate
     let (snap, ts) := ts.snapshot
+    let hsTh := ByteArray.mk #[snap.id.toUInt8]
     let s := { s with transcript := ts
                       readEpoch := installEpoch .handshake
                       writeEpoch := installEpoch .handshake }
-    let (oid, s) := s.allocOp .signCertificateVerify .handshake (some .write)
-    let scheme := s.negotiated.selectedSigScheme.getD .ed25519
-    .ok ({ s with handshake := .requestedCertificateVerifySignature },
+    let suite := s.negotiated.selectedSuite.getD .aes128GcmSha256
+    let (ksd, earlyOp) := KeyScheduleDriver.startPostEcdhe suite
+                            KeyScheduleDriver.emptyHashSha256 hsTh secret
+    let (oid, s) := s.allocOp earlyOp.kind .handshake (some .write)
+    .ok ({ s with handshake := .derivedHandshakeSecrets, keySched := some ksd },
          [ OutputAction.writeTransport s.connId sh,
-           OutputAction.writeTransport s.connId frameEncryptedExtensions,
-           OutputAction.writeTransport s.connId frameCertificate,
-           OutputAction.callCrypto s.connId oid
-             (CryptoOp.signCertificateVerify scheme
-               (ByteArray.mk #[snap.id.toUInt8])) ])
+           OutputAction.callCrypto s.connId oid earlyOp ])
+  else
+    hsFail s .unexpectedMessage (.protocol .illegalMessageForState)
+
+/-- `derivedHandshakeSecrets → derivedHandshakeSecrets` (pumping) or
+`→ requestedCertificateVerifySignature` (stage done). Feed the awaited schedule
+result to the orchestrator and emit the next schedule op; when the handshake-key
+stage reaches its pause, frame EncryptedExtensions / Certificate and request the
+CertificateVerify signature over the transcript snapshot. -/
+def onHsScheduleResult (s : State) (r : CryptoResult) : HsResult :=
+  if s.handshake = .derivedHandshakeSecrets then
+    match s.keySched with
+    | none => hsFail s .internalError (.protocol .illegalMessageForState)
+    | some ksd =>
+      match KeyScheduleDriver.advance ksd r with
+      | .error e => hsFail s .internalError e
+      | .ok (ksd, op :: _) =>
+          let (oid, s) := s.allocOp op.kind .handshake (some .write)
+          .ok ({ s with keySched := some ksd },
+               [OutputAction.callCrypto s.connId oid op])
+      | .ok (ksd, []) =>
+          if ksd.phase = .handshakeKeysInstalled then
+            let ee := frameEncryptedExtensions
+            let cert := frameCertificate
+            let ts := s.transcript.appendFramed .encryptedExtensions .write ee
+            let ts := ts.appendFramed .certificate .write cert
+            let (snap, ts) := ts.snapshot
+            let s := { s with transcript := ts, keySched := some ksd }
+            let (oid, s) := s.allocOp .signCertificateVerify .handshake (some .write)
+            let scheme := s.negotiated.selectedSigScheme.getD .ed25519
+            .ok ({ s with handshake := .requestedCertificateVerifySignature },
+                 [ OutputAction.writeTransport s.connId ee,
+                   OutputAction.writeTransport s.connId cert,
+                   OutputAction.callCrypto s.connId oid
+                     (CryptoOp.signCertificateVerify scheme
+                       (ByteArray.mk #[snap.id.toUInt8])) ])
+          else
+            .ok ({ s with keySched := some ksd }, [])
   else
     hsFail s .unexpectedMessage (.protocol .illegalMessageForState)
 
@@ -207,8 +244,10 @@ def handshakeOnGatingResult (s0 : State) (op : OperationId) (r : CryptoResult) :
         onClientFinishedVerified s true (s.pendingClientFinished.getD (ByteArray.mk #[]))
       else .ok (s, [])
   | .randomBytes _ => .ok (s, [])
-  | .hkdfSecret _ => .ok (s, [])
-  | .keysInstalled => .ok (s, [])
+  | .hkdfSecret _ =>
+      if s.handshake = .derivedHandshakeSecrets then onHsScheduleResult s r else .ok (s, [])
+  | .keysInstalled =>
+      if s.handshake = .derivedHandshakeSecrets then onHsScheduleResult s r else .ok (s, [])
   | .aeadSealed _ => .ok (s, [])
   | .aeadOpened _ => .ok (s, [])
   | .verifyFailed => .ok (s, [])

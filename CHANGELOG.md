@@ -3,6 +3,63 @@
 All notable changes to kroopt are recorded here. RFC lifecycle transitions are
 governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycle-policy.md).
 
+## [0.18.0-dev] — M17 wire the handshake-key schedule stage into live `step` — 2026-06-11
+
+The verified orchestrator is now invoked by `Kroopt.Core.step`: the handshake
+drives the handshake-key stage of the key schedule itself, gated and proved, rather
+than installing handshake keys via a placeholder. The full synthetic handshake runs
+the stage end-to-end through `step`.
+
+### Added — schedule entry points (`Kroopt.Core.KeyScheduleDriver`)
+
+- `startPostEcdhe` — the handshake-key stage entered post-ECDHE (the ECDHE op was
+  already emitted and answered by the existing handshake), recording the shared
+  handle and emitting the Early-Secret extraction. `emptyHashSha256` — the RFC 8446
+  §7.1 empty-hash constant the schedule uses as Derive-Secret context.
+
+### Changed — handshake drives the stage (`Kroopt.Core`)
+
+- `State` gains `keySched : Option KeyScheduleDriver.State := none`, the active
+  orchestrator while the schedule runs.
+- `onEcdheDone` now frames ServerHello, installs the handshake epoch, and *starts
+  the handshake-key stage* (→ `derivedHandshakeSecrets`) instead of jumping to the
+  CertificateVerify request. New `onHsScheduleResult` pumps the stage: each HKDF /
+  install result advances the orchestrator and emits the next op, self-looping until
+  the `handshakeKeysInstalled` pause, then frames EncryptedExtensions / Certificate
+  and requests the CertificateVerify signature (→ `requestedCertificateVerifySignature`).
+- `handleCryptoResultCorrelated` now routes `hkdfSecret` / `keysInstalled` results
+  to the gating dispatch (previously dropped); the dispatch forwards them to the
+  pump when in `derivedHandshakeSecrets`. `legalEdge` reroutes
+  `requestedEcdhe → derivedHandshakeSecrets → requestedCertificateVerifySignature`.
+
+### Changed — proofs (→ 86 theorems)
+
+- New `onHsScheduleResult_legal`: the pump self-loops in `derivedHandshakeSecrets`
+  or advances to `requestedCertificateVerifySignature`, both legal. `onEcdheDone`'s
+  legal/no-emit/no-accept proofs re-established for the new target; the dispatch
+  no-emit / no-accept proofs extended to the pump (it emits only `callCrypto` /
+  `writeTransport`, never plaintext). The global action-discipline and
+  `connected_requires_finished_verified` proofs hold unchanged. Axiom audit green;
+  `{propext, Quot.sound}`.
+
+### Changed — tests
+
+- `kroopt-e2e-test` and `kroopt-handshake-test` drive the schedule stage through the
+  full handshake (e2e via the generic fuel loop; the direct-driven test pumps the
+  seven stage results explicitly). All 16 suites, parser fuzz, and the three gates
+  remain green.
+
+### The honest boundary (next)
+
+- The **application-key stage** is not yet driven by `step` (the orchestrator parks
+  at `handshakeKeysInstalled`; application keys still use a placeholder) — wiring
+  `resumeApplication` as a second pump phase after the server Finished is M18. And
+  the schedule's transcript contexts are the core's abstract snapshot references,
+  not real hash bytes; the wiring is structural, with real-transcript resolution a
+  later milestone. See `docs/src/key-schedule-orchestrator.md`.
+
+
+
 ## [0.17.0-dev] — M16 two-stage (interleaved) key-schedule orchestrator — 2026-06-11
 
 Corrects the orchestrator's derivation timing to match TLS 1.3. The M15 version

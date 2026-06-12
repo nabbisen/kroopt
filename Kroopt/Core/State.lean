@@ -5,6 +5,7 @@ import Kroopt.Core.Record
 import Kroopt.Core.Crypto
 import Kroopt.Core.Transcript
 import Kroopt.Core.Config
+import Kroopt.Core.KeyScheduleDriver
 
 /-!
 # Kroopt.Core.State
@@ -143,6 +144,9 @@ structure State where
   pendingPlainOut : Option ByteArray
   pendingClientFinished : Option ByteArray
   transcript : TranscriptState
+  /-- The active key-schedule orchestrator, present while the handshake is driving
+  the schedule (RFC 8446 §7.1) through `Kroopt.Core.KeyScheduleDriver`. -/
+  keySched : Option KeyScheduleDriver.State := none
   negotiated : NegotiationState
   serverConfig : ValidatedServerConfig
   closeState : CloseState

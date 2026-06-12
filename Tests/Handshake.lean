@@ -41,10 +41,20 @@ phase along the way matched the expected legal edge. -/
 def runHandshake : Except TlsError (State × List OutputAction × List HandshakeState) := do
   let (s1, _) ← onClientHello s0 vch chWire
   let (s2, _) ← onEcdheDone s1 fakeSecret
-  let (s3, _) ← onCertVerifySigned s2 fakeSig
+  -- pump the handshake-key schedule: 5 derivations then 2 installs, the last of
+  -- which lands at the pause and frames EE/Cert + requests CertVerify
+  let (p1, _) ← onHsScheduleResult s2 (.hkdfSecret ⟨0, 0⟩)
+  let (p2, _) ← onHsScheduleResult p1 (.hkdfSecret ⟨0, 0⟩)
+  let (p3, _) ← onHsScheduleResult p2 (.hkdfSecret ⟨0, 0⟩)
+  let (p4, _) ← onHsScheduleResult p3 (.hkdfSecret ⟨0, 0⟩)
+  let (p5, _) ← onHsScheduleResult p4 (.hkdfSecret ⟨0, 0⟩)
+  let (p6, _) ← onHsScheduleResult p5 .keysInstalled
+  let (s2done, _) ← onHsScheduleResult p6 .keysInstalled
+  let (s3, _) ← onCertVerifySigned s2done fakeSig
   let (s4, _) ← onClientFinishedBytes s3 cfWire
   let (s5, acts) ← onClientFinishedVerified s4 true cfWire
-  .ok (s5, acts, [s1.handshake, s2.handshake, s3.handshake, s4.handshake, s5.handshake])
+  .ok (s5, acts,
+       [s1.handshake, s2.handshake, s2done.handshake, s3.handshake, s4.handshake, s5.handshake])
 
 def reportsComplete (acts : List OutputAction) : Bool :=
   acts.any (fun a => match a with
@@ -59,7 +69,8 @@ def checks : List Check :=
   , { name := "handshake phases follow the legal server-flight order"
     , ok := (match runHandshake with
              | .ok (_, _, phases) =>
-                 phases == [.requestedEcdhe, .requestedCertificateVerifySignature,
+                 phases == [.requestedEcdhe, .derivedHandshakeSecrets,
+                            .requestedCertificateVerifySignature,
                             .sentServerFinished, .requestedClientFinishedVerify, .connected]
              | .error _ => false) }
   , { name := "completion is reported on success"
