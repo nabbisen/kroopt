@@ -1,7 +1,7 @@
 # RFC 008 — Crypto Provider Capability Matrix and FFI Contract
 
 **Project.** kroopt  
-**Status.** Proposed  
+**Status.** Implemented (0.24.0-dev)  
 **Type.** Implementation RFC  
 **Target milestone.** M6  
 **Depends on.** RFC 002, RFC 005  

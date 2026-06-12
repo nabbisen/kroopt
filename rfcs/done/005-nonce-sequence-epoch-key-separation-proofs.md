@@ -1,7 +1,7 @@
 # RFC 005 — Nonce, Sequence, Epoch, and Key-Separation Proofs
 
 **Project.** kroopt  
-**Status.** Proposed  
+**Status.** Implemented (0.24.0-dev)  
 **Type.** Implementation RFC  
 **Target milestone.** M3  
 **Depends on.** RFC 004  

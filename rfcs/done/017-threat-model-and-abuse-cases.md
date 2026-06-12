@@ -1,7 +1,7 @@
 # RFC 017 — Threat Model and Abuse Cases
 
 **Project.** kroopt  
-**Status.** Proposed  
+**Status.** Implemented (0.24.0-dev)  
 **Type.** Implementation RFC  
 **Target milestone.** Cross-cutting (M0; current before v0.3)  
 **Depends on.** RFC 001, RFC 002, RFC 003, RFC 004, RFC 013, RFC 014  

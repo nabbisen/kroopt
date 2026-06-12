@@ -1,7 +1,7 @@
 # RFC 023 — Parser Fuzzing, Corpus, and Mutation Policy
 
 **Project.** kroopt  
-**Status.** Proposed  
+**Status.** Implemented (0.24.0-dev)  
 **Type.** Implementation RFC  
 **Target milestone.** v0.1; mandatory before v0.4  
 **Depends on.** RFC 003, RFC 004, RFC 006, RFC 014, RFC 017, RFC 019  

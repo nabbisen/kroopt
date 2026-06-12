@@ -1,7 +1,7 @@
 # RFC 003 — Bounds-Safe Parser and Framer Foundation
 
 **Project.** kroopt  
-**Status.** Proposed  
+**Status.** Implemented (0.24.0-dev)  
 **Type.** Implementation RFC  
 **Target milestone.** M1  
 **Depends on.** RFC 002  

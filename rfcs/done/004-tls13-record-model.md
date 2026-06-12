@@ -1,7 +1,7 @@
 # RFC 004 — TLS 1.3 Record Model
 
 **Project.** kroopt  
-**Status.** Proposed  
+**Status.** Implemented (0.24.0-dev)  
 **Type.** Implementation RFC  
 **Target milestone.** M2  
 **Depends on.** RFC 003  

@@ -1,7 +1,7 @@
 # RFC 001 — Boundary and Non-Goals
 
 **Project.** kroopt  
-**Status.** Proposed  
+**Status.** Implemented (0.24.0-dev)  
 **Type.** Implementation RFC  
 **Target milestone.** M0  
 **Depends on.** None.  

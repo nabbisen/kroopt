@@ -1,7 +1,7 @@
 # RFC 019 — Resource Budgets, Backpressure, and DoS Defense
 
 **Project.** kroopt  
-**Status.** Proposed  
+**Status.** Implemented (0.24.0-dev)  
 **Type.** Implementation RFC  
 **Target milestone.** v0.1 (fake); v0.3 (network)  
 **Depends on.** RFC 003, RFC 004, RFC 010, RFC 013, RFC 014, RFC 017  

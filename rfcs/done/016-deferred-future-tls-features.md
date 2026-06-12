@@ -1,7 +1,7 @@
 # RFC 016 — Deferred Future TLS Features and Scope Control
 
 **Project.** kroopt  
-**Status.** Proposed  
+**Status.** Implemented (0.24.0-dev)  
 **Type.** Implementation RFC  
 **Target milestone.** Future  
 **Depends on.** RFC 001  

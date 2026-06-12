@@ -3,6 +3,27 @@
 All notable changes to kroopt are recorded here. RFC lifecycle transitions are
 governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycle-policy.md).
 
+## [0.25.0-dev] — M25 RFC lifecycle migration (audit + `proposed/` → `done/`) — 2026-06-12
+
+Governance only; no code, test, or proof change (87 theorems unchanged). Audits the
+implementation RFCs against their own acceptance criteria per the RFC lifecycle policy
+(RFC 000) and migrates the fully-shipped ones to `rfcs/done/`.
+
+### Changed — RFC states
+
+- Moved **19 RFCs** to `rfcs/done/` with `**Status.** Implemented (0.24.0-dev)`: 001–008,
+  011–014, 016–019, 021–023. Each had every acceptance criterion met by shipped
+  code/tests/proofs/gates in this repo.
+- **11 RFCs remain in `rfcs/proposed/`**, each with one named open deliverable: 009 and
+  024 (ASan/UBSan sanitizer CI), 010 (real iotakt socket transport), 015 + 026 (real
+  OpenSSL/curl interop + HTTPS E2E), 020 (operator metric/event doc), 025 (benchmarks),
+  027 (API-stability commitment), 028 (`SECURITY.md`), 029 (tested examples), 030
+  (release runbook).
+- Rebuilt `rfcs/README.md` as a state-grouped index (Done with "Shipped in" milestone;
+  Proposed with the pending deliverable). RFC 000 invariants checked: folder/Status
+  agreement, no duplicate numbers, every index link resolves, every file is listed.
+  Cross-references are by RFC number in prose, so no link rewriting was needed.
+
 ## [0.24.0-dev] — M24 Ed25519 false-positive closeout (test-governance cleanup) — 2026-06-12
 
 Final cleanup closing the Ed25519 false-positive incident, per architectural review. No

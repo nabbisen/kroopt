@@ -1,7 +1,7 @@
 # RFC 014 — Deterministic Test Harness, Fake Crypto, Fake Transport, and Fuzzing
 
 **Project.** kroopt  
-**Status.** Proposed  
+**Status.** Implemented (0.24.0-dev)  
 **Type.** Implementation RFC  
 **Target milestone.** M5  
 **Depends on.** RFC 002, RFC 003, RFC 004, RFC 006  

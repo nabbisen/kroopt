@@ -1,7 +1,7 @@
 # RFC 021 — Configuration Lifecycle and Reload
 
 **Project.** kroopt  
-**Status.** Proposed  
+**Status.** Implemented (0.24.0-dev)  
 **Type.** Implementation RFC  
 **Target milestone.** v0.3 (snapshots); v0.4 (reload)  
 **Depends on.** RFC 011, RFC 012, RFC 018, RFC 020  

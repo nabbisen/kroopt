@@ -1,7 +1,7 @@
 # RFC 007 — Transcript Model Using Exact Wire Bytes
 
 **Project.** kroopt  
-**Status.** Proposed  
+**Status.** Implemented (0.24.0-dev)  
 **Type.** Implementation RFC  
 **Target milestone.** M4  
 **Depends on.** RFC 006  

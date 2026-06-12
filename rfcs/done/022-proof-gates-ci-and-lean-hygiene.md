@@ -1,7 +1,7 @@
 # RFC 022 — Proof Gates, CI, and Lean Hygiene
 
 **Project.** kroopt  
-**Status.** Proposed  
+**Status.** Implemented (0.24.0-dev)  
 **Type.** Implementation RFC  
 **Target milestone.** M0 onward  
 **Depends on.** RFC 002, RFC 005, RFC 006, RFC 007, RFC 014  

@@ -1,7 +1,7 @@
 # RFC 006 — Handshake State Model without HelloRetryRequest
 
 **Project.** kroopt  
-**Status.** Proposed  
+**Status.** Implemented (0.24.0-dev)  
 **Type.** Implementation RFC  
 **Target milestone.** M4  
 **Depends on.** RFC 003, RFC 004  

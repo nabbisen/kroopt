@@ -1,7 +1,7 @@
 # RFC 002 — Verified Core and Proof/Runtime Correspondence
 
 **Project.** kroopt  
-**Status.** Proposed  
+**Status.** Implemented (0.24.0-dev)  
 **Type.** Implementation RFC  
 **Target milestone.** M0  
 **Depends on.** RFC 001  

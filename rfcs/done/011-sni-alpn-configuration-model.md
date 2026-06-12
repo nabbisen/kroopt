@@ -1,7 +1,7 @@
 # RFC 011 — SNI/ALPN Configuration Model
 
 **Project.** kroopt  
-**Status.** Proposed  
+**Status.** Implemented (0.24.0-dev)  
 **Type.** Implementation RFC  
 **Target milestone.** M8  
 **Depends on.** RFC 010  

@@ -1,7 +1,7 @@
 # RFC 012 — Server Certificate/Key Presentation
 
 **Project.** kroopt  
-**Status.** Proposed  
+**Status.** Implemented (0.24.0-dev)  
 **Type.** Implementation RFC  
 **Target milestone.** M8  
 **Depends on.** RFC 003, RFC 008, RFC 011  

@@ -1,7 +1,7 @@
 # RFC 018 — Data Classification and Lifecycle
 
 **Project.** kroopt  
-**Status.** Proposed  
+**Status.** Implemented (0.24.0-dev)  
 **Type.** Implementation RFC  
 **Target milestone.** M0–v0.2  
 **Depends on.** RFC 002, RFC 004, RFC 005, RFC 008, RFC 009, RFC 010, RFC 012  

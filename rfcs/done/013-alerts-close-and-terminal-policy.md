@@ -1,7 +1,7 @@
 # RFC 013 — Alerts, close_notify, and Terminal Policy
 
 **Project.** kroopt  
-**Status.** Proposed  
+**Status.** Implemented (0.24.0-dev)  
 **Type.** Implementation RFC  
 **Target milestone.** M9  
 **Depends on.** RFC 004, RFC 006, RFC 010  
