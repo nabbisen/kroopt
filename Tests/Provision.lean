@@ -38,7 +38,7 @@ def hexToBytes (s : String) : ByteArray := Id.run do
 
 def eqB (a b : ByteArray) : Bool := a.toList == b.toList
 
--- FIPS 180-4 SHA-384("abc")
+-- FIPS 180-4, "SHA-384 Example (One-Block)": message = ASCII "abc" (3 bytes).
 def fips384abc : String :=
   "cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7"
 

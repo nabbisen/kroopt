@@ -69,9 +69,9 @@ KAT and the OpenSSL `CertificateVerify` interop as **TESTED** evidence.
 ### Vector-source discipline (the lesson encoded)
 
 The root cause was trusting a remembered/published hex string over a verified library.
-The strongest tell, inverted at the time: when every input is provably correct but the
-output disagrees with an *expected value*, for formally verified code the expected value
-is the prime suspect. To prevent recurrence:
+The rule we now follow: *when a verified or externally trusted primitive disagrees with an
+expected value, first verify the vector provenance byte-for-byte before localizing the
+defect into the primitive, compiler, or FFI.* To prevent recurrence:
 
 * test vectors live in `Tests/Vectors/Ed25519Rfc8032.lean` with an explicit `source`
   label, algorithm, and hex fields;

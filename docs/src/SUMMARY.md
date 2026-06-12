@@ -17,6 +17,7 @@
 - [Enriched crypto interface and the real provider (M14)](enriched-crypto-interface.md)
 - [The verified key-schedule orchestrator (M15)](key-schedule-orchestrator.md)
 - [Connection provisioning and Ed25519 vector discipline](provisioning.md)
+- [Postmortem — the Ed25519 false positive](postmortem-ed25519.md)
 - [Vendored crypto: provenance and licensing](third-party.md)
 - [TlsConn API and the interpreter](tlsconn-interpreter.md)
 - [SNI/ALPN config and certificate presentation](config-cert.md)

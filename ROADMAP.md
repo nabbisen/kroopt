@@ -151,7 +151,9 @@ interop (`scripts/ed25519-interop.sh`). The provision KATs now assert the real R
 (`Tests/Vectors/Ed25519Rfc8032.lean`), and the non-RFC seed is retained only as a labelled
 regression vector. **No re-vendor, no compiler workaround, no trust-matrix downgrade**:
 Ed25519 stays ASSUMED (inherited verified) with KAT + interop as TESTED evidence. Build
-green, **87** theorems.
+green, **87** theorems. (M24 closed the incident out with test-governance cleanup: false
+language stripped from the changelog, provenance comments on every crypto KAT, and a
+postmortem at `docs/src/postmortem-ed25519.md`.)
 
 **Top pending — the structural-to-real handshake.** Now that Ed25519 is cleared, the real
 next priority is replacing the structural transcript snapshots with real wire-byte

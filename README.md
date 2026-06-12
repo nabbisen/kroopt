@@ -12,7 +12,7 @@ actions; a thin interpreter executes those actions over real crypto and sockets
 and never makes protocol decisions of its own. That separation carries
 machine-checked safety properties into the running code.
 
-## Status: M0–M23 (verified core → handshake → TlsConn → config → alerts/close → HTTPS → hardening → native crypto → key schedule → real provider → orchestrator → both schedule stages wired into step → connection provisioning → Ed25519 RFC 8032 KAT verified + OpenSSL CertificateVerify interop + crypto KAT hardening)
+## Status: M0–M24 (verified core → handshake → TlsConn → config → alerts/close → HTTPS → hardening → native crypto → key schedule → real provider → orchestrator → both schedule stages wired into step → connection provisioning → Ed25519 RFC 8032 KAT verified + OpenSSL CertificateVerify interop + crypto KAT hardening)
 
 This tree implements milestones **M0**–**M5** from the [ROADMAP](ROADMAP.md). M0
 fixes the pure-core/interpreter architecture; M1 adds the bounds-safe parsing

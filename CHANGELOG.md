@@ -3,6 +3,36 @@
 All notable changes to kroopt are recorded here. RFC lifecycle transitions are
 governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycle-policy.md).
 
+## [0.24.0-dev] — M24 Ed25519 false-positive closeout (test-governance cleanup) — 2026-06-12
+
+Final cleanup closing the Ed25519 false-positive incident, per architectural review. No
+code-path or proof change; build green at 87 theorems. This is test-governance hardening,
+not a cryptographic change.
+
+### Changed — changelog hygiene
+
+- Removed all standing "HACL broken / gcc miscompile / Edwards arithmetic defect" language
+  from the M19–M22 entries, restructured them with proper version headers, and kept only
+  the legitimate deliverables (connection provisioning; SHA-512 KAT hardening) plus a dated
+  retraction pointer. The detailed correction remains in `[0.23.0-dev]`.
+
+### Added — vector provenance + postmortem
+
+- Provenance comments on every published crypto KAT (`Tests/Hacl.lean`,
+  `Tests/Provision.lean`): source, section, input, and length. Round-trip /
+  self-consistency checks are now explicitly labelled and never presented as standards
+  conformance.
+- `docs/src/postmortem-ed25519.md`: a short postmortem — *the expected value was wrong;
+  test-vector provenance is now mandatory* — with the operational rule (verify vector
+  provenance byte-for-byte before localizing a defect into the primitive, compiler, or
+  FFI). Linked from `SUMMARY.md`.
+
+### Unchanged
+
+- The RFC 8032 KAT, the labelled non-RFC regression vector, and the OpenSSL
+  `CertificateVerify` interop (a separate evidence layer) all remain from `[0.23.0-dev]`.
+  Trust matrix unchanged: Ed25519 stays ASSUMED (inherited verified). Incident closed.
+
 ## [0.23.0-dev] — M23 Ed25519 "defect" retracted as a false positive; corrected + interop-validated — 2026-06-12
 
 Retracts the M19–M22 "non-RFC-8032 Ed25519 defect." It was a **test-vector
@@ -47,141 +77,54 @@ SHA-512 KAT hardening — stands and is unaffected.
   and OpenSSL interop as **TESTED** evidence. No re-vendor, no compiler workaround, no
   unverified reference binding.
 
+## [0.22.0-dev] — M21 (retracted Ed25519 investigation) — 2026-06-12
 
+Recorded a now-**retracted** Ed25519 investigation. No code change and no functional
+deliverable; its conclusions were a false positive caused by a mistyped RFC 8032 test
+seed and are fully corrected in 0.23.0-dev. Build green at 87 theorems. Retained as a
+dated placeholder for the audit trail — see 0.23.0-dev for the resolution.
 
-## [0.22.0-dev] — M21 Ed25519 defect fully isolated; remediation decision surfaced — 2026-06-12
-
-> **⚠ Retracted in 0.23.0-dev (false positive).** The "defect" below was a mistyped
-> RFC test seed, not a HACL\*/compiler/Edwards defect. HACL\* Ed25519 is RFC 8032
-> compliant. The bisection here is internally valid but ran on the wrong seed. Kept for
-> audit trail only.
-
-Bisects the Ed25519 defect against an independent oracle and isolates it to one
-stage; surfaces the remediation as an owner decision. No repo code change (docs and
-project record only); build green at 87 theorems.
-
-### Isolated (independent-oracle bisection)
-
-- Traced `secret_to_public` step by step and cross-checked against Python `hashlib`:
-  the clamped scalar HACL derives for the RFC 8032 seed is byte-identical to Python's
-  clamp of `SHA-512(seed)`; the base-point limbs and the `2d` curve constant both
-  match Python's radix-2⁵¹ computation exactly. The scalar-multiplication *inputs* are
-  all correct, yet `point_mul_g` + `point_compress` produce the wrong public — so the
-  defect is the **Edwards point arithmetic** itself.
-- Ruled out: the Lean FFI (standalone C reproduces it), optimisation (`-O0`–`-O2`
-  identical), strict aliasing, and the uint128 path (native and software both wrong).
-  Vendored sources are byte-identical to pristine 0.4.5, so this is a miscompilation
-  of 0.4.5's Edwards code by gcc 13.3.0 that X25519 does not trip.
-
-### Decision surfaced (see `docs/src/provisioning.md`, ROADMAP)
-
-- **(1) Principled** — upgrade the Ed25519 unit to a newer HACL release, KAT-validated
-  against RFC 8032 before integration (keeps Ed25519 ASSUMED-verified). Blocked
-  offline: the newer karamel/krmllib runtime headers are scattered upstream and need
-  full repository access to assemble cleanly.
-- **(2) Pragmatic** — bind a compact RFC-8032-correct Ed25519 reference behind the
-  same FFI; unblocks interop now but moves Ed25519 to **TESTED (unverified)** in the
-  trust matrix — a departure from the "borrow only verified crypto" principle, hence
-  an owner call.
-- The ChaCha20-Poly1305 / X25519 / SHA-256 / HKDF record and key-schedule paths are
-  unaffected; the `kroopt-provision-test` tripwire continues to guard the seam.
-
-
-
-## [0.21.0-dev] — M20 Ed25519 root-cause isolation + SHA-512 KAT hardening — 2026-06-12
-
-Isolates the M19 Ed25519 interop defect to its true source and hardens the crypto
-known-answer tests. No functional protocol change; the build stays green at 87
-theorems. The Ed25519 binary fix is a scoped, dedicated re-vendor (below).
-
-### Root cause isolated (corrects the M19 guess)
-
-> **⚠ Retracted in 0.23.0-dev (false positive).** Despite "reproducing in pristine
-> upstream," this ran on a non-RFC seed; HACL\* Ed25519 is RFC 8032 compliant. The
-> SHA-512 / SHA-384 KAT hardening in this entry is legitimate and stands.
-
-- **The vendored Ed25519 is verbatim HACL 0.4.5, not hand-edited.** `Hacl_Ed25519.c`
-  and every file it depends on are byte-identical (`diff` = 0) to the pristine 0.4.5
-  release at tag `ocaml-v0.4.5`. The `sign_expanded(…, uint32_t msg, uint8_t *len)`
-  naming that M19 flagged as possible tampering is the original 0.4.5 codegen — the
-  M19 "hand-edited" hypothesis is disproven.
-- **The defect reproduces in pristine upstream, outside Lean.** A standalone C KAT
-  calling `Hacl_Ed25519_secret_to_public` on the RFC 8032 Test 1 seed (pristine 0.4.5
-  sources only, no kroopt FFI) returns the wrong public `bcd55c06…` instead of
-  `d75a9801…`, identically at `-O0`, `-O1`, `-O2`, and `-O2 -fno-strict-aliasing`.
-  So it is not the FFI marshalling, not optimisation, and not strict aliasing — it is
-  HACL 0.4.5 `dist/gcc-compatible` Ed25519's Edwards arithmetic as built here.
-- SHA-256/384/512 (FIPS 180-4) and X25519 (RFC 7748) are confirmed correct, so the
-  rest of the crypto and the FFI seam are sound.
+## [0.21.0-dev] — M20 crypto KAT hardening (SHA-512 binding + value KATs) — 2026-06-12
 
 ### Added / changed — crypto KAT hardening
 
 - Bound `Hacl.sha512` (FFI shim + `opaque`) and added a **SHA-512("abc") FIPS 180-4**
-  value KAT; **upgraded SHA-384** from a size-only check to a value KAT. The HACL
-  suite (`kroopt-hacl-test`) is now 15 checks, exhaustive over Ed25519's hash
-  dependency. No new theorems (Crypto/Native zone); 87 unchanged.
+  value KAT; **upgraded SHA-384** from a size-only check to a value KAT. The HACL suite
+  (`kroopt-hacl-test`) is now 15 checks. No new theorems (Crypto/Native zone); 87
+  unchanged.
+- Confirmed the vendored `Hacl_Ed25519.c` and its dependencies are byte-identical
+  (`diff` = 0) to the pristine HACL\* 0.4.5 release at tag `ocaml-v0.4.5`.
 
-### Tracked
+> A suspected Ed25519 non-compliance investigated under this milestone was later found to
+> be a **test-vector provisioning error (false positive)** — HACL\* Ed25519 is RFC 8032
+> compliant (see 0.23.0-dev). The KAT hardening above is unaffected and stands.
 
-- `THIRD-PARTY-NOTICES.md` records the verbatim-0.4.5 confirmation and the tracked
-  Ed25519 non-RFC behavior; `docs/src/provisioning.md` carries the full localisation.
-  Remediation: re-vendor a known-correct Ed25519 unit (newer HACL), KAT-validated
-  against RFC 8032 before integration — the top item before real interop. The
-  `kroopt-provision-test` tripwire guards the seam and flips when the fix lands.
-
-
-
-## [0.20.0-dev] — M19 connection provisioning + crypto KAT hardening; Ed25519 defect found — 2026-06-11
-
-Adds production connection provisioning (fresh ephemeral entropy + certificate
-material), strengthens the crypto known-answer tests, and — as a direct result of
-that hardening — **discovers and documents a non-RFC-8032 defect in the vendored
-HACL Ed25519**, the top interop blocker before a real handshake.
-
-### ⚠ Discovered: vendored Ed25519 is not RFC 8032 compliant (interop blocker)
-
-> **⚠ Retracted in 0.23.0-dev (false positive).** This was a test-vector provisioning
-> error — a non-RFC seed paired with RFC Test 1's public key. HACL\* Ed25519 is RFC 8032
-> compliant. The connection-provisioning feature in this entry is unaffected and stands.
-
-Strengthening the crypto KATs (the HACL suite previously only *size-checked*
-SHA-384) showed SHA-384 matches FIPS 180-4 and X25519 matches RFC 7748, but the
-vendored HACL Ed25519 does not match RFC 8032: `Hacl_Ed25519_sign(seed, "")` returns
-`6b66cdc2…` rather than the RFC 8032 §7.1 Test 1 signature `e5564300…`, and
-`secret_to_public` returns `bcd55c06…` rather than `d75a9801…`. The sign and derive
-paths are self-consistent (so every prior round-trip test passed and the defect went
-unnoticed), but a real TLS 1.3 peer would reject a `CertificateVerify` signed this
-way. The defect is localised to the Ed25519 implementation — its SHA-512 and
-Curve25519 dependencies and the FFI shim's argument order are all confirmed correct.
-Re-vendoring `Hacl_Ed25519.c` blind (the upstream revision is not recorded) would
-risk the build, so M19 surfaces and tracks the defect rather than fixing it under
-time pressure. See `docs/src/provisioning.md` and the ROADMAP top pending item.
+## [0.20.0-dev] — M19 connection provisioning (`Kroopt.Crypto.Provision`) — 2026-06-12
 
 ### Added — connection provisioning (`Kroopt.Crypto.Provision`)
 
-- `genEphemeralX25519 : IO (priv × pub)` draws a fresh ephemeral X25519 key pair
-  from the OS CSPRNG (`Hacl.randomBytes`) per connection — no longer injected.
-- `CertProvision` (signing seed, opaque DER chain, signature scheme) plus a
-  deterministic config lint: `Provision.lint` checks seed length and scheme support
-  and returns the *derived* leaf public; `lintAgainstClaimed` additionally rejects a
-  mis-paired claimed public (`keyMismatch`), failing closed at load with a typed
-  `ProvisionError`. `provisionRealConfig` assembles a `RealCryptoConfig` from linted
-  certificate material and a fresh ephemeral pair.
+- `genEphemeralX25519 : IO (priv × pub)` draws a fresh ephemeral X25519 key pair from the
+  OS CSPRNG (`Hacl.randomBytes`) per connection — no longer injected.
+- `CertProvision` (signing seed, opaque DER chain, signature scheme) plus a deterministic
+  config lint: `Provision.lint` checks seed length and scheme support and returns the
+  *derived* leaf public; `lintAgainstClaimed` additionally rejects a mis-paired claimed
+  public (`keyMismatch`), failing closed at load with a typed `ProvisionError`.
+  `provisionRealConfig` assembles a `RealCryptoConfig` from linted certificate material
+  and a fresh ephemeral pair.
 
 ### Changed — tests and CI (17 suites)
 
-- New `kroopt-provision-test` (16 checks): ephemeral liveness / well-formedness /
-  X25519 determinism, the four lint branches, the certificate-key sign+verify
-  round-trip, a value-KAT for SHA-384 (FIPS 180-4), and an Ed25519 non-compliance
-  **tripwire** that flips when the defect is fixed. Added to the verification loop
-  and the CI test matrix. All 17 suites, parser fuzz, and the three gates green;
-  theorem count unchanged at 87 (provisioning is `Crypto`-zone, no proof obligations).
+- New `kroopt-provision-test` covering ephemeral liveness / well-formedness / X25519
+  determinism, the four lint branches, and the certificate-key sign+verify round-trip.
+  Added to the verification loop and the CI test matrix. All 17 suites, parser fuzz, and
+  the three gates green; theorem count unchanged at 87 (provisioning is `Crypto`-zone, no
+  proof obligations).
 
-### Boundary / next
-
-- Fixing the vendored Ed25519 binding is the top blocker before real interop. Then
-  the structural-to-real handshake work (real transcript hashes, real Finished MAC,
-  real wire framing) and a handshake against OpenSSL/curl.
+> A suspected non-RFC-8032 Ed25519 defect reported under this milestone was later found to
+> be a **test-vector provisioning error (false positive)** — a non-RFC seed paired with
+> RFC 8032 Test 1's public key. HACL\* Ed25519 is RFC 8032 compliant (see 0.23.0-dev); the
+> provisioning feature above is unaffected. The provision test's Ed25519 KAT is now a
+> positive RFC 8032 KAT and the original "tripwire" was removed.
 
 
 

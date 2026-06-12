@@ -8,6 +8,11 @@ the FFI into the vendored HACL* primitives. Vectors are from the relevant RFCs
 (FIPS 180-4, RFC 7748, RFC 5869, RFC 4231) plus AEAD/signature round-trips with
 tamper rejection. A green run proves the native crypto path works end-to-end in
 the Lean build, not just in standalone C.
+
+Vector-provenance discipline (see docs/src/postmortem-ed25519.md): every published
+KAT below carries a source + section comment; checks without a published vector are
+labelled "round-trip"/"self-consistency" in their names so they are never mistaken
+for standards conformance.
 -/
 
 namespace Tests.Hacl
@@ -40,19 +45,33 @@ def toHex (b : ByteArray) : String :=
 def bytesEq (a b : ByteArray) : Bool := a.toList == b.toList
 def rep (n : Nat) (v : UInt8) : ByteArray := ByteArray.mk (Array.mkArray n v)
 
--- vectors
+-- Published known-answer vectors. Each carries its source, section, input, and the
+-- expected-value origin, so a mistyped expected value is traceable to a citation
+-- rather than localised into the primitive (see docs/src/postmortem-ed25519.md).
+-- Round-trip / self-consistency checks (AEAD, the arbitrary-key Ed25519 sign/verify
+-- below) are NOT published vectors and are labelled as such in the check names.
+
+-- FIPS 180-4, "SHA-256 Example (One-Block)": message = ASCII "abc" (3 bytes).
 def sha256_abc := "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+-- FIPS 180-4, "SHA-384 Example (One-Block)": message = ASCII "abc" (3 bytes).
 def sha384_abc := "cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7"
+-- FIPS 180-4, "SHA-512 Example (One-Block)": message = ASCII "abc" (3 bytes).
 def sha512_abc := "ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f"
+-- RFC 7748 §6.1 (X25519 test vector): Alice private (32B) and Bob public (32B) →
+-- shared secret (32B). Field names retained: priv = Alice scalar, peer = Bob u-coord.
 def x25519_priv := "a546e36bf0527c9d3b16154b82465edd62144c0ac1fc5a18506a2244ba449ac4"
 def x25519_peer := "e6db6867583030db3594c1a424b15f7c726624ec26b3353b10a903a6d0ab1c4c"
 def x25519_out  := "c3da55379de9c6908e94ea4df28d084f32eccf03491c71f754b4075577a28552"
+-- RFC 5869 §A.1 Test Case 1 (HKDF-SHA-256): IKM = 22×0x0b, salt = 0x000102…0c (13B),
+-- info = 0xf0f1…f9 (10B), L = 42 → PRK (32B) and OKM (42B).
 def hkdf_prk := "077709362c2e32df0ddc3f0dc47bba6390b6c73bb50f9c3122ec844ad7c2b3e5"
 def hkdf_okm := "3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf34007208d5b887185865"
+-- RFC 4231 §4.2 Test Case 1 (HMAC-SHA-256): key = 20×0x0b, data = ASCII "Hi There".
 def hmac_tc1 := "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7"
 
 def main : IO UInt32 := do
-  -- AEAD round-trip
+  -- AEAD round-trip (self-consistency / tamper rejection — NOT a published vector;
+  -- arbitrary key/nonce/aad/plaintext)
   let key := rep 32 0x2b
   let nonce := rep 12 0x07
   let aad := hexToBytes "01020304"
@@ -60,7 +79,9 @@ def main : IO UInt32 := do
   let sealed := chachaPolySeal key nonce aad pt
   let opened := chachaPolyOpen key nonce aad sealed
   let tampered := chachaPolyOpen key nonce aad (sealed.set! 0 ((sealed.get! 0) ^^^ 1))
-  -- Ed25519 round-trip
+  -- Ed25519 round-trip (self-consistency — NOT a published vector; arbitrary key.
+  -- The published RFC 8032 §7.1 Test 1 KAT lives in kroopt-provision-test via
+  -- Tests/Vectors/Ed25519Rfc8032.lean.)
   let edPriv := rep 32 0x11
   let edPub := ed25519Public edPriv
   let msg := hexToBytes "deadbeef"
