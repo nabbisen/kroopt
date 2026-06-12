@@ -178,6 +178,14 @@ placeholders in `Core/Handshake.lean`); real record encryption; the iotakt
 P-256 (no `Hacl_P256.c` vendored — header only), ASan/UBSan jobs, and
 microbenchmarks.
 
+*M33 made the presented certificate real:* the live handshake now presents a real,
+OpenSSL-parseable Ed25519 X.509 certificate whose leaf key is kroopt's signing key
+(`scripts/gen-test-cert.sh`), replacing the placeholder DER. `ed25519-interop.sh`
+now confirms OpenSSL parses the cert, its leaf key matches kroopt's key, and OpenSSL
+verifies a kroopt CertificateVerify under that extracted leaf key — the property a
+real client relies on. This unblocks `s_client`/`curl` interop, which still awaits
+productionizing the interpreter and the iotakt socket transport (RFC 010).
+
 *M32 put the encrypted flight on the wire:* the live `step`-driven handshake now
 exchanges real TLS 1.3 records — the server flight after ServerHello is sealed as
 `TLSCiphertext` records (seqs 0–3) under the server handshake-traffic key, and the

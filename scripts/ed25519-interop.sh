@@ -72,5 +72,34 @@ fi
   || fail "HACL accepted a tampered CertificateVerify"
 echo "   ok: both reject a tampered transcript"
 
+echo "== 5) kroopt's presented certificate is consistent with its CertificateVerify =="
+# Build kroopt's actual cert (from the cert seed) and confirm a real client could
+# extract the leaf key from the Certificate message and verify the CertificateVerify.
+KSEED="9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60"
+python3 - "$KSEED" "$WORK/kkey.pem" << 'PY'
+import base64, sys
+pkcs8 = bytes.fromhex("302e020100300506032b657004220420") + bytes.fromhex(sys.argv[1])
+open(sys.argv[2], "w").write("-----BEGIN PRIVATE KEY-----\n"
+  + base64.encodebytes(pkcs8).decode().strip() + "\n-----END PRIVATE KEY-----\n")
+PY
+openssl req -new -x509 -key "$WORK/kkey.pem" -days 36500 -subj "/CN=kroopt.test" \
+  -addext "subjectAltName=DNS:kroopt.test" -outform DER -out "$WORK/kcert.der" 2>/dev/null
+openssl x509 -in "$WORK/kcert.der" -inform DER -noout -subject >/dev/null 2>&1 \
+  || fail "OpenSSL could not parse kroopt's presented certificate"
+# Leaf public key extracted from the certificate (as a real peer would).
+openssl x509 -in "$WORK/kcert.der" -inform DER -pubkey -noout > "$WORK/kleaf.pem" 2>/dev/null
+KLEAF=$(openssl pkey -pubin -in "$WORK/kleaf.pem" -outform DER | tail -c 32 | b2h)
+KEXP=$("$CLI" pub "$KSEED")
+[ "$KLEAF" = "$KEXP" ] || fail "cert leaf key ($KLEAF) != kroopt signing key ($KEXP)"
+# A kroopt CertificateVerify (HACL, signed with the cert seed) verifies under the
+# public key the peer extracts from the certificate.
+KSIG=$("$CLI" sign "$KSEED" "$WORK/content.bin")
+h2b "$KSIG" "$WORK/ksig.bin"
+openssl pkeyutl -verify -pubin -inkey "$WORK/kleaf.pem" -rawin \
+  -in "$WORK/content.bin" -sigfile "$WORK/ksig.bin" >/dev/null 2>&1 \
+  || fail "OpenSSL rejected kroopt's CertificateVerify under the cert's leaf key"
+echo "   ok: OpenSSL parses the cert, its leaf key matches kroopt's signing key,"
+echo "       and verifies kroopt's CertificateVerify under that leaf key"
+
 echo
 echo "ALL CertificateVerify interop checks passed (HACL* Ed25519 <-> OpenSSL)."

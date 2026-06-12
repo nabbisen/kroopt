@@ -3,6 +3,35 @@
 All notable changes to kroopt are recorded here. RFC lifecycle transitions are
 governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycle-policy.md).
 
+## [0.33.0-dev] — M33 real Ed25519 X.509 certificate presentation — 2026-06-12
+
+The live handshake now presents a real, OpenSSL-parseable Ed25519 X.509 certificate
+instead of a placeholder DER, and the OpenSSL cross-check ties that certificate to
+the CertificateVerify signature. No core, crypto, or proof changes — the 87 theorems
+are unchanged.
+
+### Added
+
+- `scripts/gen-test-cert.sh`: provisions a self-signed Ed25519 `CN=kroopt.test`
+  certificate whose subject public key is kroopt's certificate key (the RFC 8032
+  §7.1 key that also signs CertificateVerify), via an RFC 8410 PKCS#8 wrap of the
+  raw seed.
+- `Tests/RealHandshake.lean`: presents the real 351-byte certificate DER (`certDer`)
+  in the Certificate message and checks it is a well-formed X.509 embedded at the
+  expected offset, with the handshake still reaching `connected` (21 checks).
+- `scripts/ed25519-interop.sh` step 5: OpenSSL parses kroopt's certificate, confirms
+  the leaf public key extracted from it equals kroopt's signing key, and verifies a
+  kroopt CertificateVerify signature under that extracted leaf key — the property a
+  real client relies on.
+- `docs/src/cert-presentation.md` (linked in `SUMMARY.md`).
+
+### Notes
+
+A real client could now parse kroopt's Certificate message and verify its
+CertificateVerify. This is a prerequisite for `openssl s_client` / `curl` interop,
+which still awaits productionizing the interpreter and the iotakt socket transport
+(RFC 010). Certificate path validation (client role / mTLS) stays out of scope.
+
 ## [0.32.0-dev] — M32 encrypted flight on the wire (record protection in the send/receive path) — 2026-06-12
 
 The live `step`-driven handshake now exchanges real TLS 1.3 records: the server

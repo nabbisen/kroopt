@@ -56,8 +56,11 @@ def serverRandom : ByteArray := hx "a6af06a412186024" |>.append (hx "9cd34c95930
 -- kroopt's Ed25519 certificate key (provenance: RFC 8032 §7.1 Test 1).
 def certSeed : ByteArray := hx "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60"
 def certPub  : ByteArray := hx "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a"
--- Opaque placeholder leaf DER (real certificate provisioning is a separate step).
-def placeholderDer : ByteArray := ByteArray.mk (Array.mkArray 48 (0x11 : UInt8))
+-- A real, OpenSSL-parseable self-signed Ed25519 X.509 certificate whose subject
+-- public key is kroopt's certificate key (CN=kroopt.test, 100-year validity).
+-- Generated from the cert seed by `scripts/gen-test-cert.sh`.
+def certDer : ByteArray := hx
+  "3082015b3082010da003020102021409cf89b7545d532c3c9b338845e68dd9f2dd9208300506032b657030163114301206035504030c0b6b726f6f70742e746573743020170d3236303631323034323730335a180f32313236303531393034323730335a30163114301206035504030c0b6b726f6f70742e74657374302a300506032b6570032100d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511aa36b3069301d0603551d0e041604145b27aa5589179770e47575b162a1ded97b8bfc6d301f0603551d230418301680145b27aa5589179770e47575b162a1ded97b8bfc6d300f0603551d130101ff040530030101ff30160603551d11040f300d820b6b726f6f70742e74657374300506032b6570034100afb247f952fd77d308bb94d2b703b5ad82882f4a6a40dd2a4974c97cea7239de64fb60ad6bfc42d0a48101eea1bb921a1d7aa18081e6a1945935d60384501903"
 
 def cfg : RealCryptoConfig :=
   { ephemeralPrivate := serverPriv, certPrivate := certSeed, certPublic := certPub }
@@ -145,7 +148,7 @@ def appendReal (d : RD) (placeholder : ByteArray) : RD :=
   let msg : ByteArray :=
     if tag == 2 then Flight.serverHelloMessage serverRandom d.serverShare 0x1303 0x001d 0x0304
     else if tag == 8 then Wire.encryptedExtensions ByteArray.empty
-    else if tag == 11 then Wire.certificate ByteArray.empty (Wire.certificateEntry placeholderDer ByteArray.empty)
+    else if tag == 11 then Wire.certificate ByteArray.empty (Wire.certificateEntry certDer ByteArray.empty)
     else if tag == 15 then Wire.certificateVerify 0x0807 d.lastSig
     else if tag == 20 then Flight.serverFinishedMessage d.sHsTraffic d.hCHCertVerify
     else placeholder
@@ -262,6 +265,13 @@ def main : IO UInt32 := do
     | some (c, ct) => ct == ContentType.handshake && c.size == 36 && c.get! 0 == 0x14
     | none => false
 
+  -- The Certificate message presents the real X.509 certificate.
+  let certMsg := d.outbound.getD 2 ByteArray.empty
+  let realCertPresented :=
+    certDer.size == 351 && certDer.get! 0 == 0x30 && certDer.get! 1 == 0x82
+    && certMsg.get! 0 == 0x0b
+    && eqB (certMsg.extract 11 (11 + certDer.size)) certDer
+
   -- After `connected`, protect a real application-data record with the handshake's
   -- negotiated server application-traffic key/IV (ChaCha20-Poly1305).
   let appKey := KeySchedule.trafficKey .chacha20Poly1305Sha256 d.sApTraffic
@@ -302,6 +312,7 @@ def main : IO UInt32 := do
     , ("the sealed flight records carry handshake-epoch sequences 0,1,2,3", flightSeqs)
     , ("each sealed flight record opens back to its plaintext handshake message", flightOpensBack)
     , ("the client's encrypted Finished record is ciphertext and opens to the plaintext Finished", inboundIsCiphertext && inboundOpensBack)
+    , ("the Certificate message presents a real OpenSSL-parseable Ed25519 X.509 cert", realCertPresented)
     ]
 
   let mut failed := 0
