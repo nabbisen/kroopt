@@ -103,6 +103,27 @@ def findX25519Share (exts : List RawExtension) : Option ByteArray :=
 def selectSuite (offered : List UInt16) : Option CipherSuite :=
   offered.foldl (fun acc c => acc.orElse (fun _ => suiteOfU16 c)) none
 
+/-- Map a `signature_algorithms` code to a scheme kroopt can *present*. The
+constrained profile presents Ed25519 (0x0807) only; ECDSA/RSA offers are not
+presentable, so they map to `none` and are skipped by the overlap selection
+(RFC 033 §3, RFC 8446 §4.2.3). -/
+def sigSchemeOfU16 : UInt16 → Option SignatureScheme
+  | 0x0807 => some .ed25519
+  | _      => none
+
+/-- Pick the first offered signature scheme kroopt can present (overlap selection). -/
+def selectSigScheme (offered : List UInt16) : Option SignatureScheme :=
+  offered.foldl (fun acc c => acc.orElse (fun _ => sigSchemeOfU16 c)) none
+
+/-- The client's offered `signature_algorithms` (extension 0x000d): the extension
+data is a u16-length-prefixed list of u16 scheme codes, so drop the 2-byte list
+length and read the codes. Absent extension ⇒ empty list (a server that
+authenticates with a certificate then has no acceptable scheme and aborts). -/
+def offeredSigSchemes (exts : List RawExtension) : List UInt16 :=
+  match findExt exts 0x000d with
+  | none   => []
+  | some d => u16sOfBytes (d.extract 2 d.size)
+
 /-- Parse and validate a ClientHello handshake message (RFC 006 §5). Returns the
 validated parameters bound to the exact consumed bytes. -/
 def parseClientHello (input : ByteArray) : Except ParseError (Kroopt.Core.WireBound ValidClientHello) := do
@@ -126,11 +147,12 @@ def parseClientHello (input : ByteArray) : Except ParseError (Kroopt.Core.WireBo
   if !offersTls13 exts then throw .valueOutOfRange
   let some share := findX25519Share exts | throw .valueOutOfRange
   let some suite := selectSuite (u16sOfBytes suitesBytes) | throw .valueOutOfRange
+  let some sigScheme := selectSigScheme (offeredSigSchemes exts) | throw .valueOutOfRange
   let vch : ValidClientHello :=
     { selectedSuite := suite
       selectedGroup := .x25519
       clientShare := share
-      selectedSigScheme := .ed25519
+      selectedSigScheme := sigScheme
       sni := findExt exts 0
       alpn := match findExt exts 16 with | some d => [d] | none => [] }
   pure { value := vch, wireBytes := input }

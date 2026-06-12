@@ -10,7 +10,7 @@ unmodified.
 A portable-C subset of [HACL\*](https://github.com/hacl-star/hacl-star),
 obtained via the `hacl-star` OCaml package, version **0.4.5**. It is the native
 cryptographic backend for the v0.3 binding (see
-[`docs/src/native-crypto.md`](docs/src/native-crypto.md)).
+[`docs/src/crypto/native-crypto.md`](docs/src/crypto/native-crypto.md)).
 
 | What | License | Files |
 |------|---------|-------|
@@ -30,7 +30,7 @@ cryptographic backend for the v0.3 binding (see
   construction (`scripts/ed25519-interop.sh`); SHA-256/384/512 (FIPS 180-4) and
   X25519 (RFC 7748) are likewise confirmed. (A 2026-06 report of a non-RFC Ed25519
   defect was a test-vector provisioning error — a non-RFC seed paired with RFC Test
-  1's public key — not a HACL\* defect; see [`docs/src/provisioning.md`](docs/src/provisioning.md).)
+  1's public key — not a HACL\* defect; see [`docs/src/crypto/provisioning.md`](docs/src/crypto/provisioning.md).)
 * **Compatibility.** MIT and Apache-2.0 are both permissive and compatible with
   kroopt's Apache-2.0 license.
 * **kroopt's own glue.** `Kroopt/Native/kroopt_ffi.c` is kroopt's own code

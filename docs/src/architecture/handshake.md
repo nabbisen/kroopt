@@ -47,3 +47,21 @@ modeled as synchronous key installation in this state-model milestone; the
 provider-backed HKDF round-trips arrive with the crypto FFI (M6). Wiring the
 transition functions into the live `step` event loop against the fake
 transport/provider is M5.
+
+## Signature-scheme overlap selection (RFC 033)
+
+The ClientHello parser selects the negotiated parameters from the client's offers
+rather than assuming them. Cipher suite and group already work this way
+(`selectSuite` picks the first offered suite kroopt supports; `findX25519Share`
+takes the x25519 share among the offered key shares). Signature scheme now does too:
+`offeredSigSchemes` reads the client's `signature_algorithms` (extension 0x000d) and
+`selectSigScheme` picks the first that kroopt can *present* — in the constrained
+profile, Ed25519 (0x0807) only. The server no longer hardcodes an Ed25519
+CertificateVerify a client never offered.
+
+A cert-authenticating server with no acceptable overlap is rejected: a ClientHello
+with no `signature_algorithms`, or one offering only RSA/ECDSA, fails to parse
+(RFC 8446 §4.2.3). This makes the constrained profile's interop boundary explicit —
+kroopt cannot serve a client that does not offer Ed25519 (for example the RSA/ECDSA
+RFC 8448 §3 ClientHello), and says so by rejecting rather than presenting a
+certificate the client cannot verify.

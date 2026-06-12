@@ -132,7 +132,7 @@ Deliverables:
 - Native build profiles and feature gates settled (RFC 024); pure-core/crypto data lifecycle documented (RFC 018); crypto microbenchmarks begun (RFC 025).
 
 **Status (M12, package 0.13.0-dev) — primitives layer delivered, integration pending.**
-Done: vendored portable-C HACL\* subset built through Lake (`extern_lib krooptCrypto`); FFI glue and `Kroopt.Crypto.Hacl` wrappers; known-answer tests through Lean for AEAD (ChaCha20-Poly1305), SHA-2, HKDF, HMAC, X25519, and Ed25519 signatures (`kroopt-hacl-test`, 14 checks). Pending and scoped next: opaque-secret-handle **arena** and C-owned zeroizable storage; threading that state through `CryptoProvider.submit` so real key material flows through the key schedule (the pure handle-returning provider cannot do this alone — see `docs/src/native-crypto.md`); ASan/UBSan jobs; real AEAD record round-trip over transport; P-256; microbenchmarks.
+Done: vendored portable-C HACL\* subset built through Lake (`extern_lib krooptCrypto`); FFI glue and `Kroopt.Crypto.Hacl` wrappers; known-answer tests through Lean for AEAD (ChaCha20-Poly1305), SHA-2, HKDF, HMAC, X25519, and Ed25519 signatures (`kroopt-hacl-test`, 14 checks). Pending and scoped next: opaque-secret-handle **arena** and C-owned zeroizable storage; threading that state through `CryptoProvider.submit` so real key material flows through the key schedule (the pure handle-returning provider cannot do this alone — see `docs/src/crypto/native-crypto.md`); ASan/UBSan jobs; real AEAD record round-trip over transport; P-256; microbenchmarks.
 
 **Status (M13, package 0.14.0-dev) — stateful seam + real key schedule delivered.**
 Done: the secret **arena** (`Kroopt.Crypto.SecretArena`, generation-tagged, bounded); `CryptoProvider.submit` now threads it; the real TLS 1.3 key schedule (`Kroopt.Crypto.KeySchedule`) and arena-backed record AEAD (`Kroopt.Crypto.Real`) on HACL\*, **validated against the RFC 8448 §3 trace** end-to-end plus a real-key arena AEAD round-trip (`kroopt-keyschedule-test`, 20 checks). Handle opacity preserved; the 78 core theorems are untouched. Pending and scoped next: enrich the core `CryptoOp`/`CryptoResult` shapes (labels, input-secret handles, epoch-keyed key install) and re-prove operation-id correlation over them so `Kroopt.Core.step` drives the real provider — then a real handshake on one suite. Still pending after that: P-256, ASan/UBSan jobs, the iotakt `Transport` adapter, microbenchmarks.
@@ -153,7 +153,7 @@ regression vector. **No re-vendor, no compiler workaround, no trust-matrix downg
 Ed25519 stays ASSUMED (inherited verified) with KAT + interop as TESTED evidence. Build
 green, **87** theorems. (M24 closed the incident out with test-governance cleanup: false
 language stripped from the changelog, provenance comments on every crypto KAT, and a
-postmortem at `docs/src/postmortem-ed25519.md`.)
+postmortem at `docs/src/crypto/postmortem-ed25519.md`.)
 
 **Top pending — the structural-to-real handshake.** Now that Ed25519 is cleared, the real
 next priority is replacing the structural placeholder frames and snapshot transcript with
@@ -203,6 +203,20 @@ external interop (RFC 015/026) are **frozen** until these gates pass, in this or
   green. Documented as a **constrained** profile, not browser-grade.
 - **post-M38 — browser-grade crypto surface (RFC 035).** AES-GCM/P-256/ECDSA/RSA and a
   practical public-certificate story, only after the above are green.
+
+*M36 part 2 shipped — signature_algorithms overlap selection (RFC 033):* the ClientHello
+parser now selects the signature scheme from the client's offered `signature_algorithms`
+(extension 0x000d), choosing Ed25519 only when offered, instead of hardcoding it; a
+cert-authenticating server with no acceptable overlap (none, or only RSA/ECDSA) is
+rejected (RFC 8446 §4.2.3). The constrained profile's interop limit is now explicit —
+kroopt rejects the RSA/ECDSA-only RFC 8448 §3 ClientHello rather than presenting an
+Ed25519 certificate the client cannot verify. `kroopt-hardening-test` +2 checks (14);
+`kroopt-wire-test` updated to assert the rejection. Shipped alongside repo hygiene:
+`.gitattributes` (vendored HACL* marked `linguist-vendored` so GitHub classifies the
+repo as Lean 4), a rewritten README, and docs/src reorganized into
+architecture/crypto/verification subdirectories. No proof change (91 theorems). RFC 033
+stays in `proposed/` — the reassembler, broader ClientHello strictness, explicit CCS,
+and suite-to-capability binding remain.
 
 *M36 part 1 shipped — the client Finished opens in the core (RFC 033):* the protected
 client Finished (outer `application_data`) is now opened **in-core** under the handshake

@@ -29,6 +29,8 @@ def b0 : BudgetState := .empty
 -- ClientHello builders with controllable extensions, for scope control.
 def keyShareEntry : List UInt8 := [0x00, 0x1d, 0, 4, 1, 2, 3, 4]
 def extKeyShare : List UInt8 := [0, 51, 0, 10, 0, 8] ++ keyShareEntry
+def extSigAlgs : List UInt8 := [0, 0x0d, 0, 4, 0, 2, 0x08, 0x07]  -- signature_algorithms: ed25519
+def extSigAlgsOther : List UInt8 := [0, 0x0d, 0, 6, 0, 4, 0x04, 0x03, 0x08, 0x04]  -- ecdsa_p256, rsa_pss (no ed25519)
 def extSupVer13 : List UInt8 := [0, 43, 0, 3, 2, 0x03, 0x04]   -- offers TLS 1.3
 def extSupVer12 : List UInt8 := [0, 43, 0, 3, 2, 0x03, 0x03]   -- offers only TLS 1.2
 def chWith (exts : List UInt8) : ByteArray :=
@@ -71,13 +73,17 @@ def checks : List Check :=
              | .error .pendingCiphertext => true | _ => false) }
     -- deferred-feature scope control (RFC 016)
   , { name := "ClientHello offering TLS 1.3 with X25519 parses"
-    , ok := parseOk (extSupVer13 ++ extKeyShare) }
+    , ok := parseOk (extSupVer13 ++ extKeyShare ++ extSigAlgs) }
   , { name := "ClientHello with no supported_versions is refused (no TLS 1.2 downgrade)"
     , ok := !parseOk extKeyShare }
   , { name := "ClientHello offering only TLS 1.2 is refused"
     , ok := !parseOk (extSupVer12 ++ extKeyShare) }
   , { name := "ClientHello with no key_share is refused (no HRR)"
     , ok := !parseOk extSupVer13 }
+  , { name := "ClientHello offering only ECDSA/RSA signature_algorithms is refused (no Ed25519 overlap, RFC 033)"
+    , ok := !parseOk (extSupVer13 ++ extKeyShare ++ extSigAlgsOther) }
+  , { name := "ClientHello with no signature_algorithms is refused (cert-authenticating server, RFC 8446 §4.2.3)"
+    , ok := !parseOk (extSupVer13 ++ extKeyShare) }
   ]
 
 def main : IO UInt32 := do

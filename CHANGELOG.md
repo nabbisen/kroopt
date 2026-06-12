@@ -3,6 +3,60 @@
 All notable changes to kroopt are recorded here. RFC lifecycle transitions are
 governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycle-policy.md).
 
+## [0.38.0-dev] — M36 (part 2): signature_algorithms overlap selection (RFC 033) + repo hygiene — 2026-06-12
+
+The ClientHello parser now negotiates the signature scheme from the client's offers
+instead of hardcoding it, plus repository-hygiene work (GitHub language classification,
+README, docs layout).
+
+### Changed
+
+- `Parse/Handshake.lean`: **signature_algorithms overlap selection.** New
+  `sigSchemeOfU16` / `selectSigScheme` / `offeredSigSchemes` read the client's offered
+  schemes (extension 0x000d) and select Ed25519 (0x0807) only when the client offers
+  it — mirroring `selectSuite`. `parseClientHello` no longer hardcodes
+  `selectedSigScheme := .ed25519`; a cert-authenticating server with no acceptable
+  overlap (no `signature_algorithms`, or only RSA/ECDSA) is rejected (RFC 8446 §4.2.3).
+  This makes the constrained profile's interop limit explicit: kroopt rejects the
+  RSA/ECDSA-only RFC 8448 §3 ClientHello rather than presenting an Ed25519 certificate
+  the client cannot verify.
+
+### Repository hygiene
+
+- **`.gitattributes`**: the vendored `Kroopt/Native/hacl/**` (HACL*/EverCrypt with the
+  KaRaMeL C runtime, ~26k lines) is marked `linguist-vendored`, so GitHub classifies
+  the repository by its own Lean 4 sources rather than the borrowed C. Every byte and
+  its license stay in the tree and in production builds; only the language-stats display
+  changes. Our own ~330-line FFI/socket shim remains first-party and counted.
+- **README.md** rewritten (247 → 108 lines): a concise hero/overview/quick-start/design-
+  notes/docs structure replaces the run-on status line and the stale per-milestone wall;
+  the per-milestone history now lives in this changelog and the ROADMAP.
+- **docs/src/** reorganized into `architecture/`, `crypto/`, and `verification/`
+  subdirectories (introduction stays at the root); `SUMMARY.md` and all inter-doc and
+  top-level links updated and verified to resolve.
+
+### Tests
+
+- `kroopt-hardening-test` (+2 checks, 14 total): a ClientHello offering only ECDSA/RSA
+  signature_algorithms is refused; a ClientHello with no signature_algorithms is refused.
+- `kroopt-wire-test`: the RFC 8448 §3 ClientHello check now asserts the constrained
+  profile **rejects** it (no Ed25519 overlap); the byte-level serialization and SHA-256
+  transcript KATs over the raw RFC 8448 bytes are unchanged.
+- Five fixtures (EndToEnd, Conn, E2EHttps, Hardening, Wire) updated to carry a realistic
+  `signature_algorithms` extension.
+
+### Proofs
+
+- No change to the proof set (91 theorems, all axiom-clean). The selection logic is pure
+  list folding over already-bounds-checked extension data; the parser bounds proofs are
+  unaffected.
+
+### RFC lifecycle
+
+- **RFC 033** — still partial; stays in `proposed/`. Remaining: handshake-message
+  reassembler, broader ClientHello strictness, explicit CCS policy, and binding
+  cipher-suite selection to the provider's presentation capability.
+
 ## [0.37.0-dev] — M36 (part 1): the client Finished opens in the core (RFC 033) — 2026-06-12
 
 The receive-side blocker from the architecture review (deep-review blocker #2): the

@@ -30,8 +30,9 @@ def b (l : List UInt8) : ByteArray := ByteArray.mk l.toArray
 
 def keyShareEntry : List UInt8 := [0x00, 0x1d, 0, 4, 1, 2, 3, 4]
 def extKeyShare : List UInt8 := [0, 51, 0, 10, 0, 8] ++ keyShareEntry
+def extSigAlgs : List UInt8 := [0, 0x0d, 0, 4, 0, 2, 0x08, 0x07]  -- signature_algorithms: ed25519
 def extSupVer : List UInt8 := [0, 43, 0, 3, 2, 0x03, 0x04]
-def extsBody : List UInt8 := extSupVer ++ extKeyShare
+def extsBody : List UInt8 := extSupVer ++ extKeyShare ++ extSigAlgs
 
 def u16be (n : Nat) : List UInt8 := [(n / 256).toUInt8, (n % 256).toUInt8]
 

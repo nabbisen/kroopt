@@ -9,7 +9,7 @@ the FFI into the vendored HACL* primitives. Vectors are from the relevant RFCs
 tamper rejection. A green run proves the native crypto path works end-to-end in
 the Lean build, not just in standalone C.
 
-Vector-provenance discipline (see docs/src/postmortem-ed25519.md): every published
+Vector-provenance discipline (see docs/src/crypto/postmortem-ed25519.md): every published
 KAT below carries a source + section comment; checks without a published vector are
 labelled "round-trip"/"self-consistency" in their names so they are never mistaken
 for standards conformance.
@@ -47,7 +47,7 @@ def rep (n : Nat) (v : UInt8) : ByteArray := ByteArray.mk (Array.mkArray n v)
 
 -- Published known-answer vectors. Each carries its source, section, input, and the
 -- expected-value origin, so a mistyped expected value is traceable to a citation
--- rather than localised into the primitive (see docs/src/postmortem-ed25519.md).
+-- rather than localised into the primitive (see docs/src/crypto/postmortem-ed25519.md).
 -- Round-trip / self-consistency checks (AEAD, the arbitrary-key Ed25519 sign/verify
 -- below) are NOT published vectors and are labelled as such in the check names.
 

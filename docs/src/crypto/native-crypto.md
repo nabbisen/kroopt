@@ -58,7 +58,7 @@ This interface is **pure and stateless**, and the ECDHE/HKDF operations return
 *opaque secret handles* (`SecretKeyHandle`), not key bytes — by design, so that
 secret material never becomes a printable Lean value and the safety proofs hold
 for *any* provider (see [Crypto provider and FFI contract](crypto-ffi-contract.md)
-and the [boundary](boundary.md) note). The deterministic fake provider exploits
+and the [boundary](../architecture/boundary.md) note). The deterministic fake provider exploits
 this: its AEAD is the identity function and it never threads real key material.
 
 Real TLS, however, must thread real bytes through the key schedule:

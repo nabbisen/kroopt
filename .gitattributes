@@ -1,0 +1,14 @@
+# GitHub Linguist classification
+# ------------------------------
+# kroopt is a Lean 4 project. The cryptographic primitives are NOT written here:
+# Kroopt/Native/hacl/ is Project Everest's HACL*/EverCrypt (with the KaRaMeL C
+# runtime), vendored verbatim under its upstream licenses (see THIRD-PARTY-NOTICES.md
+# and Kroopt/Native/hacl/). Marking it `linguist-vendored` keeps every byte and its
+# license in the tree and in production builds, while excluding it from GitHub's
+# language statistics so the repository is classified by its own Lean 4 sources rather
+# than the borrowed C.
+Kroopt/Native/hacl/** linguist-vendored
+
+# The KaRaMeL-generated C headers under the vendored tree are also not hand-written
+# here; the rule above already covers them. Our own thin FFI/socket shim
+# (Kroopt/Native/*.c, *.h) is first-party and intentionally counted.

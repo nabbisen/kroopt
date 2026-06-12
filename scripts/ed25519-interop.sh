@@ -7,7 +7,7 @@
 # keypair. A full `openssl s_client` / `curl` handshake against a running kroopt
 # server is gated behind the pending real-handshake work (real transcript hashing,
 # real server Finished, iotakt socket transport) and is not run here. See
-# docs/src/provisioning.md.
+# docs/src/crypto/provisioning.md.
 #
 # Requires: openssl, gcc, python3, the vendored HACL under Kroopt/Native/hacl.
 set -euo pipefail

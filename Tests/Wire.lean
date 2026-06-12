@@ -104,12 +104,15 @@ def main : IO UInt32 := do
   -- and that the Finished message wraps exactly that verify_data
   let finWraps := eqB (Wire.finished verifyData) rfcFinished
 
-  -- ── parser accepts the real RFC 8448 ClientHello ──
+  -- ── the constrained profile rejects the RFC 8448 §3 ClientHello ──
+  -- It is structurally valid and offers an x25519 key_share, but its
+  -- signature_algorithms lists only RSA-PSS/ECDSA (its CertificateVerify is
+  -- RSA-PSS), never Ed25519 (0x0807) — the only scheme kroopt presents — so there
+  -- is no overlap and the handshake cannot authenticate (RFC 033 §3 overlap
+  -- selection). The Ed25519 accept-path is covered end-to-end by the realhandshake
+  -- suite; here the byte-level KATs above stand on the raw bytes regardless.
   let parsed := Kroopt.Parse.parseClientHello rfcClientHello
-  let parseOk := match parsed with | .ok _ => true | .error _ => false
-  let shareOk := match parsed with
-    | .ok wb => eqB wb.value.clientShare clientKeyShare
-    | .error _ => false
+  let constrainedRejects := match parsed with | .ok _ => false | .error _ => true
 
   let checks : List (String × Bool) :=
     [ ("ServerHello serializes byte-for-byte to RFC 8448 §3", shExact)
@@ -123,8 +126,7 @@ def main : IO UInt32 := do
     , ("finished_key = HKDF-Expand-Label(s hs traffic, finished) matches RFC 8448", finKeyOk)
     , ("server Finished verify_data = HMAC(finished_key, Transcript-Hash(CH‥CertVerify)) matches RFC 8448", verifyDataOk)
     , ("Finished message wraps the recomputed verify_data", finWraps)
-    , ("parser accepts the real RFC 8448 ClientHello", parseOk)
-    , ("parser extracts the RFC 8448 client x25519 key_share", shareOk)
+    , ("the constrained profile rejects the RSA/ECDSA-only RFC 8448 §3 ClientHello (no Ed25519 overlap)", constrainedRejects)
     ]
 
   let mut failed := 0

@@ -21,10 +21,28 @@
 > lemmas), `KeySeparation.aeadOpen_uses_read_keys` (now `meta.epoch =
 > s.readEpoch.epoch`), and `Nonces.successful_open_increments_read_seq`.
 > **Still pending in this RFC:** the bounded handshake-message reassembler
-> (`Core/HandshakeReasm.lean`, for fragmented/coalesced records), overlap-selection
-> negotiation, ClientHello strictness, and explicit CCS policy. This RFC stays in
-> `proposed/` until those land. The current fix handles a client Finished that
-> arrives complete in one record.
+> (`Core/HandshakeReasm.lean`, for fragmented/coalesced records), ClientHello
+> strictness, and explicit CCS policy (see the part-2 note below for the updated
+> list). This RFC stays in `proposed/` until those land. The current fix handles a
+> client Finished that arrives complete in one record.
+>
+> **Status note — partial (0.38.0-dev, M36 part 2).** `signature_algorithms`
+> overlap-selection landed (`Parse/Handshake.lean`): the ClientHello parser now reads
+> the client's offered schemes (extension 0x000d) and selects Ed25519 only when the
+> client actually offers it (`sigSchemeOfU16`/`selectSigScheme`, mirroring
+> `selectSuite`), rather than presenting a hardcoded Ed25519 CertificateVerify the
+> client never offered. A cert-authenticating server with no acceptable overlap — no
+> `signature_algorithms`, or only RSA/ECDSA — is now rejected (RFC 8446 §4.2.3). This
+> makes the constrained profile's interop limit explicit and honest: it rejects the
+> RSA/ECDSA-only RFC 8448 §3 ClientHello (`Tests/Wire.lean` asserts this), since
+> kroopt presents Ed25519 only.
+> **Still pending in this RFC:** the bounded handshake-message reassembler
+> (`Core/HandshakeReasm.lean`, for fragmented/coalesced records — deferred pending a
+> clean `ByteArray.extract` size bound), broader ClientHello strictness
+> (`legacy_version`, etc.), explicit CCS policy, and binding cipher-suite selection to
+> the provider's actual presentation capability (`suiteOfU16` still maps AES suites the
+> constrained provider cannot perform — a known follow-up). This RFC stays in
+> `proposed/` until those land.
 
 ---
 
