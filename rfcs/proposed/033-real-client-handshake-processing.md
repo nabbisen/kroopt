@@ -38,8 +38,18 @@
 > kroopt presents Ed25519 only.
 > **Still pending in this RFC:** the bounded handshake-message reassembler
 > (`Core/HandshakeReasm.lean`, for fragmented/coalesced records — deferred pending a
-> clean `ByteArray.extract` size bound) and explicit `change_cipher_spec` policy. This
-> RFC stays in `proposed/` until those land.
+> clean `ByteArray.extract` size bound). This is the last item; the RFC stays in
+> `proposed/` until it lands.
+>
+> **Status note — partial (0.41.0-dev, M36 part 5).** The `change_cipher_spec` phase
+> window is now explicit (`Core/RecordPath.lean`, RFC 8446 §5): a compatibility-mode CCS
+> is accepted-and-ignored only during the active handshake (after the ClientHello,
+> before the client's Finished). A CCS before any ClientHello (`start`), after
+> `connected`, or while closing/terminal is rejected as an illegal record. The
+> single-0x01 payload check (`classifyCcs`) was already in place; this adds the missing
+> phase gate. Proofs over `handleTransportBytes` (`buffered_plaintext_authenticated`,
+> `KeySeparation.aeadOpen_uses_read_keys`, `Nonces.successful_open_increments_read_seq`)
+> hold unchanged.
 >
 > **Status note — partial (0.40.0-dev, M36 part 4).** ClientHello strictness landed
 > (`Parse/Handshake.lean`, RFC 8446 §4.1.2): the parser now rejects a ClientHello whose

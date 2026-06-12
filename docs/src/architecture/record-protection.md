@@ -81,3 +81,19 @@ The read epoch stays `handshake` through `sentServerFinished` (the server's *wri
 switches to application after its own Finished) and becomes `application` only once
 the client Finished verifies. `KeySeparation.aeadOpen_uses_read_keys` proves an open
 always uses read-direction keys at the connection's current read epoch.
+
+## The change_cipher_spec phase window (RFC 8446 §5)
+
+TLS 1.3 keeps a vestigial `change_cipher_spec` record only for middlebox
+compatibility: a client may send a single one-byte CCS, which the server ignores.
+RFC 8446 §5 confines it to the handshake — it is permitted only after the ClientHello
+is received and before the client's Finished, and an implementation that receives one
+at any other time MUST abort.
+
+The record path enforces both halves. `classifyCcs` validates the payload (exactly one
+byte, 0x01; anything else is rejected), and `handleTransportBytes` gates acceptance on
+the handshake phase: a compatibility CCS is accepted-and-ignored only in an active
+handshake phase. A CCS arriving before any ClientHello (`start`), after `connected`, or
+while closing or terminal is rejected as an illegal record (`unexpectedMessage`). The
+classification is returned to the core and the gate lives in the core — neither is
+hidden in the interpreter.

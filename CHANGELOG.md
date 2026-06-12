@@ -3,6 +3,38 @@
 All notable changes to kroopt are recorded here. RFC lifecycle transitions are
 governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycle-policy.md).
 
+## [0.41.0-dev] — M36 (part 5): explicit change_cipher_spec phase window (RFC 033) — 2026-06-12
+
+The compatibility-mode `change_cipher_spec` record is now confined to its RFC 8446 §5
+window in the record path; the payload check was already present.
+
+### Changed
+
+- `Core/RecordPath.lean`: `handleTransportBytes` gates the `change_cipher_spec` branch on
+  the handshake phase. A compatibility CCS is accepted-and-ignored only during an active
+  handshake (after the ClientHello, before the client's Finished). A CCS before any
+  ClientHello (`start`), after `connected`, or while closing/terminal is rejected as an
+  illegal record (`unexpectedMessage`). The single-0x01 payload check (`classifyCcs`)
+  was already in place.
+
+### Tests
+
+- `kroopt-close-test` (+3 checks, 19 total): a compatibility CCS during the handshake is
+  accepted and ignored; a CCS before any ClientHello is rejected; a CCS after `connected`
+  is rejected.
+
+### Proofs
+
+- No change to the proof set (91 theorems, all axiom-clean). The three theorems that
+  case-split `handleTransportBytes` (`buffered_plaintext_authenticated`,
+  `aeadOpen_uses_read_keys`, `successful_open_increments_read_seq`) hold over the added
+  branch unchanged.
+
+### RFC lifecycle
+
+- **RFC 033** — partial; stays in `proposed/`. One item remains: the bounded
+  handshake-message reassembler (gated on a clean `ByteArray.extract` size bound).
+
 ## [0.40.0-dev] — M36 (part 4): ClientHello strictness on legacy fields (RFC 033) — 2026-06-12
 
 The ClientHello parser now enforces two TLS 1.3 invariants on legacy fields it

@@ -32,6 +32,10 @@ def connectedWithOp : State :=
 def failedState : State :=
   { State.initial conn0 ⟨0⟩ .sha256 with handshake := .failed .internalError }
 
+/-- A well-formed compatibility change_cipher_spec record: outer type 20, the single
+0x01 payload (RFC 8446 §5). -/
+def ccsRecord : ByteArray := bytesOf [20, 0x03, 0x03, 0, 1, 1]
+
 def checks : List Check :=
   [ -- close state machine (RFC 013 §3, §5)
     { name := "graceful close → closing / sentCloseNotify"
@@ -94,6 +98,20 @@ def checks : List Check :=
     , ok := [ParseError.truncated, .trailingBytes, .lengthOverflow, .valueOutOfRange,
               .oversizedRecord, .malformedVector, .malformedExtension, .invalidContentType,
               .invalidDer].all (fun e => alertLevel (alertForParseError e) == .fatal) }
+    -- change_cipher_spec phase window (RFC 8446 §5)
+  , { name := "compatibility CCS during the handshake is accepted and ignored (RFC 8446 §5)"
+    , ok := (match step { State.initial conn0 ⟨0⟩ .sha256 with handshake := .sentServerHello }
+                         (.transportBytes conn0 ccsRecord) with
+             | .ok (s', acts) => s'.handshake == .sentServerHello && acts.isEmpty
+             | .error _ => false) }
+  , { name := "CCS before any ClientHello (start) is rejected (RFC 8446 §5)"
+    , ok := (match step (State.initial conn0 ⟨0⟩ .sha256) (.transportBytes conn0 ccsRecord) with
+             | .ok (s', _) => s'.handshake.isTerminal
+             | .error _ => true) }
+  , { name := "CCS after connected is rejected (RFC 8446 §5)"
+    , ok := (match step connectedState (.transportBytes conn0 ccsRecord) with
+             | .ok (s', _) => s'.handshake.isTerminal
+             | .error _ => true) }
   ]
 
 def connChecks : List Check :=

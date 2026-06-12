@@ -204,6 +204,15 @@ external interop (RFC 015/026) are **frozen** until these gates pass, in this or
 - **post-M38 — browser-grade crypto surface (RFC 035).** AES-GCM/P-256/ECDSA/RSA and a
   practical public-certificate story, only after the above are green.
 
+*M36 part 5 shipped — explicit change_cipher_spec phase window (RFC 033):* the record path
+now confines a compatibility-mode CCS to its RFC 8446 §5 window — accepted-and-ignored only
+during an active handshake (after the ClientHello, before the client's Finished), and
+rejected before any ClientHello, after `connected`, or while closing/terminal. The payload
+check was already present. `kroopt-close-test` +3 checks (19). No proof change (91 theorems);
+the three theorems that case-split handleTransportBytes hold over the added branch. With
+this, RFC 033 has one item left — the handshake-message reassembler — and stays in
+`proposed/` until it lands.
+
 *M36 part 4 shipped — ClientHello strictness on legacy fields (RFC 033):* the parser now
 enforces RFC 8446 §4.1.2 invariants it previously ignored — `legacy_version` must be
 0x0303, and `legacy_compression_methods` must be the single null byte (compression is

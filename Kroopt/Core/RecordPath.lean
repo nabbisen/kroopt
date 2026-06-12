@@ -111,10 +111,18 @@ def handleTransportBytes (s0 : State) (b : ByteArray) : RecordStepResult :=
             -- No protected record is expected in any other pre-`connected` phase.
             .ok (s, [])
       | .changeCipherSpec =>
-          match classifyCcs body with
-          | .allowedCompat => .ok (s, [])                      -- accept and ignore
-          | .rejected =>
-              recordFailAlert s .unexpectedMessage (.protocol .illegalMessageForState)
+          -- RFC 8446 §5: a compatibility-mode change_cipher_spec is permitted only during
+          -- the handshake — after the ClientHello is received and before the client's
+          -- Finished. Outside that window — before any ClientHello (`start`), after
+          -- `connected`, or while closing/terminal — it is an illegal record.
+          if s.handshake = .start || s.handshake.isConnected
+              || s.handshake = .closing || s.handshake.isTerminal then
+            recordFailAlert s .unexpectedMessage (.protocol .illegalMessageForState)
+          else
+            match classifyCcs body with
+            | .allowedCompat => .ok (s, [])                      -- accept and ignore
+            | .rejected =>
+                recordFailAlert s .unexpectedMessage (.protocol .illegalMessageForState)
       | .handshake =>
           -- Drive the handshake from a plaintext handshake record (RFC 006 §5, §10).
           handshakeOnPlaintextRecord s body
