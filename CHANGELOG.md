@@ -3,6 +3,49 @@
 All notable changes to kroopt are recorded here. RFC lifecycle transitions are
 governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycle-policy.md).
 
+## [0.36.0-dev] — M36-prelude: provider capability honesty + fail-closed entropy (RFC 034) — 2026-06-12
+
+The immediate honesty fixes the architecture review asked to fast-track ahead of the
+M36 correspondence work. The real provider no longer advertises crypto it cannot
+perform, and entropy no longer fails open. No core or proof changes — the 87 theorems
+and 36 pure-zone files are unchanged.
+
+### Added
+
+- `Kroopt.Crypto.Provider.realCapabilities` — the real provider's honest, constrained
+  profile: `TLS_CHACHA20_POLY1305_SHA256`, X25519, Ed25519, SHA-256, OS CSPRNG. No
+  AES-GCM, SHA-384, P-256, ECDSA, or RSA.
+- `Kroopt.Crypto.ConfigCheck` — `requiredCryptoOfServerConfig` and
+  `validateServerConfigCapabilities`, rejecting a config that requires out-of-profile
+  suites/signature schemes with a typed `CapabilityError` (RFC 008 §3 / RFC 034 §2).
+- `Kroopt.Crypto.Hacl.RandomResult` / `EntropyError` and a fail-closed `randomBytes`
+  returning a typed result.
+- `kroopt-capabilities-test` (8 checks): real profile rejects AES/ECDSA and accepts the
+  constrained config; the fake profile still accepts AES (profiles differ); the real
+  provider advertises the constrained profile; a `randomBytes` op reaching the real
+  provider is a typed error; entropy is fail-closed and typed.
+
+### Changed
+
+- `mkRealProvider.capabilities` is now `realCapabilities` (was `fakeCapabilities`).
+- The real provider's `randomBytes` operation returns a typed error instead of
+  deterministic zeros — deterministic randomness can never enter the real provider.
+- `kroopt_ffi_random` fails **closed**: on `getrandom` failure it returns a zero-length
+  buffer (never a zero-filled buffer reported as success).
+- `Provision.genEphemeralX25519` / `provisionRealConfig` fail closed with a new
+  `ProvisionError.entropyFailure` rather than emit a zero or partial key.
+- Docs: `crypto-ffi-contract.md` and `proof-assumptions.md` record the real capability
+  profile and the fail-closed entropy guarantee.
+
+### RFC lifecycle
+
+- **RFC 034** — *Provider Capability Honesty and Fail-Closed Entropy* — moved to
+  `rfcs/done/` (Implemented, 0.36.0-dev). The config-capability check's call-site at live
+  listener startup is the one deferred mechanical item, tracked to RFC 010 / RFC 031.
+- RFCs 031–037 amended per the RFC-set review (handshake-message reassembly, transcript
+  precision, two-stage crypto actions, overlap-selection negotiation, the 034 split, new
+  RFC 036 trace harness); archive layout fixed to `rfcs/proposed/`.
+
 ## [0.35.0-dev] — M35 TLS 1.3 records over a real OS socket — 2026-06-12
 
 A full server flight now traverses a real OS socket and opens on the peer,

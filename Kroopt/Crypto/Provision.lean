@@ -40,6 +40,7 @@ inductive ProvisionError where
   | badKeyLength (got : Nat)
   | unsupportedScheme (scheme : SignatureScheme)
   | keyMismatch
+  | entropyFailure
   deriving Repr, DecidableEq
 
 namespace Provision
@@ -76,23 +77,27 @@ def lintAgainstClaimed (p : CertProvision) (claimedPublic : ByteArray) :
 end Provision
 
 /-- Draw a fresh ephemeral X25519 key pair from the OS CSPRNG — one per
-connection, never injected or reused. Returns `(private, public)`. -/
-def genEphemeralX25519 : IO (ByteArray × ByteArray) := do
-  let priv ← Hacl.randomBytes 32
-  pure (priv, Hacl.x25519Public priv)
+connection, never injected or reused. Fails closed: an entropy failure returns
+`error`, never a zero or partial key. -/
+def genEphemeralX25519 : IO (Except Hacl.EntropyError (ByteArray × ByteArray)) := do
+  match ← Hacl.randomBytes 32 with
+  | .bytes priv => pure (.ok (priv, Hacl.x25519Public priv))
+  | .error e    => pure (.error e)
 
 /-- Provision a real crypto config for one connection: lint the certificate
 material (deriving the leaf public key from the seed), then draw a fresh ephemeral
 key pair from OS entropy and combine them. Fails closed with the provisioning
-error if the certificate material does not lint. -/
+error if the certificate material does not lint or entropy is unavailable. -/
 def provisionRealConfig (p : CertProvision) :
     IO (Except ProvisionError RealCryptoConfig) := do
   match Provision.lint p with
   | .error e => pure (.error e)
   | .ok certPublic =>
-      let (ephPriv, _ephPub) ← genEphemeralX25519
-      pure (.ok { ephemeralPrivate := ephPriv
-                  certPrivate := p.signingKeySeed
-                  certPublic := certPublic })
+      match ← genEphemeralX25519 with
+      | .error _ => pure (.error .entropyFailure)
+      | .ok (ephPriv, _ephPub) =>
+          pure (.ok { ephemeralPrivate := ephPriv
+                      certPrivate := p.signingKeySeed
+                      certPublic := certPublic })
 
 end Kroopt.Crypto

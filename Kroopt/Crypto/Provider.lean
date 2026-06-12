@@ -114,6 +114,20 @@ def fakeCapabilities : CryptoCapabilities :=
     randomSource := .fakeDeterministic
     supportsSecretHandles := true }
 
+/-- The **real** provider's honest capability profile (RFC 034 §2): exactly what
+the vendored HACL\* portable-C subset can perform — `TLS_CHACHA20_POLY1305_SHA256`,
+X25519, Ed25519, SHA-256 — drawn from the OS CSPRNG. The real provider must never
+advertise AES-GCM, SHA-384, P-256, ECDSA, or RSA, none of which it implements; a
+config requiring them is rejected at validation rather than accepted and failed at
+runtime. -/
+def realCapabilities : CryptoCapabilities :=
+  { suites := [.chacha20Poly1305Sha256]
+    hashAlgorithms := [.sha256]
+    groups := [.x25519]
+    signatureSchemes := [.ed25519]
+    randomSource := .osCsprng
+    supportsSecretHandles := true }
+
 /-- A deterministic, purpose-aware answer for each operation kind (RFC 008 §8.1).
 Now threads the arena: ECDHE and HKDF allocate a real handle backed by a
 placeholder secret (the fake never uses real key material — its AEAD is the

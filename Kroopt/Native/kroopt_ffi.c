@@ -137,16 +137,27 @@ LEAN_EXPORT lean_object *kroopt_ffi_ed25519_verify(b_lean_obj_arg pub, b_lean_ob
   return r;
 }
 
-/* IO: fill `len` bytes from the OS CSPRNG (getrandom). */
+/* IO: fill `len` bytes from the OS CSPRNG (getrandom). Fails CLOSED: on any
+ * getrandom failure it returns a zero-length ByteArray (never a zero-filled
+ * buffer reported as success), and the Lean wrapper turns a short read into a
+ * typed entropy error so no caller can proceed with degraded entropy. */
 LEAN_EXPORT lean_object *kroopt_ffi_random(uint32_t len, lean_object *w) {
   (void)w;
-  lean_object *r = mk_ba(len);
-  uint8_t *q = lean_sarray_cptr(r);
+  uint8_t *tmp = (uint8_t *)malloc(len ? len : 1);
   size_t got = 0;
+  int failed = 0;
   while (got < len) {
-    ssize_t n = getrandom(q + got, (size_t)len - got, 0);
-    if (n <= 0) { memset(q + got, 0, (size_t)len - got); break; }
+    ssize_t n = getrandom(tmp + got, (size_t)len - got, 0);
+    if (n <= 0) { failed = 1; break; }
     got += (size_t)n;
   }
+  lean_object *r;
+  if (failed) {
+    r = lean_alloc_sarray(1, 0, 0);          /* empty => entropy failure */
+  } else {
+    r = lean_alloc_sarray(1, len, len);
+    memcpy(lean_sarray_cptr(r), tmp, len);
+  }
+  free(tmp);
   return lean_io_result_mk_ok(r);
 }

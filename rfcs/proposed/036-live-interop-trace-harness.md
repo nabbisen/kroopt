@@ -1,0 +1,78 @@
+# RFC 036 — Live Interop Trace Harness and Captured-Client Replay
+
+**Project.** kroopt  
+**Status.** Proposed  
+**Type.** Implementation RFC  
+**Target milestone.** M38 (prep starts during M36 via captured-CH fixtures)  
+**Depends on.** RFC 033 (real-client handshake), RFC 020 (observability/redaction), RFC 026 (interop matrix), RFC 015 (E2E acceptance)  
+**Touches.** `scripts/`, `Tests/` fixtures, `docs/src/interop.md`, the trace/redaction facility  
+**Canonical source.** kroopt fixed requirements §14, §17.7; architect RFC review (recommended RFC 036).  
+
+---
+
+## 1. Summary
+
+Live TLS interop is where real ClientHello diversity, unknown extensions, CCS
+compatibility records, timing, partial I/O, and alert differences surface. This RFC adds
+the tooling to make that milestone diagnosable and reproducible, and a captured-client
+replay bridge that exercises real client bytes through the pure/fake path **before** live
+sockets. It may be folded into RFC 026 as an appendix, but is tracked explicitly because
+the work is substantial. It is the diagnostic backbone of M38.
+
+## 2. Captured-client replay (bridge, usable from M36)
+
+- Collect real `openssl s_client` / `curl` ClientHello byte captures — both the
+  constrained form (`-ciphersuites TLS_CHACHA20_POLY1305_SHA256 -groups X25519
+  -sigalgs ed25519`) and a default broad ClientHello — plus a small corpus of
+  malformed/edge captures.
+- Replay them through the pure parser + fake-transport interpreter (RFC 033 §7), asserting
+  deterministic negotiation (broad CH selects the constrained overlap), correct
+  fragmentation/coalescing handling, and deterministic alert mapping for rejected captures.
+- Store **sanitized** captures as committed test fixtures (no secrets; client randoms and
+  key shares are public handshake values and may remain, but nothing secret is stored).
+
+## 3. Trace facility (no secrets)
+
+A `debug_trace`-gated facility records, without secret material:
+
+- inbound record headers; handshake message types and lengths;
+- extension IDs and accept/ignore/reject decisions;
+- selected cipher suite, group, signature scheme, ALPN, SNI (redacted/hashed per RFC 020);
+- state transitions; crypto op ids (not key material);
+- transcript hash labels and lengths (not raw secrets);
+- alert mapping; read/write readiness events; partial-write counts.
+
+A separate, explicitly **unsafe, local-only** "test secrets export" mode may exist behind
+a build flag for deep debugging; it must never be enabled in CI or release artifacts.
+
+## 4. Live interop runs (M38)
+
+- Drive kroopt over the production interpreter (RFC 031) and a simple IO/fake transport,
+  then the iotakt adapter (RFC 010) once it lands.
+- Capture `openssl s_client -tls1_3 -ciphersuites TLS_CHACHA20_POLY1305_SHA256
+  -groups X25519 -sigalgs ed25519` and constrained `curl` transcripts; confirm successful
+  handshake, ALPN/SNI behavior, application-data exchange, `close_notify` behavior, and
+  deterministic rejection cases.
+- Archive packet/record traces as diagnosis artifacts.
+
+## 5. Constrained vs browser-grade separation
+
+The harness explicitly distinguishes **"constrained OpenSSL/curl green"** (the M38 target)
+from **"browser-grade green"** (post-M38, RFC 035). A passing constrained run must not be
+reported as browser compatibility.
+
+## 6. Acceptance criteria
+
+1. A captured-CH corpus (constrained + broad + malformed) is committed and replays through
+   the pure/fake path with deterministic results.
+2. The no-secrets trace facility exists, is `debug_trace`-gated, and applies RFC 020
+   redaction; no secrets appear in any default or CI artifact.
+3. M38 live runs capture and archive constrained OpenSSL/curl transcripts with the
+   expected handshake, data exchange, close, and rejection behaviors.
+4. Documentation distinguishes constrained from browser-grade interop.
+
+## 7. Risk
+
+Live runs are timing- and environment-sensitive; the captured-replay bridge de-risks them
+by catching most negotiation/parsing failures offline first. Keep the corpus current as
+client behavior evolves.

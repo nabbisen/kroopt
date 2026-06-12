@@ -56,8 +56,30 @@ opaque ed25519Sign (priv msg : ByteArray) : ByteArray
 @[extern "kroopt_ffi_ed25519_verify"]
 opaque ed25519VerifyRaw (pub msg sig : ByteArray) : ByteArray
 
+/-- The outcome of an entropy draw. Randomness never fails open: a short or
+failed `getrandom` becomes `error`, and no caller may synthesise fallback bytes
+(RFC 034 §3). -/
+inductive EntropyError where
+  | unavailable
+  deriving DecidableEq, Repr, Inhabited
+
+inductive RandomResult where
+  | bytes (b : ByteArray)
+  | error (e : EntropyError)
+  deriving Inhabited
+
+/-- Raw OS-CSPRNG draw. Returns exactly `len` bytes on success, or a zero-length
+array on failure (the native side fails closed). Use `randomBytes`, not this. -/
 @[extern "kroopt_ffi_random"]
-opaque randomBytes (len : UInt32) : IO ByteArray
+private opaque randomRaw (len : UInt32) : IO ByteArray
+
+/-- Draw `len` bytes from the OS CSPRNG, failing closed. A short read (the native
+fail-closed signal) becomes `RandomResult.error`; only a full-length draw yields
+`bytes`. This is the single real entropy source; kroopt implements no PRNG and no
+fallback (requirements §3.3). -/
+def randomBytes (len : UInt32) : IO RandomResult := do
+  let b ← randomRaw len
+  pure (if b.size == len.toNat then .bytes b else .error .unavailable)
 
 /-- X25519 ECDH. `none` if the peer key produces a low-order (all-zero) shared
 secret, which TLS 1.3 must reject. -/

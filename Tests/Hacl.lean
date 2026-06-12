@@ -89,8 +89,8 @@ def main : IO UInt32 := do
   let edOk := ed25519Verify edPub msg sig
   let edBad := ed25519Verify edPub (hexToBytes "deadbe00") sig
   -- random
-  let r1 ← randomBytes 32
-  let r2 ← randomBytes 32
+  let r1 ← (do match ← randomBytes 32 with | .bytes b => pure b | .error _ => pure ByteArray.empty)
+  let r2 ← (do match ← randomBytes 32 with | .bytes b => pure b | .error _ => pure ByteArray.empty)
 
   let checks : List Check :=
     [ { name := "SHA-256(\"abc\") matches FIPS 180-4 vector"

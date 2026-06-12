@@ -178,6 +178,41 @@ placeholders in `Core/Handshake.lean`); real record encryption; the iotakt
 P-256 (no `Hacl_P256.c` vendored — header only), ASan/UBSan jobs, and
 microbenchmarks.
 
+*The 0.35.0-dev architecture review (and the follow-up review of the RFCs) reset the
+v0.3 finishing sequence into gated milestones (RFC 031–037). iotakt binding (RFC 010) and
+external interop (RFC 015/026) are **frozen** until these gates pass, in this order:*
+
+- **M36-prelude — honesty fixes (RFC 034).** Real provider advertises only the
+  constrained capabilities (`realCapabilities`) with config rejection; entropy is
+  fail-closed (typed `RandomResult`, no zero-fill success); deterministic/test randomness
+  is separated from the real source. Small, no core/proof change, landed first.
+- **M36 — production interpreter correspondence (RFC 031/032/033).** Typed handshake/
+  record actions replace placeholder frames (no first-byte recognition, CI-gated);
+  CertificateVerify/Finished are two-stage; transcript is over handshake-message bytes;
+  the production interpreter drives the byte-accurate handshake over `FakeTransport` with
+  a correspondence ledger + tests; the core processes protected handshake records before
+  `connected`, with handshake-message reassembly and overlap-selection ClientHello
+  negotiation; `Tests/RealHandshake.lean` becomes wrapper-only or is removed.
+- **M37 — native and resource hardening (RFC 037).** FFI length contracts on all
+  `uint32_t` params; secret arena native-zeroizing or truthfully classified; parse/
+  handshake + crypto-op budgets charged in the core; record-size guards; sanitizer
+  target; `close_notify` sealed.
+- **M38 — constrained external interop (RFC 015/026/036).** Captured-ClientHello replay
+  fixtures and a no-secrets trace harness; constrained `openssl s_client`/`curl`
+  handshake green with archived traces; iotakt adapter begins only after M36 and M37 are
+  green. Documented as a **constrained** profile, not browser-grade.
+- **post-M38 — browser-grade crypto surface (RFC 035).** AES-GCM/P-256/ECDSA/RSA and a
+  practical public-certificate story, only after the above are green.
+
+*M36-prelude shipped the honesty fixes (RFC 034):* the real provider now advertises only
+`realCapabilities` (the constrained ChaCha/X25519/Ed25519/SHA-256, OS-CSPRNG profile),
+`validateServerConfigCapabilities` rejects an out-of-profile config with a typed
+`CapabilityError`, `Hacl.randomBytes` returns a typed `RandomResult` with the native side
+failing closed, and `provisionRealConfig` fails closed with `entropyFailure`.
+Deterministic randomness is confined to the fake provider. `kroopt-capabilities-test`
+(8 checks); no core/proof change (87 theorems, 36 pure files unchanged). RFC 034 moved to
+`rfcs/done/`. The next gates (M36 correspondence, M37 hardening, M38 interop) are as above.
+
 *M35 ran a server flight over a real OS socket:* `kroopt-socket-test` seals the
 server flight (cleartext ServerHello + four ChaCha20-Poly1305 records) and exchanges
 it, plus the peer's encrypted Finished and application data, across an `AF_UNIX`

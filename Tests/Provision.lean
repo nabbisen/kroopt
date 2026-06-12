@@ -86,12 +86,16 @@ def main : IO UInt32 := do
     | .error .keyMismatch => true | _ => false
 
   -- fresh ephemeral generation: well-formed and live (independent draws differ)
-  let (e1priv, e1pub) ← genEphemeralX25519
-  let (e2priv, e2pub) ← genEphemeralX25519
-  let ephSizes := e1priv.size == 32 && e1pub.size == 32 && e2priv.size == 32 && e2pub.size == 32
-  let ephDistinctPriv := !eqB e1priv e2priv
-  let ephDistinctPub := !eqB e1pub e2pub
-  let ephDeterministic := eqB (Hacl.x25519Public e1priv) e1pub
+  let e1 ← genEphemeralX25519
+  let e2 ← genEphemeralX25519
+  let ⟨ephSizes, ephDistinctPriv, ephDistinctPub, ephDeterministic⟩ :=
+    match e1, e2 with
+    | .ok (e1priv, e1pub), .ok (e2priv, e2pub) =>
+        (⟨ e1priv.size == 32 && e1pub.size == 32 && e2priv.size == 32 && e2pub.size == 32
+         , !eqB e1priv e2priv
+         , !eqB e1pub e2pub
+         , eqB (Hacl.x25519Public e1priv) e1pub ⟩ : Bool × Bool × Bool × Bool)
+    | _, _ => (⟨false, false, false, false⟩ : Bool × Bool × Bool × Bool)
 
   -- provisionRealConfig: derives the cert public, keeps the seed, draws a fresh ephemeral
   let pr1 ← provisionRealConfig goodProvision
@@ -111,7 +115,8 @@ def main : IO UInt32 := do
   let msg := hexToBytes "0102030405060708"
   let sig := Hacl.ed25519Sign seed msg
   let signRoundTrips := Hacl.ed25519Verify derived msg sig
-  let wrongPubRejected := !Hacl.ed25519Verify e1pub msg sig
+  let wrongPub := derived.set! 0 ((derived.get! 0) ^^^ 1)
+  let wrongPubRejected := !Hacl.ed25519Verify wrongPub msg sig
 
   let checks : List (String × Bool) :=
     [ ("Ed25519 RFC 8032 §7.1 Test 1: public key matches", rfcPubOk)

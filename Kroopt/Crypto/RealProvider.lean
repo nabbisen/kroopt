@@ -66,9 +66,13 @@ key/IV and records the index; AEAD resolves the installed key by record metadata
 SHA-256 / X25519 / ChaCha20-Poly1305 / Ed25519 only (the vendored HACL subset). -/
 def submit (cfg : RealCryptoConfig) (a : SecretArena) (_ : OperationId) :
     CryptoOp → Except CryptoError (SecretArena × CryptoResult)
-  | .randomBytes n =>
-      -- Pure submit cannot draw entropy; production seeds via the interpreter.
-      .ok (a, .randomBytes (KeySchedule.zeros n))
+  | .randomBytes _ =>
+      -- The real provider draws no entropy in pure `submit`: it would be
+      -- deterministic, and deterministic randomness must never enter the real
+      -- provider (RFC 034 §4). Real entropy is drawn at the IO/interpreter layer
+      -- via the fail-closed `Hacl.randomBytes`; a `randomBytes` op reaching the
+      -- real provider is therefore a provider-internal error, not silent zeros.
+      .error .providerInternal
   | .ecdheX25519 peerShare =>
       match Hacl.x25519Public cfg.ephemeralPrivate, Hacl.x25519Shared cfg.ephemeralPrivate peerShare with
       | serverShare, some shared => do
@@ -141,7 +145,7 @@ end RealProvider
 the suites the vendored HACL subset supports for record protection
 (ChaCha20-Poly1305) and the SHA-256 schedule. -/
 def mkRealProvider (cfg : RealCryptoConfig) : CryptoProvider where
-  capabilities := fakeCapabilities
+  capabilities := realCapabilities
   submit := RealProvider.submit cfg
 
 end Kroopt.Crypto

@@ -196,3 +196,8 @@ lean_exe «kroopt-wire-dump» where
 lean_exe «kroopt-socket-test» where
   root := `Tests.SocketHandshake
   moreLinkArgs := #["-Wl,--gc-sections"]
+
+@[default_target]
+lean_exe «kroopt-capabilities-test» where
+  root := `Tests.Capabilities
+  moreLinkArgs := #["-Wl,--gc-sections"]

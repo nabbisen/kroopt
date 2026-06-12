@@ -54,3 +54,20 @@ under ASan/UBSan with warnings as errors (RFC 009 §9). Until then the fake
 provider satisfies the same `CryptoProvider` interface, and the correlation
 guarantee above already holds in the verified core regardless of which provider
 is plugged in.
+
+## Capability honesty and fail-closed entropy (RFC 034)
+
+The real provider advertises only what the vendored HACL\* subset can perform —
+`realCapabilities`: `TLS_CHACHA20_POLY1305_SHA256`, X25519, Ed25519, SHA-256, drawn
+from the OS CSPRNG. It never claims AES-GCM, SHA-384, P-256, ECDSA, or RSA. A
+`ServerConfig` requiring an out-of-profile suite or signature scheme is rejected at
+validation (`validateServerConfigCapabilities`) with a typed `CapabilityError` — never
+accepted and failed at runtime, and never silently downgraded.
+
+Entropy fails **closed**. `Hacl.randomBytes` returns a typed `RandomResult`; the native
+`getrandom` wrapper, on any failure, returns a zero-length buffer (never a zero-filled
+buffer reported as success), which the wrapper turns into `RandomResult.error`. No caller
+synthesises fallback entropy: `provisionRealConfig` fails closed with `entropyFailure`
+rather than emit a zero or partial key. Deterministic randomness is confined to the
+explicitly named fake/test provider; a `randomBytes` operation reaching the real provider
+is a typed error, so deterministic bytes can never masquerade as real randomness.
