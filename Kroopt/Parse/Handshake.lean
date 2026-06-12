@@ -136,11 +136,17 @@ def parseClientHello (input : ByteArray) : Except ParseError (Kroopt.Core.WireBo
   if msgType != 1 then throw .valueOutOfRange
   let (_len, r) ← r.takeLen .len24
   -- ClientHello body
-  let (_legacyVersion, r) ← r.takeU16
+  let (legacyVersion, r) ← r.takeU16
+  -- RFC 8446 §4.1.2: a TLS 1.3 ClientHello MUST set legacy_version to 0x0303;
+  -- version preference is carried only in supported_versions.
+  if legacyVersion != 0x0303 then throw .valueOutOfRange
   let (_random, r) ← r.takeBytes 32
   let (_sessionId, r) ← r.takeVectorBytes .len8 32
   let (suitesBytes, r) ← r.takeVectorBytes .len16 (2 * maxCipherSuites)
-  let (_compression, r) ← r.takeVectorBytes .len8 maxVectorLen
+  let (compression, r) ← r.takeVectorBytes .len8 maxVectorLen
+  -- RFC 8446 §4.1.2: legacy_compression_methods MUST be exactly one byte set to zero
+  -- (compression is forbidden in TLS 1.3).
+  if !(compression.size == 1 && compression.get! 0 == 0) then throw .valueOutOfRange
   let (extBytes, _r) ← r.takeVectorBytes .len16 maxVectorLen
   -- extensions
   let exts ← match (Reader.ofBytes extBytes).takeCountedItems maxExtensions parseExtension with

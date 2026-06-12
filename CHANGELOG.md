@@ -3,6 +3,34 @@
 All notable changes to kroopt are recorded here. RFC lifecycle transitions are
 governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycle-policy.md).
 
+## [0.40.0-dev] — M36 (part 4): ClientHello strictness on legacy fields (RFC 033) — 2026-06-12
+
+The ClientHello parser now enforces two TLS 1.3 invariants on legacy fields it
+previously parsed but ignored (RFC 8446 §4.1.2).
+
+### Changed
+
+- `Parse/Handshake.lean`: reject a ClientHello whose `legacy_version` is not 0x0303
+  (TLS 1.3 carries version preference in `supported_versions`; the legacy field is
+  fixed by the spec). Reject a ClientHello whose `legacy_compression_methods` is
+  anything other than the single null byte (compression is forbidden in TLS 1.3).
+
+### Tests
+
+- `kroopt-hardening-test` (+2 checks, 18 total): a ClientHello with `legacy_version`
+  ≠ 0x0303 is refused; a ClientHello offering non-null compression is refused. New
+  `chBadVersion` / `chBadCompression` / `rejects` helpers.
+
+### Proofs
+
+- No change to the proof set (91 theorems, all axiom-clean). The new checks are
+  conditionals on already-parsed values; the parser bounds proofs are unaffected.
+
+### RFC lifecycle
+
+- **RFC 033** — still partial; stays in `proposed/`. Remaining: the handshake-message
+  reassembler and explicit `change_cipher_spec` policy.
+
 ## [0.39.0-dev] — M36 (part 3): cipher-suite selection bound to provider capability (RFC 033) — 2026-06-12
 
 Negotiation now selects the cipher suite from the client's offers *and* binds it to

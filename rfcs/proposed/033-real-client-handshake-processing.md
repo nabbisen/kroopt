@@ -38,9 +38,14 @@
 > kroopt presents Ed25519 only.
 > **Still pending in this RFC:** the bounded handshake-message reassembler
 > (`Core/HandshakeReasm.lean`, for fragmented/coalesced records — deferred pending a
-> clean `ByteArray.extract` size bound), broader ClientHello strictness
-> (`legacy_version`, etc.), and explicit CCS policy. This RFC stays in `proposed/`
-> until those land.
+> clean `ByteArray.extract` size bound) and explicit `change_cipher_spec` policy. This
+> RFC stays in `proposed/` until those land.
+>
+> **Status note — partial (0.40.0-dev, M36 part 4).** ClientHello strictness landed
+> (`Parse/Handshake.lean`, RFC 8446 §4.1.2): the parser now rejects a ClientHello whose
+> `legacy_version` is not 0x0303, and one whose `legacy_compression_methods` is anything
+> other than the single null byte (compression is forbidden in TLS 1.3). Both fields
+> were previously parsed and ignored.
 >
 > **Status note — partial (0.39.0-dev, M36 part 3).** Cipher-suite negotiation is now
 > bound to suite *capability* (`Parse/Handshake.lean`): `suiteOfU16` maps only

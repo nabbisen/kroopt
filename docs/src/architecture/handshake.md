@@ -78,3 +78,12 @@ provider cannot perform). All three negotiated parameters — suite, group, and 
 scheme — are thus selected from the client's offers and bound to what the server can
 present or perform. The suite map widens when a real AES provider is introduced
 (RFC 035).
+
+### ClientHello strictness
+
+Two TLS 1.3 invariants on legacy fields are enforced rather than ignored (RFC 8446
+§4.1.2). `legacy_version` must be exactly 0x0303 — a TLS 1.3 client carries its real
+version preference in `supported_versions`, and the legacy field is fixed by the
+specification. `legacy_compression_methods` must be exactly the single null byte:
+compression is forbidden in TLS 1.3, so any other value is rejected. Both fields were
+previously parsed for length but their values were not checked.

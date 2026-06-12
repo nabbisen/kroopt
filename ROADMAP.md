@@ -204,6 +204,13 @@ external interop (RFC 015/026) are **frozen** until these gates pass, in this or
 - **post-M38 — browser-grade crypto surface (RFC 035).** AES-GCM/P-256/ECDSA/RSA and a
   practical public-certificate story, only after the above are green.
 
+*M36 part 4 shipped — ClientHello strictness on legacy fields (RFC 033):* the parser now
+enforces RFC 8446 §4.1.2 invariants it previously ignored — `legacy_version` must be
+0x0303, and `legacy_compression_methods` must be the single null byte (compression is
+forbidden in TLS 1.3). `kroopt-hardening-test` +2 checks (18). No proof change (91
+theorems). RFC 033 stays in `proposed/` — the handshake-message reassembler and explicit
+change_cipher_spec policy remain.
+
 *M36 part 3 shipped — cipher-suite selection bound to provider capability (RFC 033):*
 `suiteOfU16` now maps only `TLS_CHACHA20_POLY1305_SHA256` (0x1303), the suite the vendored
 provider performs, so `selectSuite` will not negotiate an AES suite kroopt cannot complete
