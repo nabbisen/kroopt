@@ -4,7 +4,7 @@ M26–M28 built the wire serializers, the server-Finished KAT, and the server-fl
 assembler. M29 connects them to the **verified core state machine**: it drives the
 real `Kroopt.Core.step` through a server handshake against the **real** crypto
 provider (real HACL X25519 / HKDF / Ed25519 / HMAC) with a **real transcript**
-assembled by `Kroopt.Conn.Flight`, and runs it to `sentServerFinished`.
+assembled by `Kroopt.Conn.Flight`, and runs it to `connected`.
 
 `Tests/RealHandshake.lean` (`kroopt-realhandshake-test`) is a driver in the spirit
 of the end-to-end fake-crypto driver, but with two substitutions at the seam the
@@ -54,8 +54,23 @@ The verified state machine is unchanged by this milestone: the 87 theorems and t
 `Flight` module; the substitution lives entirely in the impure driver, exactly
 where the production interpreter will host it.
 
+## Reaching `connected`
+
+The driver continues past the server flight: it captures the client handshake-
+traffic secret as it is derived, computes a real client Finished —
+`HMAC(finished_key(client_hs_traffic), Transcript-Hash(CH‥ServerFinished))` — and
+feeds it back; the core verifies it and reaches `connected`. A negative control
+confirms a wrong client Finished is rejected and `connected` is *not* reached.
+
+A correctness fix enabled this: a TLS 1.3 server verifies the client's Finished
+with the **read (client)** handshake-traffic secret, so the secret arena now keys
+base secrets by `(direction, epoch)` (matching how installed record keys are keyed)
+and `RealProvider.verifyFinished` looks up the read-direction handshake secret and
+extracts the verify_data from the Finished message body. This lives in the Crypto
+zone; the verified core and its 87 theorems are untouched.
+
 ## Remaining toward live interop
 
-The client Finished → `connected` step (the server verifying the client's Finished
-with the client handshake-traffic secret), real record encryption of the flight,
-the iotakt socket transport (RFC 010), and OpenSSL/curl interop (RFC 015 / 026).
+Real record encryption of the flight (the messages are assembled in the clear here,
+not yet sealed with the handshake/application AEAD keys), the iotakt socket
+transport (RFC 010), and OpenSSL/curl interop (RFC 015 / 026).

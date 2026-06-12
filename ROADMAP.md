@@ -178,15 +178,19 @@ placeholders in `Core/Handshake.lean`); real record encryption; the iotakt
 P-256 (no `Hacl_P256.c` vendored — header only), ASan/UBSan jobs, and
 microbenchmarks.
 
-*M29 shipped the live wiring (server side, to `sentServerFinished`):* the verified
-core `step` machine is now driven end-to-end against the **real** provider with a
-**real transcript** assembled by `Flight` (`Tests/RealHandshake.lean`). The live
-handshake produces a complete real server flight and a **valid Ed25519
-CertificateVerify over the real transcript**, with the transcript-hash substitution
-living in the impure driver — exactly where the production interpreter will host it.
-The verified state machine was untouched (87 theorems, 36 pure-zone files). Next:
-client Finished → `connected`, real record encryption, the iotakt socket transport,
-then OpenSSL/curl interop.
+*M29–M30 shipped the live wiring through to `connected`:* the verified core `step`
+machine is driven end-to-end against the **real** provider with a **real
+transcript** assembled by `Flight` (`Tests/RealHandshake.lean`). It parses the
+ClientHello, runs real X25519 + the real key schedule, produces a **valid Ed25519
+CertificateVerify over the real transcript**, and (M30) verifies a real client
+Finished to reach **`connected`** — with a negative control confirming a wrong
+client Finished is rejected. The transcript-hash substitution lives in the impure
+driver, where the production interpreter will host it. A correctness fix keyed the
+secret arena's base secrets by `(direction, epoch)` so the server verifies the
+client Finished with the client (read) handshake-traffic secret. The verified state
+machine and its 87 theorems were untouched. Next: real record encryption of the
+flight (messages are still assembled in the clear), the iotakt socket transport
+(RFC 010), then OpenSSL/curl interop (RFC 015 / 026).
 
 Exit criteria:
 

@@ -88,6 +88,7 @@ structure RD where
   serverShare : ByteArray
   lastSig : ByteArray
   sHsTraffic : ByteArray
+  cHsTraffic : ByteArray
   hCHSH : ByteArray
   hCHCert : ByteArray
   hCHCertVerify : ByteArray
@@ -122,6 +123,8 @@ def runReal (d : RD) (op : CryptoOp) : RD × CryptoResult :=
             match op' with
             | .hkdfExpandLabel _ _ "s hs traffic" _ _ =>
                 { d with sHsTraffic := (a'.getById h.id).getD ByteArray.empty }
+            | .hkdfExpandLabel _ _ "c hs traffic" _ _ =>
+                { d with cHsTraffic := (a'.getById h.id).getD ByteArray.empty }
             | _ => d
         | _ => d
       (d, r)
@@ -178,13 +181,25 @@ def fresh : RD :=
   { st := State.initial ⟨0, 0⟩ ⟨0⟩ .sha256
     arena := SecretArena.empty
     transcript := clientHelloMsg
-    serverShare := ByteArray.empty, lastSig := ByteArray.empty, sHsTraffic := ByteArray.empty
+    serverShare := ByteArray.empty, lastSig := ByteArray.empty, sHsTraffic := ByteArray.empty, cHsTraffic := ByteArray.empty
     hCHSH := ByteArray.empty, hCHCert := ByteArray.empty
     hCHCertVerify := ByteArray.empty, hCHSF := ByteArray.empty
     outbound := [], errored := false }
 
 def run : RD :=
-  driveFuel 256 fresh [InputEvent.transportBytes ⟨0, 0⟩ (recordWrap clientHelloMsg)]
+  let d1 := driveFuel 256 fresh [InputEvent.transportBytes ⟨0, 0⟩ (recordWrap clientHelloMsg)]
+  if d1.errored then d1 else
+  -- Real client Finished = HMAC(finished_key(client hs-traffic), Transcript-Hash(CH‥ServerFinished)).
+  let cfVerifyData := Hacl.hmac256 (KeySchedule.finishedKey d1.cHsTraffic) d1.hCHSF
+  let clientFinished := Wire.finished cfVerifyData
+  driveFuel 64 d1 [InputEvent.transportBytes ⟨0, 0⟩ (recordWrap clientFinished)]
+
+/-- Negative control: a wrong client Finished must be rejected (no `connected`). -/
+def runBadFinished : RD :=
+  let d1 := driveFuel 256 fresh [InputEvent.transportBytes ⟨0, 0⟩ (recordWrap clientHelloMsg)]
+  if d1.errored then d1 else
+  let bad := Wire.finished (ByteArray.mk (Array.mkArray 32 (0x55 : UInt8)))
+  driveFuel 64 d1 [InputEvent.transportBytes ⟨0, 0⟩ (recordWrap bad)]
 
 def phaseName (p : HandshakeState) : String :=
   match p with
@@ -196,14 +211,14 @@ def phaseName (p : HandshakeState) : String :=
 def main : IO UInt32 := do
   let d := run
   let reached := phaseName d.st.handshake
-  let reachedSSF := reached == "sentServerFinished" || reached == "connected"
+  let reachedConnected := reached == "connected"
   let firstBytes := d.outbound.map (fun (m : ByteArray) => if m.size == 0 then 0xFF else m.get! 0)
   let realSH := Flight.serverHelloMessage serverRandom d.serverShare 0x1301 0x001d 0x0304
   let fin := d.outbound.getD 4 ByteArray.empty
 
   let checks : List (String × Bool) :=
     [ ("live step handshake did not error", !d.errored)
-    , (s!"reached sentServerFinished (got {reached})", reachedSSF)
+    , (s!"reached connected (got {reached})", reachedConnected)
     , ("server ECDHE share captured (32 octets)", d.serverShare.size == 32)
     , ("CH‥SH real transcript hash computed (32 octets)", d.hCHSH.size == 32)
     , ("CH‥Certificate real transcript hash computed (32 octets)", d.hCHCert.size == 32)
@@ -211,17 +226,21 @@ def main : IO UInt32 := do
         Flight.verifyCertVerify certPub d.hCHCert d.lastSig == true)
     , ("CertificateVerify rejects a wrong transcript hash (control)",
         Flight.verifyCertVerify certPub d.hCHSH d.lastSig == false)
-    , ("server hs-traffic secret captured for the Finished MAC (32 octets)", d.sHsTraffic.size == 32)
+    , ("client + server hs-traffic secrets captured (32 octets each)",
+        d.cHsTraffic.size == 32 && d.sHsTraffic.size == 32)
+    , ("client and server hs-traffic secrets differ", !(eqB d.cHsTraffic d.sHsTraffic))
     , ("server flight is 5 messages", d.outbound.length == 5)
     , ("server flight order is SH, EE, Cert, CertVerify, Finished",
         firstBytes == [2, 8, 11, 15, 20])
     , ("first flight message is the real assembled ServerHello", eqB (d.outbound.getD 0 ByteArray.empty) realSH)
     , ("server Finished framing (type 20, 32-octet verify_data)",
         fin.size == 36 && fin.get! 0 == 0x14 && fin.get! 3 == 0x20)
+    , ("a WRONG client Finished is rejected — does not reach connected",
+        phaseName runBadFinished.st.handshake != "connected")
     ]
 
   let mut failed := 0
-  IO.println "kroopt live step-driven real handshake (real provider + real transcript via Flight):"
+  IO.println "kroopt live step-driven real handshake to connected (real provider + real transcript + real client Finished):"
   for (name, ok) in checks do
     IO.println s!"  {if ok then "PASS" else "FAIL"}  {name}"
     if !ok then failed := failed + 1

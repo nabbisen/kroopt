@@ -47,9 +47,12 @@ structure SecretArena where
   IV entries. Lets `aeadSeal`/`aeadOpen` (keyed by record metadata) resolve the
   installed key without the verified core ever naming key bytes. -/
   installed  : List (Direction × Epoch × UInt64 × UInt64) := []
-  /-- Base traffic-secret id per epoch, recorded at key install, so the Finished
-  key (HKDF-Expand-Label of the base secret) can be derived on demand. -/
-  baseSecrets : List (Epoch × UInt64) := []
+  /-- Base traffic-secret id per (direction, epoch), recorded at key install, so
+  the Finished key (HKDF-Expand-Label of the base secret) can be derived on demand.
+  Keyed by direction because a TLS 1.3 server verifies the client's Finished with
+  the *read* (client) handshake-traffic secret and computes its own with the
+  *write* (server) secret. -/
+  baseSecrets : List (Direction × Epoch × UInt64) := []
   deriving Inhabited
 
 namespace SecretArena
@@ -109,13 +112,14 @@ def lookupInstalled (a : SecretArena) (dir : Direction) (epoch : Epoch) :
   (a.installed.find? (fun e => decide (e.1 = dir) && decide (e.2.1 = epoch))).map
     (fun e => (e.2.2.1, e.2.2.2))
 
-/-- Record the base traffic-secret entry id for an epoch (for the Finished key). -/
-def recordBaseSecret (a : SecretArena) (epoch : Epoch) (secretId : UInt64) : SecretArena :=
-  { a with baseSecrets := (epoch, secretId) :: a.baseSecrets }
+/-- Record the base traffic-secret entry id for a (direction, epoch), for the
+Finished key. -/
+def recordBaseSecret (a : SecretArena) (dir : Direction) (epoch : Epoch) (secretId : UInt64) : SecretArena :=
+  { a with baseSecrets := (dir, epoch, secretId) :: a.baseSecrets }
 
-/-- Look up the base traffic-secret entry id for an epoch. -/
-def lookupBaseSecret (a : SecretArena) (epoch : Epoch) : Option UInt64 :=
-  (a.baseSecrets.find? (fun e => decide (e.1 = epoch))).map (fun e => e.2)
+/-- Look up the base traffic-secret entry id for a (direction, epoch). -/
+def lookupBaseSecret (a : SecretArena) (dir : Direction) (epoch : Epoch) : Option UInt64 :=
+  (a.baseSecrets.find? (fun e => decide (e.1 = dir) && decide (e.2.1 = epoch))).map (fun e => e.2.2)
 
 /-- Read bytes by raw entry id at the current generation. -/
 def getById (a : SecretArena) (id : UInt64) : Option ByteArray :=

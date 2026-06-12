@@ -3,6 +3,40 @@
 All notable changes to kroopt are recorded here. RFC lifecycle transitions are
 governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycle-policy.md).
 
+## [0.30.0-dev] — M30 live `step`-driven handshake reaches `connected` — 2026-06-12
+
+The live `step`-driven real handshake (M29) now runs to **`connected`**: the driver
+feeds a real client Finished and the verified core completes the handshake. A
+correctness fix to the secret arena was required; the verified core and its 87
+theorems are unchanged.
+
+### Changed
+
+- `Kroopt/Crypto/Arena.lean`: base traffic-secrets are now keyed by
+  `(Direction × Epoch)` instead of `Epoch` alone (matching how installed record
+  keys are keyed). A TLS 1.3 server verifies the client's Finished with the **read
+  (client)** handshake-traffic secret; keying by epoch alone let the read/write
+  secrets overwrite each other. `recordBaseSecret` / `lookupBaseSecret` take a
+  direction.
+- `Kroopt/Crypto/RealProvider.lean`: `verifyFinished` looks up the read-direction
+  handshake base secret and compares its HMAC against the verify_data extracted from
+  the client Finished message body (the octets after the 4-octet handshake header).
+
+### Added
+
+- `Tests/RealHandshake.lean` now drives to `connected` (14 checks): captures the
+  client and server hs-traffic secrets, computes a real client Finished
+  (`HMAC(finished_key(client_hs_traffic), Transcript-Hash(CH‥ServerFinished))`),
+  feeds it back, and confirms the core reaches `connected`; a negative control
+  confirms a wrong client Finished is rejected.
+
+### Notes
+
+The full server handshake now completes through the verified core on real crypto
+over real wire bytes. The flight messages are still assembled in the clear (not yet
+sealed with the record AEAD keys); real record encryption, the iotakt socket
+transport (RFC 010), and OpenSSL/curl interop (RFC 015 / 026) remain.
+
 ## [0.29.0-dev] — M29 live `step`-driven real handshake (real provider + real transcript) — 2026-06-12
 
 Drives the verified core `Kroopt.Core.step` state machine through a server

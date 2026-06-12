@@ -91,7 +91,7 @@ def submit (cfg : RealCryptoConfig) (a : SecretArena) (_ : OperationId) :
       let (kh, a1) ← a.store key
       let (ih, a2) ← a1.store iv
       let (bh, a3) ← a2.store secretBytes
-      let a4 := (a3.recordInstalled dir epoch kh.id ih.id).recordBaseSecret epoch bh.id
+      let a4 := (a3.recordInstalled dir epoch kh.id ih.id).recordBaseSecret dir epoch bh.id
       .ok (a4, .keysInstalled)
   | .aeadSeal meta _aad plaintext =>
       match a.lookupInstalled meta.direction meta.epoch with
@@ -116,9 +116,10 @@ def submit (cfg : RealCryptoConfig) (a : SecretArena) (_ : OperationId) :
       | .ed25519 => .ok (a, .signature (Hacl.ed25519Sign cfg.certPrivate input))
       | _ => .error .unsupportedOperation
   | .verifyFinished _ transcriptHash received =>
-      -- Finished = HMAC(finished_key, transcript_hash); finished_key from the
-      -- handshake-epoch base secret recorded at key install (RFC 8446 §4.4.4).
-      match a.lookupBaseSecret .handshake with
+      -- A TLS 1.3 server verifies the client's Finished with the *read* (client)
+      -- handshake-traffic secret; finished_key = HKDF-Expand-Label(secret,
+      -- "finished", "", H.len) and Finished = HMAC(finished_key, H) (RFC 8446 §4.4.4).
+      match a.lookupBaseSecret .read .handshake with
       | none => .error .invalidHandle
       | some sid =>
         match a.getById sid with
@@ -126,7 +127,12 @@ def submit (cfg : RealCryptoConfig) (a : SecretArena) (_ : OperationId) :
         | some baseSecret =>
             let finKey := KeySchedule.finishedKey baseSecret
             let expected := Hacl.hmac256 finKey transcriptHash
-            if expected.toList == received.toList then .ok (a, .verified)
+            -- `received` is the client Finished handshake message; its verify_data is
+            -- the body after the 4-octet handshake header (`0x14 || u24 length`).
+            let verifyData :=
+              if received.size == expected.size + 4 then received.extract 4 received.size
+              else received
+            if expected.toList == verifyData.toList then .ok (a, .verified)
             else .ok (a, .verifyFailed)
 
 end RealProvider
