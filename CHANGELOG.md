@@ -3,6 +3,40 @@
 All notable changes to kroopt are recorded here. RFC lifecycle transitions are
 governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycle-policy.md).
 
+## [0.28.0-dev] — M28 real server-flight assembler + Ed25519 CertificateVerify — 2026-06-12
+
+Adds the interpreter-side component that turns negotiated parameters and real
+crypto outputs into the exact server-flight wire bytes, and produces a **real**
+Ed25519 CertificateVerify with kroopt's own key. No change to the verified state
+machine: the 87 theorems and existing suites are unchanged.
+
+### Added
+
+- `Kroopt/Conn/Flight.lean` (impure interpreter zone) composing the M26/M27 wire
+  serializers with HACL primitives: `transcriptHash`, `serverHelloMessage`,
+  `serverFinishedVerifyData` / `serverFinishedMessage`, and the real
+  CertificateVerify path (`certVerifyContent` / `signCertVerify` /
+  `verifyCertVerify` / `certificateVerifyMessage`). The core holds only abstract
+  handles (no DER, no signature, no MAC, no random); this module is where those
+  real bytes are supplied.
+- `kroopt-flight-test` (`Tests/Flight.lean`, 14 checks): the RFC 8446 §4.4.3
+  CertificateVerify content construction (the format cross-validated against
+  OpenSSL in `scripts/ed25519-interop.sh`); a real Ed25519 sign/verify round-trip
+  that rejects a wrong transcript hash and a wrong key; the Ed25519 key anchored to
+  the RFC 8032 §7.1 KAT; ServerHello assembly and the server `finished_key` /
+  Finished MAC anchored to RFC 8448 §3. CI now runs 19 suites (`flight`).
+- `docs/src/server-flight.md` (linked in `SUMMARY.md`).
+
+### Notes
+
+kroopt can now produce a complete, self-consistent server flight (a real Ed25519
+CertificateVerify that verifies, a real Finished MAC over the real transcript).
+Remaining toward live interop (RFC 010/015/026): call this assembler from the
+`step`-driven interpreter — feed the real bytes into the transcript in place of the
+placeholders in `Core/Handshake.lean` and resolve the core's transcript snapshots
+to these real hashes at the crypto seam — then real record encryption, the iotakt
+socket transport, and OpenSSL/curl interop.
+
 ## [0.27.0-dev] — M27 real server-flight serializers + server-Finished MAC KAT (RFC 8448 §3) — 2026-06-12
 
 Extends the wire serializer (M26) to the **entire** TLS 1.3 server flight and adds

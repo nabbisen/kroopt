@@ -173,3 +173,7 @@ lean_exe «kroopt-provision-test» where
 lean_exe «kroopt-wire-test» where
   root := `Tests.Wire
   moreLinkArgs := #["-Wl,--gc-sections"]
+
+lean_exe «kroopt-flight-test» where
+  root := `Tests.Flight
+  moreLinkArgs := #["-Wl,--gc-sections"]

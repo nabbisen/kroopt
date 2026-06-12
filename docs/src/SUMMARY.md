@@ -11,6 +11,7 @@
 - [Handshake state model](handshake.md)
 - [Transcript model](transcript.md)
 - [Handshake wire format (real serialization)](wire-format.md)
+- [Real server-flight assembly](server-flight.md)
 - [End-to-end handshake (fakes)](end-to-end.md)
 - [Crypto provider and FFI contract](crypto-ffi-contract.md)
 - [Native crypto binding (v0.3): HACL* through Lean FFI](native-crypto.md)

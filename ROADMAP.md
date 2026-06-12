@@ -178,6 +178,17 @@ placeholders in `Core/Handshake.lean`); real record encryption; the iotakt
 P-256 (no `Hacl_P256.c` vendored — header only), ASan/UBSan jobs, and
 microbenchmarks.
 
+*M28 shipped the real signing + assembler:* `Kroopt/Conn/Flight.lean` (interpreter
+zone) composes the wire serializers with HACL to produce a complete real server
+flight — a **real Ed25519 CertificateVerify** in the OpenSSL-cross-validated RFC
+8446 §4.4.3 format (sign/verify round-trip, rejects tamper) and a real Finished MAC
+over the real transcript. A key architecture finding drove this placement: the
+verified core holds only abstract handles (no DER, signature, MAC, or random), so
+the real bytes are necessarily supplied by the impure interpreter. The next step is
+to call this assembler from the live `step` interpreter — feeding real bytes into
+the transcript in place of the placeholders and resolving the core's snapshots to
+these real hashes — followed by real records and the socket transport.
+
 Exit criteria:
 
 - FFI KATs pass.
