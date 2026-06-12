@@ -33,14 +33,21 @@ def extSigAlgs : List UInt8 := [0, 0x0d, 0, 4, 0, 2, 0x08, 0x07]  -- signature_a
 def extSigAlgsOther : List UInt8 := [0, 0x0d, 0, 6, 0, 4, 0x04, 0x03, 0x08, 0x04]  -- ecdsa_p256, rsa_pss (no ed25519)
 def extSupVer13 : List UInt8 := [0, 43, 0, 3, 2, 0x03, 0x04]   -- offers TLS 1.3
 def extSupVer12 : List UInt8 := [0, 43, 0, 3, 2, 0x03, 0x03]   -- offers only TLS 1.2
-def chWith (exts : List UInt8) : ByteArray :=
+def chWithSuites (suiteBytes exts : List UInt8) : ByteArray :=
   let body := [0x03, 0x03] ++ (List.replicate 32 0xAA) ++ [0] ++
-              [0, 2, 0x13, 0x01] ++ [1, 0] ++ (u16be exts.length ++ exts)
+              (u16be suiteBytes.length ++ suiteBytes) ++ [1, 0] ++ (u16be exts.length ++ exts)
   bytesOf ([1] ++ [0, (body.length / 256).toUInt8, (body.length % 256).toUInt8] ++ body)
+def chWith (exts : List UInt8) : ByteArray := chWithSuites [0x13, 0x03] exts  -- chacha20-poly1305
 
 def parseOk (exts : List UInt8) : Bool :=
   match Kroopt.Parse.parseClientHello (chWith exts) with
   | .ok _ => true | .error _ => false
+
+/-- The suite kroopt negotiates from an explicit cipher-suite list, or `none` if the
+ClientHello is rejected. -/
+def negotiatedSuite (suiteBytes exts : List UInt8) : Option Kroopt.Core.CipherSuite :=
+  match Kroopt.Parse.parseClientHello (chWithSuites suiteBytes exts) with
+  | .ok wb => some wb.value.selectedSuite | .error _ => none
 
 def checks : List Check :=
   [ -- resource budgets are hard bounds (RFC 019)
@@ -84,6 +91,11 @@ def checks : List Check :=
     , ok := !parseOk (extSupVer13 ++ extKeyShare ++ extSigAlgsOther) }
   , { name := "ClientHello with no signature_algorithms is refused (cert-authenticating server, RFC 8446 §4.2.3)"
     , ok := !parseOk (extSupVer13 ++ extKeyShare) }
+  , { name := "ClientHello offering only AES-128-GCM is refused (constrained profile performs ChaCha20-Poly1305 only, RFC 033)"
+    , ok := (negotiatedSuite [0x13, 0x01] (extSupVer13 ++ extKeyShare ++ extSigAlgs)).isNone }
+  , { name := "ClientHello listing AES-128-GCM before ChaCha20 negotiates ChaCha20 (capability overlap, not first-offered)"
+    , ok := (negotiatedSuite [0x13, 0x01, 0x13, 0x03] (extSupVer13 ++ extKeyShare ++ extSigAlgs)
+              == some .chacha20Poly1305Sha256) }
   ]
 
 def main : IO UInt32 := do

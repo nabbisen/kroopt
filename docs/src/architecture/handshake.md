@@ -65,3 +65,16 @@ with no `signature_algorithms`, or one offering only RSA/ECDSA, fails to parse
 kroopt cannot serve a client that does not offer Ed25519 (for example the RSA/ECDSA
 RFC 8448 §3 ClientHello), and says so by rejecting rather than presenting a
 certificate the client cannot verify.
+
+### Suite selection is bound to capability, not breadth
+
+The same overlap discipline applies to the cipher suite. `suiteOfU16` maps only the
+suites kroopt can *perform* — in the constrained profile, `TLS_CHACHA20_POLY1305_SHA256`
+(0x1303) — so `selectSuite` picks ChaCha20-Poly1305 when the client offers it and
+rejects when it does not, regardless of which suites the client lists first. A client
+that offers AES-128-GCM ahead of ChaCha20 still negotiates ChaCha20; a client that
+offers only AES is rejected (kroopt would otherwise commit to a suite the vendored
+provider cannot perform). All three negotiated parameters — suite, group, and signature
+scheme — are thus selected from the client's offers and bound to what the server can
+present or perform. The suite map widens when a real AES provider is introduced
+(RFC 035).

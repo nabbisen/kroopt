@@ -31,7 +31,7 @@ def extSupVer : List UInt8 := [0, 43, 0, 3, 2, 0x03, 0x04]
 def extsBody : List UInt8 := extSupVer ++ extKeyShare ++ extSigAlgs
 def chBody : List UInt8 :=
   [0x03, 0x03] ++ (List.replicate 32 0xAA) ++ [0] ++
-  [0, 2, 0x13, 0x01] ++ [1, 0] ++ (u16be extsBody.length ++ extsBody)
+  [0, 2, 0x13, 0x03] ++ [1, 0] ++ (u16be extsBody.length ++ extsBody)
 def chMsg : List UInt8 :=
   [1] ++ [0, (chBody.length / 256).toUInt8, (chBody.length % 256).toUInt8] ++ chBody
 def record (ty : UInt8) (body : List UInt8) : ByteArray :=

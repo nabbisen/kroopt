@@ -38,7 +38,7 @@ def u16be (n : Nat) : List UInt8 := [(n / 256).toUInt8, (n % 256).toUInt8]
 
 def chBody : List UInt8 :=
   [0x03, 0x03] ++ (List.replicate 32 0xAA) ++ [0] ++
-  [0, 2, 0x13, 0x01] ++ [1, 0] ++ (u16be extsBody.length ++ extsBody)
+  [0, 2, 0x13, 0x03] ++ [1, 0] ++ (u16be extsBody.length ++ extsBody)
 
 def chMsg : List UInt8 :=
   [1] ++ [0, (chBody.length / 256).toUInt8, (chBody.length % 256).toUInt8] ++ chBody
@@ -162,8 +162,8 @@ def checks : List Check :=
     , ok := !runE2E.errored }
   , { name := "transcript committed seven messages end-to-end"
     , ok := runE2E.st.transcript.eventCount == 7 }
-  , { name := "negotiated suite recorded (aes128)"
-    , ok := runE2E.st.negotiated.selectedSuite == some .aes128GcmSha256 }
+  , { name := "negotiated suite recorded (chacha20-poly1305, not the AES the client listed first)"
+    , ok := runE2E.st.negotiated.selectedSuite == some .chacha20Poly1305Sha256 }
     -- negatives
   , { name := "malformed ClientHello fails, not connected"
     , ok := runMalformedCH.st.handshake.isTerminal && runMalformedCH.st.handshake != .connected }

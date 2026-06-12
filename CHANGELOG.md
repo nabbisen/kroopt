@@ -3,6 +3,47 @@
 All notable changes to kroopt are recorded here. RFC lifecycle transitions are
 governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycle-policy.md).
 
+## [0.39.0-dev] — M36 (part 3): cipher-suite selection bound to provider capability (RFC 033) — 2026-06-12
+
+Negotiation now selects the cipher suite from the client's offers *and* binds it to
+what the provider can actually perform — completing the overlap-selection discipline
+across all three negotiated parameters (suite, group, signature scheme).
+
+### Changed
+
+- `Parse/Handshake.lean`: `suiteOfU16` maps only `TLS_CHACHA20_POLY1305_SHA256` (0x1303),
+  the suite the vendored provider performs; the AES-GCM code points map to `none` and
+  are skipped by `selectSuite`. kroopt no longer negotiates a suite it cannot complete,
+  even when the client lists it first. The map widens when a real AES provider lands
+  (RFC 035).
+
+### Fixed
+
+- A latent inconsistency the test harness masked: with a `13 01 13 03` ClientHello (AES
+  first), the core selected AES-128-GCM while the ServerHello and key schedule used
+  ChaCha20-Poly1305. The core now selects ChaCha20, matching the schedule.
+
+### Tests
+
+- `kroopt-hardening-test` (+2 checks, 16 total): a ClientHello offering only AES-128-GCM
+  is refused; a ClientHello listing AES-128-GCM before ChaCha20 negotiates ChaCha20
+  (capability overlap, not first-offered). New `chWithSuites` / `negotiatedSuite` helpers.
+- `kroopt-e2e-test`, `kroopt-conn-test`: the negotiated-suite assertions now expect
+  ChaCha20-Poly1305 (they previously encoded the buggy AES-128-GCM selection).
+- Three fake-provider fixtures (EndToEnd, Conn, E2EHttps) now offer ChaCha20 in their
+  ClientHello, matching the real constrained profile.
+
+### Proofs
+
+- No change to the proof set (91 theorems, all axiom-clean). Suite selection is pure
+  list folding over bounds-checked data; the parser bounds proofs are unaffected.
+
+### RFC lifecycle
+
+- **RFC 033** — still partial; stays in `proposed/`. Remaining: handshake-message
+  reassembler, broader ClientHello strictness (`legacy_version`, etc.), and explicit
+  CCS policy.
+
 ## [0.38.0-dev] — M36 (part 2): signature_algorithms overlap selection (RFC 033) + repo hygiene — 2026-06-12
 
 The ClientHello parser now negotiates the signature scheme from the client's offers

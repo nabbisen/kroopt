@@ -30,7 +30,7 @@ def extSupVer : List UInt8 := [0, 43, 0, 3, 2, 0x03, 0x04]
 def extsBody : List UInt8 := extSupVer ++ extKeyShare ++ extSigAlgs
 def chBody : List UInt8 :=
   [0x03, 0x03] ++ (List.replicate 32 0xAA) ++ [0] ++
-  [0, 2, 0x13, 0x01] ++ [1, 0] ++ (u16be extsBody.length ++ extsBody)
+  [0, 2, 0x13, 0x03] ++ [1, 0] ++ (u16be extsBody.length ++ extsBody)
 def chMsg : List UInt8 :=
   [1] ++ [0, (chBody.length / 256).toUInt8, (chBody.length % 256).toUInt8] ++ chBody
 def record (body : List UInt8) : ByteArray := bytesOf ([22, 0x03, 0x03] ++ u16be body.length ++ body)
@@ -65,8 +65,8 @@ def checks : List Check :=
   [ -- full handshake through the public API
     { name := "handshake completes through TlsConn"
     , ok := handshaken.isConnected }
-  , { name := "negotiated metadata available after connected (aes128)"
-    , ok := handshaken.cipherSuite == some .aes128GcmSha256 }
+  , { name := "negotiated metadata available after connected (chacha20-poly1305)"
+    , ok := handshaken.cipherSuite == some .chacha20Poly1305Sha256 }
   , { name := "server flight reached the fake transport"
     , ok := !handshaken.tr.outbound.isEmpty }
   , { name := "no plaintext buffered to the caller during the handshake"

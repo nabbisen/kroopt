@@ -39,10 +39,19 @@
 > **Still pending in this RFC:** the bounded handshake-message reassembler
 > (`Core/HandshakeReasm.lean`, for fragmented/coalesced records — deferred pending a
 > clean `ByteArray.extract` size bound), broader ClientHello strictness
-> (`legacy_version`, etc.), explicit CCS policy, and binding cipher-suite selection to
-> the provider's actual presentation capability (`suiteOfU16` still maps AES suites the
-> constrained provider cannot perform — a known follow-up). This RFC stays in
-> `proposed/` until those land.
+> (`legacy_version`, etc.), and explicit CCS policy. This RFC stays in `proposed/`
+> until those land.
+>
+> **Status note — partial (0.39.0-dev, M36 part 3).** Cipher-suite negotiation is now
+> bound to suite *capability* (`Parse/Handshake.lean`): `suiteOfU16` maps only
+> `TLS_CHACHA20_POLY1305_SHA256` (0x1303) — the suite the vendored provider can perform
+> — so `selectSuite` will not negotiate an AES suite kroopt cannot complete, even when
+> the client lists it first. This fixed a latent inconsistency the test harness had
+> masked: the core was selecting AES-128-GCM from a `13 01 13 03` ClientHello while the
+> ServerHello and key schedule used ChaCha20. The map widens when a real AES provider
+> lands (RFC 035). With this, all three negotiated parameters — suite, group, and
+> signature scheme — are selected from the client's offers and bound to what the server
+> can actually present/perform.
 
 ---
 

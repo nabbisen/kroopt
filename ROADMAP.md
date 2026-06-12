@@ -204,6 +204,17 @@ external interop (RFC 015/026) are **frozen** until these gates pass, in this or
 - **post-M38 — browser-grade crypto surface (RFC 035).** AES-GCM/P-256/ECDSA/RSA and a
   practical public-certificate story, only after the above are green.
 
+*M36 part 3 shipped — cipher-suite selection bound to provider capability (RFC 033):*
+`suiteOfU16` now maps only `TLS_CHACHA20_POLY1305_SHA256` (0x1303), the suite the vendored
+provider performs, so `selectSuite` will not negotiate an AES suite kroopt cannot complete
+even when the client lists it first. This fixed a latent inconsistency (the core was
+selecting AES-128-GCM from a `13 01 13 03` ClientHello while the schedule used ChaCha20).
+All three negotiated parameters — suite, group, signature scheme — are now selected from
+the client's offers and bound to what the server can present/perform.
+`kroopt-hardening-test` +2 checks (16); the e2e/conn negotiated-suite assertions updated
+from AES to ChaCha20. No proof change (91 theorems). RFC 033 stays in `proposed/` — the
+reassembler, broader ClientHello strictness, and explicit CCS remain.
+
 *M36 part 2 shipped — signature_algorithms overlap selection (RFC 033):* the ClientHello
 parser now selects the signature scheme from the client's offered `signature_algorithms`
 (extension 0x000d), choosing Ed25519 only when offered, instead of hardcoding it; a
