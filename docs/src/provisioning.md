@@ -100,12 +100,44 @@ public `bcd55c06…` instead of `d75a9801…`, and does so identically at `-O0`,
 producing a self-consistent (sign verifies against the derived key) but non-RFC
 result — which is exactly why round-trip tests passed.
 
-**Remediation (a dedicated, validated re-vendor).** Because the kroopt FFI, build
-flags, and Ed25519's SHA/field dependencies are all confirmed correct, the fix is to
-replace the Ed25519 unit with a **known-correct** HACL Ed25519 — most likely a newer
-release — compiled and **KAT-validated standalone against RFC 8032 first**, then
-vendored as a quarantined unit with its own dependencies and provenance recorded.
-The newer `hacl-star` Ed25519 is not a blind drop-in (it renames krmllib, adds a
-precomputed-table header, and splits Bignum25519), so the re-vendor is scheduled as
-its own task. Until it lands, the RFC 8032 KAT tripwire in `kroopt-provision-test`
-guards the seam and flips the moment a correct Ed25519 is in place.
+## Full isolation and the remediation decision (M21)
+
+M21 bisects `secret_to_public` against an **independent oracle** (Python
+`hashlib`) and isolates the defect to a single stage:
+
+* `secret_expand` is correct — the clamped scalar HACL derives for the RFC 8032
+  seed (`70de44d7…605d`) is *byte-identical* to Python's clamp of `SHA-512(seed)`.
+* The **base-point limbs** and the **curve constant `2d`** (`times_2d`) both match a
+  Python computation of their radix-2⁵¹ representation exactly.
+* So the inputs to the Edwards scalar multiplication are all correct, yet
+  `point_mul_g(scalar)` followed by `point_compress` yields the wrong public. **The
+  defect is in the Edwards point arithmetic (the ladder / point add-double).**
+
+Ruled out as causes: the Lean FFI (standalone C reproduces it), optimisation level
+(`-O0`–`-O2` identical), strict aliasing (`-fno-strict-aliasing` identical), and the
+uint128 path (native and `-DKRML_VERIFIED_UINT128` software both identical). The
+vendored sources are byte-identical to pristine 0.4.5. The remaining explanation is a
+miscompilation of HACL 0.4.5's Edwards arithmetic by this toolchain (gcc 13.3.0) that
+X25519 does not trip — deterministic, so a compile-time issue rather than UB surfaced
+by optimisation.
+
+**The remediation is a real decision, not a quick patch.** Two paths:
+
+1. **Upgrade the HACL Ed25519 unit (principled).** Replace the Ed25519 unit with a
+   newer HACL release, KAT-validated against RFC 8032 *before* integration. Newer
+   HACL renames the krmllib runtime, adds a precomputed-table header, and splits
+   Bignum25519, and its karamel/krmllib runtime headers are scattered across the
+   upstream tree (`lib_memzero0.h`, `lib_intrinsics.h`, the `krml/` uint128 set, …) —
+   so assembling a clean, self-consistent newer unit needs full upstream access, not
+   the handful of files this offline build can pull. This preserves the
+   verification-first trust matrix (Ed25519 stays ASSUMED-verified, inherited).
+2. **Temporary correct reference (pragmatic, needs a trust-matrix change).** Bind a
+   compact, widely-deployed, RFC-8032-correct Ed25519 reference behind the same FFI,
+   validated against RFC 8032 and the Python oracle. This unblocks interop now but
+   moves Ed25519 from **ASSUMED-verified** to **TESTED (unverified reference)** in the
+   trust matrix until the HACL upgrade lands — a deliberate departure from the "borrow
+   only verified crypto" principle, and therefore a decision for the project owner.
+
+The record/key-schedule paths (ChaCha20-Poly1305, X25519, SHA-256, HKDF/HMAC) are
+unaffected and remain on verified HACL; only server-certificate signing (Ed25519) is
+gated. The `kroopt-provision-test` tripwire keeps guarding the seam.

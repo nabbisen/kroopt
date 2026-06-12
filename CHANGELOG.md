@@ -3,6 +3,40 @@
 All notable changes to kroopt are recorded here. RFC lifecycle transitions are
 governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycle-policy.md).
 
+## [0.22.0-dev] — M21 Ed25519 defect fully isolated; remediation decision surfaced — 2026-06-12
+
+Bisects the Ed25519 defect against an independent oracle and isolates it to one
+stage; surfaces the remediation as an owner decision. No repo code change (docs and
+project record only); build green at 87 theorems.
+
+### Isolated (independent-oracle bisection)
+
+- Traced `secret_to_public` step by step and cross-checked against Python `hashlib`:
+  the clamped scalar HACL derives for the RFC 8032 seed is byte-identical to Python's
+  clamp of `SHA-512(seed)`; the base-point limbs and the `2d` curve constant both
+  match Python's radix-2⁵¹ computation exactly. The scalar-multiplication *inputs* are
+  all correct, yet `point_mul_g` + `point_compress` produce the wrong public — so the
+  defect is the **Edwards point arithmetic** itself.
+- Ruled out: the Lean FFI (standalone C reproduces it), optimisation (`-O0`–`-O2`
+  identical), strict aliasing, and the uint128 path (native and software both wrong).
+  Vendored sources are byte-identical to pristine 0.4.5, so this is a miscompilation
+  of 0.4.5's Edwards code by gcc 13.3.0 that X25519 does not trip.
+
+### Decision surfaced (see `docs/src/provisioning.md`, ROADMAP)
+
+- **(1) Principled** — upgrade the Ed25519 unit to a newer HACL release, KAT-validated
+  against RFC 8032 before integration (keeps Ed25519 ASSUMED-verified). Blocked
+  offline: the newer karamel/krmllib runtime headers are scattered upstream and need
+  full repository access to assemble cleanly.
+- **(2) Pragmatic** — bind a compact RFC-8032-correct Ed25519 reference behind the
+  same FFI; unblocks interop now but moves Ed25519 to **TESTED (unverified)** in the
+  trust matrix — a departure from the "borrow only verified crypto" principle, hence
+  an owner call.
+- The ChaCha20-Poly1305 / X25519 / SHA-256 / HKDF record and key-schedule paths are
+  unaffected; the `kroopt-provision-test` tripwire continues to guard the seam.
+
+
+
 ## [0.21.0-dev] — M20 Ed25519 root-cause isolation + SHA-512 KAT hardening — 2026-06-12
 
 Isolates the M19 Ed25519 interop defect to its true source and hardens the crypto
