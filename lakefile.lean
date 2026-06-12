@@ -31,6 +31,11 @@ lean_lib Kroopt where
              .andSubmodules `Kroopt.Parse,
              .andSubmodules `Kroopt.Proofs]
 
+/-- Shared test vectors (published KATs with explicit provenance), imported by
+test executables so vector definitions live in one audited place. -/
+lean_lib «KrooptTestVectors» where
+  globs := #[.one `Tests.Vectors.Ed25519Rfc8032]
+
 /-- Deterministic, Lean-only model test: drives `Kroopt.Core.step` directly
 with scripted input events and asserts the resulting state/action behaviour
 (RFC 014 §5). No sockets, no real time, no real crypto. -/

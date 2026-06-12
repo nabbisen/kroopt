@@ -29,6 +29,9 @@ jobs:
       - name: Parser fuzz
         run: lake exe kroopt-parse-fuzz 40000
 
+      - name: Ed25519 CertificateVerify interop (HACL* vs OpenSSL)
+        run: bash scripts/ed25519-interop.sh
+
       - name: Hygiene gate (no sorry/axiom/unsafe in strict zones)
         run: ./scripts/check-hygiene.sh
 

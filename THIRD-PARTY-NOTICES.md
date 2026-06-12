@@ -22,19 +22,15 @@ cryptographic backend for the v0.3 binding (see
   No vale assembly and no EverCrypt dispatch layer are vendored.
 * **Modifications.** None. The files are redistributed verbatim with their
   license headers retained. The full license texts are reproduced in
-  [`Kroopt/Native/hacl/LICENSE`](Kroopt/Native/hacl/LICENSE). This was verified
-  in M20: `Hacl_Ed25519.c` and its dependencies are byte-identical (`diff` = 0) to
-  the pristine 0.4.5 release at tag `ocaml-v0.4.5`.
-* **Known issue — Ed25519 (tracked).** The vendored 0.4.5 `dist/gcc-compatible`
-  Ed25519 produces self-consistent but **non-RFC-8032** output in this environment
-  (reproduced in standalone C at every optimisation level, so it is not the FFI,
-  optimisation, or strict aliasing — see [`docs/src/provisioning.md`](docs/src/provisioning.md)).
-  SHA-256/384/512 (FIPS 180-4) and X25519 (RFC 7748) are confirmed correct. The
-  remediation is to re-vendor a known-correct Ed25519 unit (a newer HACL release),
-  KAT-validated against RFC 8032 before integration; a tripwire in
-  `kroopt-provision-test` guards the seam meanwhile. Ed25519 is therefore **not yet
-  interop-ready**; the ChaCha20-Poly1305 / X25519 / SHA-256 record and key-schedule
-  paths are unaffected.
+  [`Kroopt/Native/hacl/LICENSE`](Kroopt/Native/hacl/LICENSE). This was verified:
+  `Hacl_Ed25519.c` and its dependencies are byte-identical (`diff` = 0) to the
+  pristine 0.4.5 release at tag `ocaml-v0.4.5`.
+* **Ed25519 status.** HACL\* Ed25519 reproduces the RFC 8032 §7.1 Test 1 vectors
+  byte-for-byte and interoperates with OpenSSL on the TLS 1.3 `CertificateVerify`
+  construction (`scripts/ed25519-interop.sh`); SHA-256/384/512 (FIPS 180-4) and
+  X25519 (RFC 7748) are likewise confirmed. (A 2026-06 report of a non-RFC Ed25519
+  defect was a test-vector provisioning error — a non-RFC seed paired with RFC Test
+  1's public key — not a HACL\* defect; see [`docs/src/provisioning.md`](docs/src/provisioning.md).)
 * **Compatibility.** MIT and Apache-2.0 are both permissive and compatible with
   kroopt's Apache-2.0 license.
 * **kroopt's own glue.** `Kroopt/Native/kroopt_ffi.c` is kroopt's own code

@@ -137,10 +137,29 @@ Done: vendored portable-C HACL\* subset built through Lake (`extern_lib krooptCr
 **Status (M13, package 0.14.0-dev) — stateful seam + real key schedule delivered.**
 Done: the secret **arena** (`Kroopt.Crypto.SecretArena`, generation-tagged, bounded); `CryptoProvider.submit` now threads it; the real TLS 1.3 key schedule (`Kroopt.Crypto.KeySchedule`) and arena-backed record AEAD (`Kroopt.Crypto.Real`) on HACL\*, **validated against the RFC 8448 §3 trace** end-to-end plus a real-key arena AEAD round-trip (`kroopt-keyschedule-test`, 20 checks). Handle opacity preserved; the 78 core theorems are untouched. Pending and scoped next: enrich the core `CryptoOp`/`CryptoResult` shapes (labels, input-secret handles, epoch-keyed key install) and re-prove operation-id correlation over them so `Kroopt.Core.step` drives the real provider — then a real handshake on one suite. Still pending after that: P-256, ASan/UBSan jobs, the iotakt `Transport` adapter, microbenchmarks.
 
-**Status (M21, package 0.22.0-dev) — Ed25519 defect fully isolated; remediation decision surfaced.**
-Done: bisected `secret_to_public` against an independent Python `hashlib` oracle and isolated the Ed25519 defect to the **Edwards point arithmetic**. The clamped scalar HACL derives for the RFC 8032 seed is byte-identical to Python's `SHA-512(seed)` clamp; the base-point limbs and the `2d` curve constant both match Python exactly; so the scalar-mult *inputs* are all correct yet `point_mul_g` + `point_compress` produce the wrong public. Ruled out: the FFI (standalone C reproduces it), optimisation (`-O0`–`-O2`), strict aliasing, and uint128 (native and software both wrong). Vendored sources are byte-identical to pristine 0.4.5 — so this is a miscompilation of 0.4.5's Edwards arithmetic by gcc 13.3.0 that X25519 does not trip. No repo code changed; build green, **87** theorems.
+**Status (M23, package 0.23.0-dev) — Ed25519 "defect" retracted as a false positive; corrected and interop-validated.**
+The M19–M22 "non-RFC-8032 Ed25519 defect" was a **test-vector provisioning error, not a
+HACL\*/compiler/Edwards-arithmetic defect.** The reproduction paired a non-RFC seed
+(`9d61…7e8f`) with RFC 8032 §7.1 Test 1's public key (`d75a9801…`), which belongs to a
+different seed (`9d61…7f60`); HACL\* correctly derived `bcd55c06…` for the seed it was
+given. The earlier "isolation" steps were internally valid but all ran on the wrong seed,
+so they only confirmed HACL\*'s self-consistency. Corrected this milestone: HACL\* Ed25519
+reproduces the RFC 8032 §7.1 Test 1 public key **and** signature byte-for-byte, confirmed
+independently by an RFC 8032 reference implementation and by OpenSSL `CertificateVerify`
+interop (`scripts/ed25519-interop.sh`). The provision KATs now assert the real RFC vector
+(`kroopt-provision-test`, 20 checks), vectors carry provenance + length discipline
+(`Tests/Vectors/Ed25519Rfc8032.lean`), and the non-RFC seed is retained only as a labelled
+regression vector. **No re-vendor, no compiler workaround, no trust-matrix downgrade**:
+Ed25519 stays ASSUMED (inherited verified) with KAT + interop as TESTED evidence. Build
+green, **87** theorems.
 
-**⚠ Top pending — Ed25519 remediation needs an owner decision (interop blocker).** Two paths (see `docs/src/provisioning.md`): **(1) principled** — upgrade the Ed25519 unit to a newer HACL release, KAT-validated against RFC 8032 before integration; this keeps Ed25519 ASSUMED-verified, but the newer karamel/krmllib runtime headers are scattered upstream (`lib_memzero0.h`, `lib_intrinsics.h`, the `krml/` uint128 set) and need full upstream access to assemble cleanly — not feasible from the handful of files this offline build can pull. **(2) pragmatic** — bind a compact RFC-8032-correct Ed25519 reference behind the same FFI, validated against RFC 8032 + the Python oracle; unblocks interop now but moves Ed25519 from ASSUMED-verified to **TESTED (unverified)** in the trust matrix, a deliberate departure from the "borrow only verified crypto" principle — hence an owner call. The ChaCha20-Poly1305 / X25519 / SHA-256 / HKDF record and key-schedule paths are unaffected; the `kroopt-provision-test` tripwire guards the seam. After Ed25519: the structural-to-real handshake work (real transcript hashes, real server-Finished MAC), then a real handshake against OpenSSL/curl. Still pending: P-256 (no `Hacl_P256.c` vendored), ASan/UBSan jobs, the iotakt `Transport` adapter.
+**Top pending — the structural-to-real handshake.** Now that Ed25519 is cleared, the real
+next priority is replacing the structural transcript snapshots with real wire-byte
+transcript hashes and computing the real server `Finished` MAC, then driving a full TLS 1.3
+handshake against OpenSSL `s_client` / `curl` with an Ed25519 server certificate (the
+`CertificateVerify` *construction* is already cross-validated against OpenSSL; what remains
+is the live handshake). Still pending after that: P-256 (no `Hacl_P256.c` vendored — header
+only), ASan/UBSan jobs, the iotakt `Transport` socket adapter, and microbenchmarks.
 
 Exit criteria:
 

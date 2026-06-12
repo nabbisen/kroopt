@@ -1,29 +1,29 @@
 import Kroopt.Crypto.Provision
 import Kroopt.Crypto.Hacl
+import Tests.Vectors.Ed25519Rfc8032
 
 /-!
 # Tests.Provision
 
 Validates connection provisioning (`Kroopt.Crypto.Provision`): fresh ephemeral
 keys drawn from the OS CSPRNG, certificate material derived (not trusted) from a
-signing seed, and the config lint. Also strengthens crypto KAT coverage along the
-way — SHA-384 against FIPS 180-4 (the HACL suite previously only size-checked it).
+signing seed, and the config lint. Also carries the Ed25519 / SHA known-answer
+tests against published vectors with explicit provenance
+(`Tests.Vectors.Ed25519Rfc8032`).
 
-## Discovered defect (tracked, see CHANGELOG / ROADMAP)
-
-The KATs here localise a real defect: the vendored HACL **Ed25519** is *not*
-RFC 8032 compliant — `Hacl_Ed25519_sign`/`secret_to_public` produce self-consistent
-but non-standard outputs (so round-trip tests pass but a real peer would reject the
-signature). SHA-384 (FIPS 180-4) and X25519 (RFC 7748) are confirmed correct here,
-localising the defect to the Ed25519 implementation. The last check is a tripwire
-asserting the *current* non-compliance; it flips when Ed25519 is fixed, forcing a
-switch to a real RFC 8032 KAT. This is the top blocker before real interop.
+HACL\* Ed25519 is RFC 8032 compliant: for the **RFC 8032 §7.1 Test 1** seed it
+reproduces the published public key and signature byte-for-byte (verified here and
+cross-checked against an independent RFC 8032 reference and OpenSSL). The local
+`9d61…7e8f` seed is kept only as a labelled arbitrary-seed regression vector — it is
+**not** an RFC vector, and was the source of a historical false alarm when it was
+mistakenly paired with RFC Test 1's public key.
 -/
 
 namespace Tests.Provision
 
 open Kroopt.Crypto
 open Kroopt.Core (SignatureScheme)
+open Tests.Vectors.Ed25519Rfc8032
 
 def hexToBytes (s : String) : ByteArray := Id.run do
   let cs := s.toList.toArray
@@ -38,23 +38,34 @@ def hexToBytes (s : String) : ByteArray := Id.run do
 
 def eqB (a b : ByteArray) : Bool := a.toList == b.toList
 
--- RFC 8032 §7.1 Test 1: Ed25519 secret seed → public key (used by the tripwire).
-def rfc8032Seed   : String := "9d61b19deffe1f1e92ca4cd2b5e3c0f8a8f1b2c3d4e5f60718293a4b5c6d7e8f"
-def rfc8032Public : String := "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a"
 -- FIPS 180-4 SHA-384("abc")
 def fips384abc : String :=
   "cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7"
 
+-- The certificate signing key for provisioning checks is the RFC 8032 Test 1 seed.
 def goodProvision : CertProvision :=
-  { signingKeySeed := hexToBytes rfc8032Seed
+  { signingKeySeed := hexToBytes rfc8032Test1.seedHex
     chainDer := hexToBytes "3082"   -- opaque placeholder chain bytes
     scheme := .ed25519 }
 
 def main : IO UInt32 := do
-  let seed := hexToBytes rfc8032Seed
+  let seed := hexToBytes rfc8032Test1.seedHex
   let derived := Hacl.ed25519Public seed
 
-  -- SHA-384 value KAT (FIPS 180-4) — strengthens the SHA-512 core coverage
+  -- Vector provenance discipline: lengths well-formed; the RFC seed and the
+  -- local regression seed are distinct (guards against re-mixing them).
+  let vectorsWellFormed :=
+    wellFormed rfc8032Test1 && wellFormed localRegression && seedsDistinct
+
+  -- Ed25519 RFC 8032 §7.1 Test 1 KAT (public key + empty-message signature)
+  let rfcPubOk := eqB (Hacl.ed25519Public seed) (hexToBytes rfc8032Test1.pubHex)
+  let rfcSigOk := eqB (Hacl.ed25519Sign seed ByteArray.empty) (hexToBytes rfc8032Test1.sigHex)
+  -- Local arbitrary-seed regression KAT (NOT an RFC vector)
+  let regSeed := hexToBytes localRegression.seedHex
+  let regPubOk := eqB (Hacl.ed25519Public regSeed) (hexToBytes localRegression.pubHex)
+  let regSigOk := eqB (Hacl.ed25519Sign regSeed ByteArray.empty) (hexToBytes localRegression.sigHex)
+
+  -- SHA-384 value KAT (FIPS 180-4)
   let sha384Ok := eqB (Hacl.sha384 "abc".toUTF8) (hexToBytes fips384abc)
 
   -- lint derives a well-formed 32-byte leaf public from a valid seed
@@ -102,13 +113,13 @@ def main : IO UInt32 := do
   let signRoundTrips := Hacl.ed25519Verify derived msg sig
   let wrongPubRejected := !Hacl.ed25519Verify e1pub msg sig
 
-  -- TRIPWIRE: the vendored Ed25519 is currently non-RFC-8032 (interop blocker).
-  -- Passes while the defect stands; flips to FAIL when Ed25519 is fixed, at which
-  -- point this should become a real RFC 8032 KAT (derived == rfc8032Public).
-  let ed25519KnownNonStandard := !eqB derived (hexToBytes rfc8032Public)
-
   let checks : List (String × Bool) :=
-    [ ("SHA-384(\"abc\") matches FIPS 180-4 vector", sha384Ok)
+    [ ("Ed25519 RFC 8032 §7.1 Test 1: public key matches", rfcPubOk)
+    , ("Ed25519 RFC 8032 §7.1 Test 1: signature(\"\") matches", rfcSigOk)
+    , ("Ed25519 local regression vector (non-RFC): public matches", regPubOk)
+    , ("Ed25519 local regression vector (non-RFC): signature matches", regSigOk)
+    , ("vector lengths well-formed and RFC/regression seeds distinct", vectorsWellFormed)
+    , ("SHA-384(\"abc\") matches FIPS 180-4 vector", sha384Ok)
     , ("lint derives a 32-byte leaf public from a valid seed", lintOk)
     , ("lint rejects a wrong-length signing seed", badLen)
     , ("lint rejects an unsupported signature scheme", badScheme)
@@ -123,7 +134,6 @@ def main : IO UInt32 := do
     , ("provisioning fails closed on unsupported scheme", provFailsClosed)
     , ("provisioned cert key signs and verifies against derived public", signRoundTrips)
     , ("a wrong public rejects the signature", wrongPubRejected)
-    , ("TRIPWIRE: vendored Ed25519 is non-RFC-8032 (known interop blocker)", ed25519KnownNonStandard)
     ]
 
   let mut failed := 0

@@ -3,7 +3,58 @@
 All notable changes to kroopt are recorded here. RFC lifecycle transitions are
 governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycle-policy.md).
 
+## [0.23.0-dev] — M23 Ed25519 "defect" retracted as a false positive; corrected + interop-validated — 2026-06-12
+
+Retracts the M19–M22 "non-RFC-8032 Ed25519 defect." It was a **test-vector
+provisioning error, not a HACL\*, compiler, or Edwards-arithmetic defect.** HACL\*
+Ed25519 is RFC 8032 compliant. No functional protocol change; build green at 87
+theorems. The legitimate work from those milestones — connection provisioning and the
+SHA-512 KAT hardening — stands and is unaffected.
+
+### Root cause of the false alarm
+
+- The reproduction paired a **non-RFC seed** `9d61b19deffe1f1e92ca4cd2b5e3c0f8a8f1b2c3d4e5f60718293a4b5c6d7e8f`
+  with RFC 8032 §7.1 Test 1's **public key** `d75a9801…`, which actually belongs to a
+  **different seed** `9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60`.
+  HACL\* correctly derived `bcd55c06…` for the seed it was given.
+- Every earlier "isolation" step (clamped scalar, base point, `2d`, optimisation,
+  uint128, FFI) was internally valid but ran on the wrong seed, so it only ever
+  confirmed HACL\*'s self-consistency — never an independently-provisioned RFC vector.
+
+### Corrected (independent verification)
+
+- HACL\* on the **correct** RFC 8032 §7.1 Test 1 seed reproduces the published public
+  key `d75a9801…` **and** the signature `e5564300…` byte-for-byte. Confirmed by an
+  independent RFC 8032 reference implementation and by OpenSSL.
+- `kroopt-provision-test` now asserts the real RFC 8032 KAT (public + signature), a
+  labelled non-RFC regression vector, and vector well-formedness/length discipline
+  (**20 checks**, was 16). The old "tripwire" asserting non-compliance is removed.
+
+### Added
+
+- `Tests/Vectors/Ed25519Rfc8032.lean` (built via the new `KrooptTestVectors` lib):
+  test vectors carry an explicit `source`, algorithm, and length-asserted hex; the RFC
+  seed and the local regression seed are kept distinct so they cannot be re-mixed.
+- `scripts/ed25519_hacl_cli.c` + `scripts/ed25519-interop.sh`: cross-library
+  `CertificateVerify` interop — HACL\* and OpenSSL sign and verify each other's RFC 8446
+  §4.4.3 signatures over a shared keypair, and both reject a tampered transcript. (Full
+  `s_client`/`curl` handshake interop remains gated behind the pending real-handshake
+  work.)
+
+### Trust matrix
+
+- **Unchanged.** Ed25519 stays **ASSUMED (inherited verified)**, with the RFC 8032 KAT
+  and OpenSSL interop as **TESTED** evidence. No re-vendor, no compiler workaround, no
+  unverified reference binding.
+
+
+
 ## [0.22.0-dev] — M21 Ed25519 defect fully isolated; remediation decision surfaced — 2026-06-12
+
+> **⚠ Retracted in 0.23.0-dev (false positive).** The "defect" below was a mistyped
+> RFC test seed, not a HACL\*/compiler/Edwards defect. HACL\* Ed25519 is RFC 8032
+> compliant. The bisection here is internally valid but ran on the wrong seed. Kept for
+> audit trail only.
 
 Bisects the Ed25519 defect against an independent oracle and isolates it to one
 stage; surfaces the remediation as an owner decision. No repo code change (docs and
@@ -45,6 +96,10 @@ theorems. The Ed25519 binary fix is a scoped, dedicated re-vendor (below).
 
 ### Root cause isolated (corrects the M19 guess)
 
+> **⚠ Retracted in 0.23.0-dev (false positive).** Despite "reproducing in pristine
+> upstream," this ran on a non-RFC seed; HACL\* Ed25519 is RFC 8032 compliant. The
+> SHA-512 / SHA-384 KAT hardening in this entry is legitimate and stands.
+
 - **The vendored Ed25519 is verbatim HACL 0.4.5, not hand-edited.** `Hacl_Ed25519.c`
   and every file it depends on are byte-identical (`diff` = 0) to the pristine 0.4.5
   release at tag `ocaml-v0.4.5`. The `sign_expanded(…, uint32_t msg, uint8_t *len)`
@@ -84,6 +139,10 @@ that hardening — **discovers and documents a non-RFC-8032 defect in the vendor
 HACL Ed25519**, the top interop blocker before a real handshake.
 
 ### ⚠ Discovered: vendored Ed25519 is not RFC 8032 compliant (interop blocker)
+
+> **⚠ Retracted in 0.23.0-dev (false positive).** This was a test-vector provisioning
+> error — a non-RFC seed paired with RFC Test 1's public key. HACL\* Ed25519 is RFC 8032
+> compliant. The connection-provisioning feature in this entry is unaffected and stands.
 
 Strengthening the crypto KATs (the HACL suite previously only *size-checked*
 SHA-384) showed SHA-384 matches FIPS 180-4 and X25519 matches RFC 7748, but the
