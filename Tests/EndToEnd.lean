@@ -52,14 +52,15 @@ def clientFinishedRecord : ByteArray := record ([20] ++ u16be 32 ++ List.replica
 /-! ## Fake crypto provider (deterministic, purpose-aware) -/
 
 def fakeCrypto : CryptoOp → CryptoResult
-  | .ecdheX25519 _ => .sharedSecret ⟨1, 0⟩
+  | .ecdheX25519 _ => .ecdheComplete (ByteArray.mk (Array.mkArray 32 0)) ⟨1, 0⟩
   | .signCertificateVerify _ _ => .signature (b (List.replicate 64 0xCD))
   | .verifyFinished _ _ _ => .verified
   | .aeadSeal _ _ pt => .aeadSealed pt
   | .aeadOpen _ _ ct => .aeadOpened ct
   | .randomBytes _ => .randomBytes (b [])
-  | .hkdfExtract _ => .hkdfSecret ⟨2, 0⟩
-  | .hkdfExpandLabel _ _ => .hkdfSecret ⟨3, 0⟩
+  | .hkdfExtract _ _ _ => .hkdfSecret ⟨2, 0⟩
+  | .hkdfExpandLabel _ _ _ _ _ => .hkdfSecret ⟨3, 0⟩
+  | .installTrafficKeys _ _ _ _ => .keysInstalled
 
 /-! ## Driver loop -/
 

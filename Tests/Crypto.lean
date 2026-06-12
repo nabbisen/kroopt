@@ -66,7 +66,7 @@ def checks : List Check :=
     -- deterministic fake provider
   , { name := "fake provider: ECDHE returns a shared-secret handle"
     , ok := (match fakeProvider.submit Kroopt.Crypto.SecretArena.empty ⟨0⟩ (.ecdheX25519 (ByteArray.mk #[])) with
-             | .ok (_, .sharedSecret _) => true | _ => false) }
+             | .ok (_, .ecdheComplete _ _) => true | _ => false) }
   , { name := "fake provider: Finished verification succeeds"
     , ok := (match fakeProvider.submit Kroopt.Crypto.SecretArena.empty ⟨0⟩ (.verifyFinished .sha256 (ByteArray.mk #[]) (ByteArray.mk #[])) with
              | .ok (_, .verified) => true | _ => false) }

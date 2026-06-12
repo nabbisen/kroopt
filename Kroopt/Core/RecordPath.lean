@@ -158,8 +158,9 @@ def handleCryptoResultCorrelated (s : State) (op : OperationId) (r : CryptoResul
   | .failed e =>
       recordFailAlert s .internalError (.crypto e)
   | .randomBytes _ => .ok (s.clearOp op, [])
-  | .sharedSecret h => handshakeOnGatingResult s op (.sharedSecret h)
+  | .ecdheComplete srv h => handshakeOnGatingResult s op (.ecdheComplete srv h)
   | .hkdfSecret _ => .ok (s.clearOp op, [])
+  | .keysInstalled => .ok (s.clearOp op, [])
   | .signature sig => handshakeOnGatingResult s op (.signature sig)
   | .verified => handshakeOnGatingResult s op .verified
 

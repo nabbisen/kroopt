@@ -146,3 +146,10 @@ HACL* FFI lib. -/
 lean_exe «kroopt-keyschedule-test» where
   root := `Tests.KeySchedule
   moreLinkArgs := #["-Wl,--gc-sections"]
+
+/-- M14 enriched crypto interface: the real HACL-backed `CryptoProvider` driven
+through the RFC 8448 §3 handshake op sequence via `submit`. Links the FFI lib. -/
+@[default_target]
+lean_exe «kroopt-realprovider-test» where
+  root := `Tests.RealProvider
+  moreLinkArgs := #["-Wl,--gc-sections"]

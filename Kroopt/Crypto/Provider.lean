@@ -125,11 +125,13 @@ def fakeSubmit (a : SecretArena) (_ : OperationId) :
     CryptoOp → Except CryptoError (SecretArena × CryptoResult)
   | .randomBytes _ => .ok (a, .randomBytes (ByteArray.mk #[]))
   | .ecdheX25519 _ => do
-      let (h, a') ← a.store (ByteArray.mk (Array.mkArray 32 0)); .ok (a', .sharedSecret h)
-  | .hkdfExtract _ => do
+      let (h, a') ← a.store (ByteArray.mk (Array.mkArray 32 0))
+      .ok (a', .ecdheComplete (ByteArray.mk (Array.mkArray 32 0)) h)
+  | .hkdfExtract _ _ _ => do
       let (h, a') ← a.store (ByteArray.mk (Array.mkArray 32 0)); .ok (a', .hkdfSecret h)
-  | .hkdfExpandLabel _ _ => do
+  | .hkdfExpandLabel _ _ _ _ _ => do
       let (h, a') ← a.store (ByteArray.mk (Array.mkArray 32 0)); .ok (a', .hkdfSecret h)
+  | .installTrafficKeys _ _ _ _ => .ok (a, .keysInstalled)
   | .aeadSeal _ _ pt => .ok (a, .aeadSealed pt)
   | .aeadOpen _ _ ct => .ok (a, .aeadOpened ct)
   | .signCertificateVerify _ _ => .ok (a, .signature (ByteArray.mk (Array.mkArray 64 0xCD)))

@@ -12,7 +12,7 @@ actions; a thin interpreter executes those actions over real crypto and sockets
 and never makes protocol decisions of its own. That separation carries
 machine-checked safety properties into the running code.
 
-## Status: M0–M13 (verified core → handshake → TlsConn → config → alerts/close → HTTPS → hardening → native crypto → key schedule)
+## Status: M0–M14 (verified core → handshake → TlsConn → config → alerts/close → HTTPS → hardening → native crypto → key schedule → real provider)
 
 This tree implements milestones **M0**–**M5** from the [ROADMAP](ROADMAP.md). M0
 fixes the pure-core/interpreter architecture; M1 adds the bounds-safe parsing
@@ -70,6 +70,20 @@ correlation proofs re-established) to express a real schedule, which is the next
 step toward a real handshake. See
 [`docs/src/key-schedule.md`](docs/src/key-schedule.md).
 
+M14 makes the seam expressive enough to drive that schedule and ships a real
+provider. The `CryptoOp` interface now names secret inputs by opaque handle
+(HKDF extract/expand with salt/IKM/secret handles, a traffic-key install op, and
+ECDHE returning the server share), so the key schedule is a handle-threaded
+chain — while the AEAD shapes, the only ones the proofs destructure, stay fixed,
+so all 78 theorems hold unchanged. `Kroopt.Crypto.mkRealProvider` answers every
+operation with real HACL\* cryptography, and `kroopt-realprovider-test` drives it
+through the **exact RFC 8448 §3 operation sequence via `submit`** — the same
+calls the core will emit — confirming every derived secret, a real record
+round-trip, a real Ed25519 signature, and Finished-MAC verification. What remains
+is for `Kroopt.Core.step` to *emit* this sequence (plus production entropy and
+certificate provisioning); see
+[`docs/src/enriched-crypto-interface.md`](docs/src/enriched-crypto-interface.md).
+
 The headline M5 result: every M2/M3 safety theorem — above all *no early
 plaintext* — **still holds over the live handshake**, which is the
 proof/runtime correspondence contract.
@@ -126,6 +140,7 @@ lake exe kroopt-https-test    # M10 jemmet integration + end-to-end HTTPS accept
 lake exe kroopt-hardening-test# M11 resource budgets + deferred-feature scope control
 lake exe kroopt-hacl-test     # M12 native HACL* crypto KATs through the Lean FFI (needs a C compiler)
 lake exe kroopt-keyschedule-test # M13 TLS 1.3 key schedule vs RFC 8448 + secret arena (needs a C compiler)
+lake exe kroopt-realprovider-test # M14 real provider driven through RFC 8448 §3 via submit (needs a C compiler)
 ./scripts/check-axioms.sh     # proof gate: no sorryAx across all public theorems
 lake exe kroopt-parse-fuzz    # parser + ClientHello smoke fuzzer (optional arg: iterations)
 ./scripts/check-hygiene.sh    # RFC 022 proof-hygiene gate

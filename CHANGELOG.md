@@ -3,6 +3,68 @@
 All notable changes to kroopt are recorded here. RFC lifecycle transitions are
 governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycle-policy.md).
 
+## [0.15.0-dev] — M14 enriched crypto interface + real provider driven through RFC 8448 §3 — 2026-06-11
+
+Makes the crypto seam expressive enough to drive a real TLS 1.3 key schedule, and
+ships a real `CryptoProvider` that performs a full handshake's cryptography
+through the actual `submit` interface — validated against the RFC 8448 §3 trace
+operation by operation. The verified core keeps handle opacity, so its 78
+theorems hold over the enriched interface unchanged.
+
+### Changed — enriched `CryptoOp` / `CryptoResult` (secret inputs named by handle)
+
+- `hkdfExtract` now carries optional salt and IKM handles; `hkdfExpandLabel` now
+  carries the input-secret handle, label, and context; a new `installTrafficKeys`
+  op asks the provider to expand a traffic secret into the record key/IV and
+  install them for a (direction, epoch). ECDHE now returns `ecdheComplete` (the
+  server public share plus a shared-secret handle). The key schedule is now
+  expressible as a handle-threaded chain.
+- The AEAD operations are deliberately **unchanged** — still keyed by record
+  metadata, with the provider resolving the installed key internally. Those are
+  the only crypto shapes the proofs destructure, so leaving them fixed kept the
+  proof migration empty.
+
+### Unchanged — proofs
+
+- All 78 machine-checked theorems hold over the enriched interface with no
+  changes, and the axiom audit is identical: the proofs constrain operation
+  *kind* and emission discipline, not secret payloads, and the AEAD shapes were
+  preserved. Handle opacity intact (the core still sees only `SecretKeyHandle`s).
+
+### Added — real provider (`Kroopt.Crypto.mkRealProvider`)
+
+- Answers every enriched op with genuine HACL* cryptography, threading the arena:
+  X25519 ECDHE, HKDF extract/expand resolving input handles, `installTrafficKeys`
+  deriving and recording record keys (and the base secret for the Finished key),
+  ChaCha20-Poly1305 record seal/open by installed key, real Ed25519
+  CertificateVerify, and Finished-MAC verification. Static secrets it cannot
+  itself produce (the server ephemeral X25519 key and the Ed25519 certificate
+  key) are injected via `RealCryptoConfig`.
+- `SecretArena` gained an installed-traffic-key index and per-epoch base-secret
+  record so AEAD and Finished resolve keys without the core naming key bytes.
+
+### Added — RFC 8448 validation through `submit` (`kroopt-realprovider-test`, 17 checks)
+
+- Drives the real provider through the exact RFC 8448 §3 operation sequence via
+  `submit` — the same calls the core will emit — and reads every produced secret
+  back out of the arena to confirm it matches the published trace (ECDHE shared
+  and server share, Early/Handshake/Master Secrets, all traffic secrets), checks
+  the install path against the RFC's AES traffic key/IV, round-trips a real
+  ChaCha20-Poly1305 record (with tamper rejection), verifies a real Ed25519
+  signature, and accepts/rejects Finished MACs. Wired into CI.
+
+### The honest boundary (next)
+
+- The verified core does not yet *emit* this sequence — its handshake still emits
+  the simpler op set. Making `Kroopt.Core.step` orchestrate the full schedule
+  (threading the handles through negotiation state) is the next step; the
+  interface and proofs are now ready, and the fixed AEAD shapes mean it should not
+  disturb the safety proofs. Production entropy seeding and certificate
+  provisioning through the interpreter remain a scoped follow-up. See
+  `docs/src/enriched-crypto-interface.md`.
+
+
+
 ## [0.14.0-dev] — M13 provider-arena refactor: stateful crypto seam + real TLS 1.3 key schedule (RFC 8448-validated) — 2026-06-11
 
 Makes the crypto seam stateful so real key material can flow, and builds the real
@@ -142,7 +204,7 @@ next step (a provider-arena refactor), documented honestly below.
 - The pure Lean core still builds with no C toolchain; only the FFI library and
   its KAT executable require a C compiler.
 
-
+## [0.12.0-dev] — M11 cross-cutting hardening: resource budgets, scope control, threat model, axiom gate — 2026-06-11
 
 Cross-cutting hardening milestone (RFC 016, 017, 019, 022). Adds the resource-
 budget model with proved DoS bounds, deferred-feature scope control, the threat

@@ -1,4 +1,5 @@
 import Kroopt.Core.Crypto
+import Kroopt.Core.Record
 import Kroopt.Error
 
 /-!
@@ -31,7 +32,7 @@ is never imported by the pure verified core (enforced by the dependency gate).
 namespace Kroopt.Crypto
 
 open Kroopt (CryptoError)
-open Kroopt.Core (SecretKeyHandle)
+open Kroopt.Core (SecretKeyHandle Direction Epoch)
 
 /-- A bounded, generation-tagged store mapping handle ids to secret bytes.
 Pure value: threaded explicitly through the provider and interpreter rather than
@@ -42,6 +43,13 @@ structure SecretArena where
   nextId     : UInt64
   generation : UInt64
   capacity   : Nat
+  /-- Installed record keys, keyed by (direction, epoch): the ids of the key and
+  IV entries. Lets `aeadSeal`/`aeadOpen` (keyed by record metadata) resolve the
+  installed key without the verified core ever naming key bytes. -/
+  installed  : List (Direction × Epoch × UInt64 × UInt64) := []
+  /-- Base traffic-secret id per epoch, recorded at key install, so the Finished
+  key (HKDF-Expand-Label of the base secret) can be derived on demand. -/
+  baseSecrets : List (Epoch × UInt64) := []
   deriving Inhabited
 
 namespace SecretArena
@@ -87,7 +95,31 @@ def release (a : SecretArena) (h : SecretKeyHandle) : SecretArena :=
 /-- Bump the generation, invalidating every outstanding handle at once
 (connection reset / config reload). Previous entries are dropped. -/
 def bumpGeneration (a : SecretArena) : SecretArena :=
-  { a with entries := [], released := [], generation := a.generation + 1, nextId := 1 }
+  { a with entries := [], released := [], installed := [], baseSecrets := [],
+           generation := a.generation + 1, nextId := 1 }
+
+/-- Record an installed record key and IV for a (direction, epoch). -/
+def recordInstalled (a : SecretArena) (dir : Direction) (epoch : Epoch)
+    (keyId ivId : UInt64) : SecretArena :=
+  { a with installed := (dir, epoch, keyId, ivId) :: a.installed }
+
+/-- Look up the installed key/IV entry ids for a (direction, epoch). -/
+def lookupInstalled (a : SecretArena) (dir : Direction) (epoch : Epoch) :
+    Option (UInt64 × UInt64) :=
+  (a.installed.find? (fun e => decide (e.1 = dir) && decide (e.2.1 = epoch))).map
+    (fun e => (e.2.2.1, e.2.2.2))
+
+/-- Record the base traffic-secret entry id for an epoch (for the Finished key). -/
+def recordBaseSecret (a : SecretArena) (epoch : Epoch) (secretId : UInt64) : SecretArena :=
+  { a with baseSecrets := (epoch, secretId) :: a.baseSecrets }
+
+/-- Look up the base traffic-secret entry id for an epoch. -/
+def lookupBaseSecret (a : SecretArena) (epoch : Epoch) : Option UInt64 :=
+  (a.baseSecrets.find? (fun e => decide (e.1 = epoch))).map (fun e => e.2)
+
+/-- Read bytes by raw entry id at the current generation. -/
+def getById (a : SecretArena) (id : UInt64) : Option ByteArray :=
+  (a.entries.find? (fun e => e.1 == id)).map (fun e => e.2)
 
 end SecretArena
 end Kroopt.Crypto

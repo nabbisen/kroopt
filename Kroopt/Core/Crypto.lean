@@ -57,6 +57,7 @@ inductive CryptoOpKind where
   | ecdhe
   | hkdfExtract
   | hkdfExpand
+  | installTrafficKeys
   | aeadSeal
   | aeadOpen
   | signCertificateVerify
@@ -65,12 +66,28 @@ inductive CryptoOpKind where
 
 /-- A crypto operation the core asks the interpreter to perform. Typed by
 purpose — no generic `call(name, bytes)` (RFC 008 §4). Carries plaintext /
-ciphertext / public shares; not printable (RFC 018). -/
+ciphertext / public shares and *opaque handles* to secret inputs (RFC 008 §6);
+never the secret bytes themselves, and not printable (RFC 018).
+
+The HKDF and install operations name their secret inputs by `SecretKeyHandle`,
+so the key schedule (RFC 8446 §7.1) can be expressed as a chain of operations
+the core orchestrates while the provider holds the bytes:
+
+* `hkdfExtract` takes optional salt and IKM handles (both absent for the Early
+  Secret, salt-only for the Master Secret, both present for the Handshake
+  Secret).
+* `hkdfExpandLabel` names the input secret by handle and carries the label and
+  context, so Derive-Secret and the traffic-secret expansions are expressible.
+* `installTrafficKeys` asks the provider to expand a traffic secret into the
+  record key and IV and install them for a (direction, epoch), so subsequent
+  `aeadSeal`/`aeadOpen` (still keyed by record metadata) resolve to them. -/
 inductive CryptoOp where
   | randomBytes (len : Nat)
   | ecdheX25519 (peerShare : ByteArray)
-  | hkdfExtract (alg : HashAlgorithm)
-  | hkdfExpandLabel (alg : HashAlgorithm) (len : Nat)
+  | hkdfExtract (alg : HashAlgorithm) (salt : Option SecretKeyHandle) (ikm : Option SecretKeyHandle)
+  | hkdfExpandLabel (alg : HashAlgorithm) (secret : SecretKeyHandle)
+      (label : String) (context : ByteArray) (len : Nat)
+  | installTrafficKeys (suite : CipherSuite) (dir : Direction) (epoch : Epoch) (secret : SecretKeyHandle)
   | aeadSeal (meta : RecordCryptoMeta) (aad : ByteArray) (plaintext : ByteArray)
   | aeadOpen (meta : RecordCryptoMeta) (aad : ByteArray) (ciphertext : ByteArray)
   | signCertificateVerify (scheme : SignatureScheme) (input : ByteArray)
@@ -82,8 +99,9 @@ namespace CryptoOp
 def kind : CryptoOp → CryptoOpKind
   | randomBytes _              => .randomBytes
   | ecdheX25519 _              => .ecdhe
-  | hkdfExtract _              => .hkdfExtract
-  | hkdfExpandLabel _ _        => .hkdfExpand
+  | hkdfExtract _ _ _          => .hkdfExtract
+  | hkdfExpandLabel _ _ _ _ _  => .hkdfExpand
+  | installTrafficKeys _ _ _ _ => .installTrafficKeys
   | aeadSeal _ _ _             => .aeadSeal
   | aeadOpen _ _ _             => .aeadOpen
   | signCertificateVerify _ _  => .signCertificateVerify
@@ -92,11 +110,14 @@ def kind : CryptoOp → CryptoOpKind
 end CryptoOp
 
 /-- A correlated crypto result re-entering the core. Accepted only if it matches
-the pending op's id, kind, epoch, and direction (RFC 008 §5). Not printable. -/
+the pending op's id, kind, epoch, and direction (RFC 008 §5). Not printable.
+ECDHE returns the server's public share (for the wire) alongside an opaque handle
+to the shared secret; key installation returns only an acknowledgement. -/
 inductive CryptoResult where
   | randomBytes (b : ByteArray)
-  | sharedSecret (h : SecretKeyHandle)
+  | ecdheComplete (serverShare : ByteArray) (shared : SecretKeyHandle)
   | hkdfSecret (h : SecretKeyHandle)
+  | keysInstalled
   | aeadSealed (ciphertext : ByteArray)
   | aeadOpened (plaintext : ByteArray)
   | signature (bytes : ByteArray)

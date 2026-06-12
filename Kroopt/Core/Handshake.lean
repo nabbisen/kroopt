@@ -197,7 +197,7 @@ advance exactly one phase; an unexpected result for the current phase is ignored
 def handshakeOnGatingResult (s0 : State) (op : OperationId) (r : CryptoResult) : HsResult :=
   let s := s0.clearOp op
   match r with
-  | .sharedSecret h =>
+  | .ecdheComplete _ h =>
       if s.handshake = .requestedEcdhe then onEcdheDone s h else .ok (s, [])
   | .signature sig =>
       if s.handshake = .requestedCertificateVerifySignature then onCertVerifySigned s sig
@@ -208,6 +208,7 @@ def handshakeOnGatingResult (s0 : State) (op : OperationId) (r : CryptoResult) :
       else .ok (s, [])
   | .randomBytes _ => .ok (s, [])
   | .hkdfSecret _ => .ok (s, [])
+  | .keysInstalled => .ok (s, [])
   | .aeadSealed _ => .ok (s, [])
   | .aeadOpened _ => .ok (s, [])
   | .verifyFailed => .ok (s, [])
