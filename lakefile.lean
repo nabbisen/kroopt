@@ -153,3 +153,10 @@ through the RFC 8448 §3 handshake op sequence via `submit`. Links the FFI lib. 
 lean_exe «kroopt-realprovider-test» where
   root := `Tests.RealProvider
   moreLinkArgs := #["-Wl,--gc-sections"]
+
+/-- M15 verified key-schedule orchestrator driving the real provider through the
+RFC 8448 §3 handshake. Links the FFI lib. -/
+@[default_target]
+lean_exe «kroopt-scheduledriver-test» where
+  root := `Tests.ScheduleDriver
+  moreLinkArgs := #["-Wl,--gc-sections"]

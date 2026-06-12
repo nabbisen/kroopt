@@ -3,6 +3,59 @@
 All notable changes to kroopt are recorded here. RFC lifecycle transitions are
 governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycle-policy.md).
 
+## [0.16.0-dev] — M15 verified key-schedule orchestrator, driven through the real provider — 2026-06-11
+
+Moves the *sequence* of the TLS 1.3 key schedule — which operation comes next,
+with which handle as input — out of test code and into the verified core, as a
+pure proved state machine. The orchestrator emits the schedule's ops and threads
+the secret handles; the real provider answers them on HACL\*; the whole loop is
+validated against the RFC 8448 §3 trace. It is not yet invoked by
+`Kroopt.Core.step` — that integration is the next milestone — so the existing 78
+theorems are untouched and four new ones are added (82 total).
+
+### Added — key-schedule orchestrator (`Kroopt.Core.KeyScheduleDriver`)
+
+- A pure core state machine: a fifteen-phase linear chain from the ECDHE share to
+  the installed application keys. `start` emits the opening ECDHE op; each
+  `advance` consumes the awaited result, records the handle it yields, and emits
+  the next op (threading handles from each step into the next). Constructs
+  `CryptoOp` values only — no crypto, IO, or FFI — so it sits in the verified core
+  zone (deps gate: now 35 pure-zone files, clean).
+
+### Added — proofs (`Kroopt.Proofs.KeyScheduleDriver`, +4 theorems → 82)
+
+- `advance_emits_schedule_ops` — the orchestrator emits only ECDHE/HKDF/install
+  ops, never AEAD, signature, or randomness ops (the discipline the `step`
+  integration will rely on to preserve "no plaintext / no AEAD-open before
+  connected").
+- `advance_progress` — each accepted result advances the phase by exactly one
+  rank, so the schedule is finite and cannot loop.
+- `advance_complete_terminal` — `complete` is absorbing.
+- `start_emits_schedule_op` — the opening op is itself a schedule op. All within
+  `{propext, Quot.sound}`; axiom audit green.
+
+### Added — orchestrator driven through the real provider (`kroopt-scheduledriver-test`, 11 checks)
+
+- The orchestrator emits each op, `mkRealProvider` answers it on real HACL\* crypto
+  threading the arena, and the result is fed back to `advance` for the next op,
+  until `complete`. Every secret the orchestrator collected (read back from the
+  arena by the handle it stored) and the installed handshake key/IV are then
+  checked against the RFC 8448 §3 trace (ECDHE shared, Handshake/Master Secrets,
+  server handshake/application traffic secrets, installed server-handshake
+  `write_key`/`write_iv`, all four traffic-key installs present). Wired into CI.
+
+### The honest boundary (next)
+
+- The orchestrator is not yet invoked by `Kroopt.Core.step`. Wiring it into the
+  live handshake — `onEcdheDone` and the gating dispatch kicking off and pumping
+  the schedule, threading its state through negotiation — is the next milestone.
+  The handshake's safety proofs are absence-dominated and the orchestrator is
+  proved to emit only schedule ops, so the integration is expected to preserve
+  them, but it does touch those proofs, which is why it is sequenced separately.
+  See `docs/src/key-schedule-orchestrator.md`.
+
+
+
 ## [0.15.0-dev] — M14 enriched crypto interface + real provider driven through RFC 8448 §3 — 2026-06-11
 
 Makes the crypto seam expressive enough to drive a real TLS 1.3 key schedule, and
