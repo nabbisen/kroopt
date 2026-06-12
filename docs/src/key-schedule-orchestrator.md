@@ -80,33 +80,38 @@ handshake/application) are checked. The schedule logic is verified core code,
 interleaved exactly as the handshake will drive it, computing the published trace
 against real cryptography.
 
-## Wired into `step` (handshake-key stage)
+## Wired into `step` (both stages)
 
-As of M17 the handshake-key stage is invoked by `Kroopt.Core.step`. When the ECDHE
+As of M17–M18 the whole schedule is driven by `Kroopt.Core.step`. When the ECDHE
 result returns, `onEcdheDone` frames ServerHello, installs the handshake epoch, and
-calls `startPostEcdhe` to begin the stage — storing the orchestrator `State` in the
-connection's `keySched` field and entering a `derivedHandshakeSecrets` pump phase.
-Each returning HKDF / install result is routed (through `handleCryptoResult` →
-`handshakeOnGatingResult`) to `onHsScheduleResult`, which feeds it to `advance` and
-emits the next schedule op — self-looping until the stage parks at
-`handshakeKeysInstalled`, at which point it frames EncryptedExtensions / Certificate
-and requests the CertificateVerify signature, rejoining the existing flight.
+calls `startPostEcdhe` to begin the **handshake-key stage** — storing the
+orchestrator `State` in the connection's `keySched` field and entering a
+`derivedHandshakeSecrets` pump phase. Each returning HKDF / install result is routed
+(through `handleCryptoResult` → `handshakeOnGatingResult`) to `onHsScheduleResult`,
+which feeds it to `advance` and emits the next op — self-looping until the stage
+parks at `handshakeKeysInstalled`, at which point it frames EncryptedExtensions /
+Certificate and requests the CertificateVerify signature.
 
-The wiring preserves the handshake's safety invariants. The new phase's transitions
-are legal edges (`onHsScheduleResult_legal`, lifting the audited count to 86), and
-the pump emits only `callCrypto` / `writeTransport` actions — never application
-plaintext — so the absence-dominated discipline (`handshakeOnGatingResult_no_emit`
-/ `_no_accept`) extends to it unchanged. The full synthetic handshake drives the
-stage end-to-end through `step` in both `kroopt-e2e-test` and `kroopt-handshake-test`.
+When that signature returns, `onCertVerifySigned` frames CertificateVerify and the
+server Finished, snapshots the CH..server-Finished transcript, and calls
+`resumeApplication` to begin the **application-key stage** — entering a second pump
+phase, `sentCertificateVerify`. `onApScheduleResult` pumps it the same way until the
+orchestrator reaches `complete`, then installs the application epoch and moves to
+`sentServerFinished`, rejoining the existing client-Finished / connected flow.
+
+The wiring preserves the handshake's safety invariants. Both pump phases' transitions
+are legal edges (`onHsScheduleResult_legal`, `onApScheduleResult_legal`, lifting the
+audited count to 87), and each pump emits only `callCrypto` / `writeTransport`
+actions — never application plaintext — so the absence-dominated discipline
+(`handshakeOnGatingResult_no_emit` / `_no_accept`) extends to both unchanged. The
+full synthetic handshake drives both stages end-to-end through `step` in
+`kroopt-e2e-test` and `kroopt-handshake-test`.
 
 ## The honest boundary (next)
 
-Two things remain. First, the **application-key stage is not yet driven by `step`**:
-the orchestrator parks at `handshakeKeysInstalled` and the current handlers still
-install application keys via a placeholder. Wiring `resumeApplication` (a second
-pump phase, after the server Finished is committed) is the next milestone. Second,
-the schedule's transcript contexts are the core's **abstract snapshot references**,
-not real hash bytes — the wiring is structural; resolving those to real transcript
-hashes (so a real run produces RFC-correct traffic keys) is a later milestone, after
-which come production entropy / certificate provisioning and a real handshake
-against OpenSSL/curl.
+The schedule's transcript contexts are still the core's **abstract snapshot
+references**, not real hash bytes, and the server Finished is synthetic rather than a
+real MAC — the wiring is structural. Resolving the snapshots to real transcript
+hashes (so a real run produces RFC-correct traffic keys) and computing the real
+Finished MAC are the next milestones, after which come production entropy /
+certificate provisioning and a real handshake against OpenSSL/curl.

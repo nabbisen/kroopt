@@ -12,7 +12,7 @@ actions; a thin interpreter executes those actions over real crypto and sockets
 and never makes protocol decisions of its own. That separation carries
 machine-checked safety properties into the running code.
 
-## Status: M0–M17 (verified core → handshake → TlsConn → config → alerts/close → HTTPS → hardening → native crypto → key schedule → real provider → orchestrator → two-stage interleave → wired into step)
+## Status: M0–M18 (verified core → handshake → TlsConn → config → alerts/close → HTTPS → hardening → native crypto → key schedule → real provider → orchestrator → two-stage interleave → both schedule stages wired into step)
 
 This tree implements milestones **M0**–**M5** from the [ROADMAP](ROADMAP.md). M0
 fixes the pure-core/interpreter architecture; M1 adds the bounds-safe parsing
@@ -117,8 +117,16 @@ The new phase's transitions are proved legal and the pump emits only
 `callCrypto`/`writeTransport` — never plaintext — so the handshake's absence-based
 safety proofs extend to it (86 theorems). The full synthetic handshake drives the
 stage end-to-end through `step` in `kroopt-e2e-test` and `kroopt-handshake-test`.
-The application-key stage (via `resumeApplication`, after the server Finished) and
-real transcript resolution are the next milestones.
+The application-key stage is now wired too (M18): when the CertificateVerify
+signature returns, `onCertVerifySigned` frames the server Finished, snapshots the
+CH..server-Finished transcript, and calls `resumeApplication` to start the
+application-key stage (→ `sentCertificateVerify`); `onApScheduleResult` pumps it to
+`complete`, installs the application epoch, and moves to `sentServerFinished`. Both
+pump phases are proved to take legal edges and emit no plaintext (87 theorems), and
+the full synthetic handshake drives the entire RFC 8446 §7.1 schedule end-to-end
+through `step`. What remains is structural-to-real: resolving the abstract transcript
+snapshots to real hashes and the real server-Finished MAC, then production entropy /
+certificate provisioning, then a real handshake against OpenSSL/curl.
 
 The headline M5 result: every M2/M3 safety theorem — above all *no early
 plaintext* — **still holds over the live handshake**, which is the

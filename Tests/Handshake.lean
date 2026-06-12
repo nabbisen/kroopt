@@ -51,10 +51,19 @@ def runHandshake : Except TlsError (State × List OutputAction × List Handshake
   let (p6, _) ← onHsScheduleResult p5 .keysInstalled
   let (s2done, _) ← onHsScheduleResult p6 .keysInstalled
   let (s3, _) ← onCertVerifySigned s2done fakeSig
-  let (s4, _) ← onClientFinishedBytes s3 cfWire
+  -- pump the application-key stage: 4 derivations then 2 installs, the last of
+  -- which lands at `complete` and installs the application epoch
+  let (q1, _) ← onApScheduleResult s3 (.hkdfSecret ⟨0, 0⟩)
+  let (q2, _) ← onApScheduleResult q1 (.hkdfSecret ⟨0, 0⟩)
+  let (q3, _) ← onApScheduleResult q2 (.hkdfSecret ⟨0, 0⟩)
+  let (q4, _) ← onApScheduleResult q3 (.hkdfSecret ⟨0, 0⟩)
+  let (q5, _) ← onApScheduleResult q4 .keysInstalled
+  let (s3done, _) ← onApScheduleResult q5 .keysInstalled
+  let (s4, _) ← onClientFinishedBytes s3done cfWire
   let (s5, acts) ← onClientFinishedVerified s4 true cfWire
   .ok (s5, acts,
-       [s1.handshake, s2.handshake, s2done.handshake, s3.handshake, s4.handshake, s5.handshake])
+       [s1.handshake, s2.handshake, s2done.handshake, s3.handshake, s3done.handshake,
+        s4.handshake, s5.handshake])
 
 def reportsComplete (acts : List OutputAction) : Bool :=
   acts.any (fun a => match a with
@@ -70,7 +79,7 @@ def checks : List Check :=
     , ok := (match runHandshake with
              | .ok (_, _, phases) =>
                  phases == [.requestedEcdhe, .derivedHandshakeSecrets,
-                            .requestedCertificateVerifySignature,
+                            .requestedCertificateVerifySignature, .sentCertificateVerify,
                             .sentServerFinished, .requestedClientFinishedVerify, .connected]
              | .error _ => false) }
   , { name := "completion is reported on success"

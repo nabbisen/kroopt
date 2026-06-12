@@ -56,7 +56,8 @@ def legalEdge (a b : HandshakeState) : Bool :=
   || (a == .start && b == .requestedEcdhe)
   || (a == .requestedEcdhe && b == .derivedHandshakeSecrets)
   || (a == .derivedHandshakeSecrets && b == .requestedCertificateVerifySignature)
-  || (a == .requestedCertificateVerifySignature && b == .sentServerFinished)
+  || (a == .requestedCertificateVerifySignature && b == .sentCertificateVerify)
+  || (a == .sentCertificateVerify && b == .sentServerFinished)
   || (a == .sentServerFinished && b == .requestedClientFinishedVerify)
   || (a == .requestedClientFinishedVerify && b == .connected)
 
@@ -182,15 +183,49 @@ CertificateVerify and server Finished to the transcript, install application
 keys, and emit the server flight tail. -/
 def onCertVerifySigned (s : State) (sig : ByteArray) : HsResult :=
   if s.handshake = .requestedCertificateVerifySignature then
-    let cv := frameCertificateVerify sig
-    let ts := s.transcript.appendFramed .certificateVerify .write cv
-    let ts := ts.appendFramed .finished .write frameServerFinished
-    let s := { s with transcript := ts
-                      readEpoch := installEpoch .application
-                      writeEpoch := installEpoch .application }
-    .ok ({ s with handshake := .sentServerFinished },
-         [ OutputAction.writeTransport s.connId cv,
-           OutputAction.writeTransport s.connId frameServerFinished ])
+    match s.keySched with
+    | none => hsFail s .internalError (.protocol .illegalMessageForState)
+    | some ksd =>
+      let cv := frameCertificateVerify sig
+      let ts := s.transcript.appendFramed .certificateVerify .write cv
+      let ts := ts.appendFramed .finished .write frameServerFinished
+      let (snap, ts) := ts.snapshot
+      let apTh := ByteArray.mk #[snap.id.toUInt8]
+      match KeyScheduleDriver.resumeApplication ksd apTh with
+      | .error e => hsFail s .internalError e
+      | .ok (ksd, op :: _) =>
+          let s := { s with transcript := ts }
+          let (oid, s) := s.allocOp op.kind .application (some .write)
+          .ok ({ s with handshake := .sentCertificateVerify, keySched := some ksd },
+               [ OutputAction.writeTransport s.connId cv,
+                 OutputAction.writeTransport s.connId frameServerFinished,
+                 OutputAction.callCrypto s.connId oid op ])
+      | .ok (_, []) => hsFail s .internalError (.protocol .illegalMessageForState)
+  else
+    hsFail s .unexpectedMessage (.protocol .illegalMessageForState)
+
+/-- `sentCertificateVerify → sentCertificateVerify` (pumping) or
+`→ sentServerFinished` (stage done). Feed the awaited schedule result to the
+orchestrator and emit the next op; when the application-key stage reaches
+`complete`, install the application epoch and move to `sentServerFinished`. -/
+def onApScheduleResult (s : State) (r : CryptoResult) : HsResult :=
+  if s.handshake = .sentCertificateVerify then
+    match s.keySched with
+    | none => hsFail s .internalError (.protocol .illegalMessageForState)
+    | some ksd =>
+      match KeyScheduleDriver.advance ksd r with
+      | .error e => hsFail s .internalError e
+      | .ok (ksd, op :: _) =>
+          let (oid, s) := s.allocOp op.kind .application (some .write)
+          .ok ({ s with keySched := some ksd },
+               [OutputAction.callCrypto s.connId oid op])
+      | .ok (ksd, []) =>
+          if ksd.phase = .complete then
+            .ok ({ s with handshake := .sentServerFinished, keySched := some ksd
+                          readEpoch := installEpoch .application
+                          writeEpoch := installEpoch .application }, [])
+          else
+            .ok ({ s with keySched := some ksd }, [])
   else
     hsFail s .unexpectedMessage (.protocol .illegalMessageForState)
 
@@ -245,9 +280,13 @@ def handshakeOnGatingResult (s0 : State) (op : OperationId) (r : CryptoResult) :
       else .ok (s, [])
   | .randomBytes _ => .ok (s, [])
   | .hkdfSecret _ =>
-      if s.handshake = .derivedHandshakeSecrets then onHsScheduleResult s r else .ok (s, [])
+      if s.handshake = .derivedHandshakeSecrets then onHsScheduleResult s r
+      else if s.handshake = .sentCertificateVerify then onApScheduleResult s r
+      else .ok (s, [])
   | .keysInstalled =>
-      if s.handshake = .derivedHandshakeSecrets then onHsScheduleResult s r else .ok (s, [])
+      if s.handshake = .derivedHandshakeSecrets then onHsScheduleResult s r
+      else if s.handshake = .sentCertificateVerify then onApScheduleResult s r
+      else .ok (s, [])
   | .aeadSealed _ => .ok (s, [])
   | .aeadOpened _ => .ok (s, [])
   | .verifyFailed => .ok (s, [])

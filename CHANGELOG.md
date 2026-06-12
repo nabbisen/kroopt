@@ -3,6 +3,55 @@
 All notable changes to kroopt are recorded here. RFC lifecycle transitions are
 governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycle-policy.md).
 
+## [0.19.0-dev] — M18 wire the application-key schedule stage into live `step` — 2026-06-11
+
+Completes the schedule wiring: `Kroopt.Core.step` now drives **both** stages of the
+RFC 8446 §7.1 key schedule. After the CertificateVerify signature returns, the
+handshake resumes the application-key stage instead of installing application keys
+via a placeholder. The full synthetic handshake runs the entire schedule through
+`step`.
+
+### Changed — handshake drives the application-key stage (`Kroopt.Core`)
+
+- `onCertVerifySigned` now frames CertificateVerify and the server Finished,
+  snapshots the CH..server-Finished transcript, and calls `resumeApplication` to
+  start the application-key stage (→ `sentCertificateVerify`) instead of jumping
+  straight to `sentServerFinished` with a placeholder epoch install. (The transcript
+  is committed only on the success path, so failure paths leave state untouched.)
+- New `onApScheduleResult` pumps the application-key stage: each HKDF / install
+  result advances the orchestrator and emits the next op, self-looping until
+  `complete`, then installs the application epoch and moves to `sentServerFinished`.
+- The gating dispatch routes `hkdfSecret` / `keysInstalled` to `onApScheduleResult`
+  when in `sentCertificateVerify` (and still to `onHsScheduleResult` when in
+  `derivedHandshakeSecrets`). `legalEdge` reroutes
+  `requestedCertificateVerifySignature → sentCertificateVerify → sentServerFinished`.
+
+### Changed — proofs (→ 87 theorems)
+
+- New `onApScheduleResult_legal` (self-loops in `sentCertificateVerify` or advances
+  to `sentServerFinished`, both legal). `onCertVerifySigned`'s legal / no-emit /
+  no-accept proofs re-established for the nested `resumeApplication` match; the
+  dispatch no-emit / no-accept proofs extended to the application pump. Global
+  action-discipline and `connected_requires_finished_verified` unchanged. Axiom
+  audit green; `{propext, Quot.sound}`.
+
+### Changed — tests
+
+- `kroopt-handshake-test` pumps both stages (5+2 then 4+2 schedule results) and
+  checks the full seven-phase order through `sentCertificateVerify`; `kroopt-e2e-test`
+  drives both via the generic fuel loop. All 16 suites, parser fuzz, and the three
+  gates remain green.
+
+### The honest boundary (next)
+
+- The schedule's transcript contexts are still the core's abstract snapshot
+  references, not real hash bytes, and the server Finished is synthetic rather than a
+  real MAC — the wiring is structural. Real transcript resolution and the real
+  Finished MAC are next, then production entropy / certificate provisioning, then a
+  real handshake against OpenSSL/curl. See `docs/src/key-schedule-orchestrator.md`.
+
+
+
 ## [0.18.0-dev] — M17 wire the handshake-key schedule stage into live `step` — 2026-06-11
 
 The verified orchestrator is now invoked by `Kroopt.Core.step`: the handshake
