@@ -34,13 +34,17 @@ def s0 : State := State.initial ⟨0, 0⟩ ⟨0⟩ .sha256
 def chWire : ByteArray := bytes [1, 0, 0, 4, 0x03, 0x04, 0, 0]
 def cfWire : ByteArray := bytes [20, 0, 0, 32]
 def fakeSecret : SecretKeyHandle := ⟨42, 0⟩
+def fakeServerShare : ByteArray := bytes (List.replicate 32 0x09)
+def fakeServerRandom : ByteArray := bytes (List.replicate 32 0x5a)
+def fakeFinishedMac : ByteArray := bytes (List.replicate 32 0xEF)
 def fakeSig : ByteArray := bytes (List.replicate 64 0xAB)
 
 /-- Run the whole synthetic handshake, returning the final state and whether each
 phase along the way matched the expected legal edge. -/
 def runHandshake : Except TlsError (State × List OutputAction × List HandshakeState) := do
   let (s1, _) ← onClientHello s0 vch chWire
-  let (s2, _) ← onEcdheDone s1 fakeSecret
+  let (sR, _) ← onServerRandomDone s1 fakeServerRandom
+  let (s2, _) ← onEcdheDone sR fakeServerShare fakeSecret
   -- pump the handshake-key schedule: 5 derivations then 2 installs, the last of
   -- which lands at the pause and frames EE/Cert + requests CertVerify
   let (p1, _) ← onHsScheduleResult s2 (.hkdfSecret ⟨0, 0⟩)
@@ -51,9 +55,10 @@ def runHandshake : Except TlsError (State × List OutputAction × List Handshake
   let (p6, _) ← onHsScheduleResult p5 .keysInstalled
   let (s2done, _) ← onHsScheduleResult p6 .keysInstalled
   let (s3, _) ← onCertVerifySigned s2done fakeSig
+  let (sF, _) ← onServerFinishedMac s3 fakeFinishedMac
   -- pump the application-key stage: 4 derivations then 2 installs, the last of
   -- which lands at `complete` and installs the application epoch
-  let (q1, _) ← onApScheduleResult s3 (.hkdfSecret ⟨0, 0⟩)
+  let (q1, _) ← onApScheduleResult sF (.hkdfSecret ⟨0, 0⟩)
   let (q2, _) ← onApScheduleResult q1 (.hkdfSecret ⟨0, 0⟩)
   let (q3, _) ← onApScheduleResult q2 (.hkdfSecret ⟨0, 0⟩)
   let (q4, _) ← onApScheduleResult q3 (.hkdfSecret ⟨0, 0⟩)
@@ -62,8 +67,8 @@ def runHandshake : Except TlsError (State × List OutputAction × List Handshake
   let (s4, _) ← onClientFinishedBytes s3done cfWire
   let (s5, acts) ← onClientFinishedVerified s4 true cfWire
   .ok (s5, acts,
-       [s1.handshake, s2.handshake, s2done.handshake, s3.handshake, s3done.handshake,
-        s4.handshake, s5.handshake])
+       [s1.handshake, sR.handshake, s2.handshake, s2done.handshake, s3.handshake, sF.handshake,
+        s3done.handshake, s4.handshake, s5.handshake])
 
 def reportsComplete (acts : List OutputAction) : Bool :=
   acts.any (fun a => match a with
@@ -78,9 +83,10 @@ def checks : List Check :=
   , { name := "handshake phases follow the legal server-flight order"
     , ok := (match runHandshake with
              | .ok (_, _, phases) =>
-                 phases == [.requestedEcdhe, .derivedHandshakeSecrets,
-                            .requestedCertificateVerifySignature, .sentCertificateVerify,
-                            .sentServerFinished, .requestedClientFinishedVerify, .connected]
+                 phases == [.requestedServerRandom, .requestedEcdhe, .derivedHandshakeSecrets,
+                            .requestedCertificateVerifySignature, .requestedServerFinishedMac,
+                            .sentCertificateVerify, .sentServerFinished,
+                            .requestedClientFinishedVerify, .connected]
              | .error _ => false) }
   , { name := "completion is reported on success"
     , ok := (match runHandshake with
@@ -106,13 +112,14 @@ def checks : List Check :=
              | .error _ => false) }
   -- Negative traces
   , { name := "out-of-order: ECDHE result before ClientHello fails"
-    , ok := (match onEcdheDone s0 fakeSecret with
+    , ok := (match onEcdheDone s0 fakeServerShare fakeSecret with
              | .ok (s, _) => s.handshake.isTerminal && s.handshake != .connected
              | .error _ => true) }
   , { name := "bad Finished (verified = false) fails, not connected"
     , ok := (match (do
                let (s1, _) ← onClientHello s0 vch chWire
-               let (s2, _) ← onEcdheDone s1 fakeSecret
+               let (sR, _) ← onServerRandomDone s1 fakeServerRandom
+               let (s2, _) ← onEcdheDone sR fakeServerShare fakeSecret
                let (s3, _) ← onCertVerifySigned s2 fakeSig
                let (s4, _) ← onClientFinishedBytes s3 cfWire
                onClientFinishedVerified s4 false cfWire : Except TlsError _) with

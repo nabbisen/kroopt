@@ -150,6 +150,7 @@ def fakeSubmit (a : SecretArena) (_ : OperationId) :
   | .aeadOpen _ _ ct => .ok (a, .aeadOpened ct)
   | .signCertificateVerify _ _ => .ok (a, .signature (ByteArray.mk (Array.mkArray 64 0xCD)))
   | .verifyFinished _ _ _ => .ok (a, .verified)
+  | .computeServerFinished _ _ => .ok (a, .finishedMac (ByteArray.mk (Array.mkArray 32 0xEF)))
 
 /-- The deterministic fake provider used by the model/handshake/e2e tests. -/
 def fakeProvider : CryptoProvider :=

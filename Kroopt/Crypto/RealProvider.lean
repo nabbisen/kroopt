@@ -119,6 +119,18 @@ def submit (cfg : RealCryptoConfig) (a : SecretArena) (_ : OperationId) :
       match scheme with
       | .ed25519 => .ok (a, .signature (Hacl.ed25519Sign cfg.certPrivate input))
       | _ => .error .unsupportedOperation
+  | .computeServerFinished _ transcriptHash =>
+      -- The server Finished verify_data = HMAC(server_finished_key, H) over the transcript
+      -- hash through CertificateVerify, using the *write* (server) handshake-traffic secret
+      -- (RFC 8446 §4.4.4). Mirror of `verifyFinished`'s read-secret path.
+      match a.lookupBaseSecret .write .handshake with
+      | none => .error .invalidHandle
+      | some sid =>
+        match a.getById sid with
+        | none => .error .invalidHandle
+        | some baseSecret =>
+            let finKey := KeySchedule.finishedKey baseSecret
+            .ok (a, .finishedMac (Hacl.hmac256 finKey transcriptHash))
   | .verifyFinished _ transcriptHash received =>
       -- A TLS 1.3 server verifies the client's Finished with the *read* (client)
       -- handshake-traffic secret; finished_key = HKDF-Expand-Label(secret,

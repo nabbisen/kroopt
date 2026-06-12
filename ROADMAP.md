@@ -204,6 +204,69 @@ external interop (RFC 015/026) are **frozen** until these gates pass, in this or
 - **post-M38 — browser-grade crypto surface (RFC 035).** AES-GCM/P-256/ECDSA/RSA and a
   practical public-certificate story, only after the above are green.
 
+*M36 RFC 032 RESOLVED (0.46.0-dev) — §5 transcript over serialized bytes + §7 CI gate:* The core
+now commits the typed serialization of each server-flight message to the transcript
+(`serializeHandshakeOut` / `serializeServerCertificate`) instead of the abstract `frame*`
+placeholders, which are removed; each message is built once and used for both the transcript and the
+emitted action, so they agree by construction (the §15.6 transcript guarantee now reads over
+serialized handshake-message bytes). `scripts/check-no-placeholder.sh` (§7) fails the build on any
+placeholder framer / first-byte handshake dispatch in production; the dead `appendReal` first-byte
+path is gone from the test driver too. **RFC 032 is resolved and moved to `rfcs/done/`** (the
+"no-first-byte-dispatch" milestone). 92 public theorems, axiom-clean; 4 gates + 24/24 suites + fuzz +
+interop green. The Certificate's real DER is deferred to RFC 031 (the core commits an empty chain,
+matching the emitted action), which now also carries production-interpreter byte-accuracy.
+
+*M36 RFC 032 slice 4d (unreleased) — typed Finished action (ALL 5 flight messages typed):*
+The server Finished verify_data is now computed by a purpose-typed core op
+(`CryptoOp.computeServerFinished` → `CryptoResult.finishedMac`), the write-secret mirror of
+`verifyFinished`. A new `requestedServerFinishedMac` phase sits between CertificateVerify and the
+app-key stage: `onCertVerifySigned` snapshots the transcript through CertificateVerify and requests
+the MAC; `onServerFinishedMac` commits Finished, resumes the app-key schedule through Finished, and
+emits the typed `finished` action carrying the core-computed verify_data. The real provider computes
+HMAC(server_finished_key, H) over the write handshake-traffic secret. **All five server-flight
+messages are now typed (SH, EE, Cert, CV, Finished) — no production path recognizes any by a first
+byte.** Theorem set +1 public (`onServerFinishedMac_legal`, 92), axiom-clean; 24/24 suites; real and
+production interpreters complete with the core-computed Finished MAC. Remaining before the milestone
+release: §5 transcript restatement (typed serialization into the transcript instead of `frame*`
+placeholders) and the §7 CI gate forbidding placeholder/first-byte dispatch, plus removing the now-
+dead `appendReal` first-byte path in the test driver.
+
+*M36 RFC 032 slice 4c (unreleased) — typed ServerHello action (4 of 5 flight messages typed):*
+With the share (4a) and Random (4b) core-held, `onEcdheDone` now emits a typed
+`HandshakeOut.serverHello` (Random + share + suite/group/version as wire code points) via
+`writeHandshake`, serialized by `Wire.serverHello`. Added `cipherSuiteToU16` / `namedGroupToU16`
+encoders. ServerHello is no longer recognized by a first byte anywhere on the production path. The
+real driver now commits ServerHello **in the clear** (no seal) and fixes the CH‥SH transcript hash;
+the dead first-byte tag-2 path is gone, and the test server Random is a wire-correct 32 bytes.
+Proofs unchanged (91, axiom-clean); realhandshake (30) confirms the emitted SH equals the
+independently assembled real ServerHello. Now typed: ServerHello, EncryptedExtensions, Certificate,
+CertificateVerify — only **Finished** remains (slice 4d: its MAC op). Then §5 transcript restatement
+and the §7 CI gate complete the "no first-byte dispatch" theme → milestone release.
+
+*M36 RFC 032 slice 4b (unreleased) — server Random drawn via a core op + a handshake phase:*
+A new `requestedServerRandom` phase sits between the ClientHello and ECDHE: `onClientHello` stores
+the client share and requests a `randomBytes 32` op; `onServerRandomDone` records the drawn Random
+and then requests ECDHE. The server Random is now a **core value** from the CSPRNG (RFC 032 §3),
+not interpreter-invented — the second ServerHello prerequisite. The `randomBytes` result, formerly
+a no-op at the correlation layer, is routed into the handshake gating dispatch. Entropy remains an
+IO/interpreter concern (RFC 034): the pure provider errors on `randomBytes`; the driver supplies
+the fixed test Random. Proofs unchanged (91, axiom-clean) via new `onServerRandomDone`
+no-emit/no-accept lemmas; realhandshake +1 (30) asserts the core holds the drawn Random; the manual
+phase trace now includes `requestedServerRandom`. Next (slice 4c): the typed `serverHello` action
+(`Wire.serverHello`) + suite/group→`UInt16` encoders + the driver's plaintext no-seal SH path
+(and a wire-faithful 32-byte Random); then Finished (MAC op), §5 transcript, §7 CI gate → release.
+
+*M36 RFC 032 slice 4a (unreleased) — server ECDHE share captured into the core:* `onEcdheDone`
+now keeps the server's x25519 public share from the `ecdheComplete` result (it was being
+discarded) in `NegotiationState.serverShare`. This is the prerequisite for emitting ServerHello as
+a typed action — the share is now a core fact rather than an interpreter-invented value. Proofs
+unchanged (91, axiom-clean); realhandshake +1 (29) asserts the capture and that it matches the
+interpreter's view. Next toward the typed ServerHello: a server-random crypto op + handshake phase
+(random as a core value), then the `serverHello` typed action; then Finished (MAC op), the §5
+transcript restatement, and the §7 CI gate. **Release policy: now milestone-based** — these RFC 032
+slices accumulate under CHANGELOG "Unreleased" and are cut as one versioned release when the
+"all five server-flight messages typed + CI gate" theme completes (or RFC 032 fully resolves).
+
 *M36 RFC 032 slice 3 shipped — typed Certificate action (0.45.0-dev):* Certificate becomes a
 typed `OutputAction.writeCertificate (chain)` — a distinct action (not a `HandshakeOut` case)
 because the core holds only an opaque `CertificateChainHandle` (no DER), so the interpreter owns

@@ -60,6 +60,7 @@ def fakeCrypto : CryptoOp → CryptoResult
   | .aeadSeal _ _ pt => .aeadSealed pt
   | .aeadOpen _ _ ct => .aeadOpened ct
   | .randomBytes _ => .randomBytes (b [])
+  | .computeServerFinished _ _ => .finishedMac (b (List.replicate 32 0xEF))
   | .hkdfExtract _ _ _ => .hkdfSecret ⟨2, 0⟩
   | .hkdfExpandLabel _ _ _ _ _ => .hkdfSecret ⟨3, 0⟩
   | .installTrafficKeys _ _ _ _ => .keysInstalled

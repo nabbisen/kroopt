@@ -31,12 +31,14 @@ phase in which application data may cross the boundary. -/
 inductive HandshakeState where
   | start
   | recvdClientHello
+  | requestedServerRandom
   | requestedEcdhe
   | derivedHandshakeSecrets
   | sentServerHello
   | sentEncryptedExtensions
   | sentCertificate
   | requestedCertificateVerifySignature
+  | requestedServerFinishedMac
   | sentCertificateVerify
   | sentServerFinished
   | requestedClientFinishedVerify
@@ -94,13 +96,24 @@ structure NegotiationState where
   selectedSni : Option ByteArray
   selectedAlpn : Option AlpnProtocol
   selectedCert : Option CertificateChainHandle
+  /-- The server's ephemeral x25519 public share, captured from the ECDHE crypto result
+  (RFC 8446 §4.2.8). Held here so the ServerHello it goes into can become a typed
+  core-authorized action (RFC 032) rather than a placeholder. -/
+  serverShare : Option ByteArray
+  /-- The client's x25519 key_share, carried from the ClientHello so the ECDHE op can be
+  requested after the server random is drawn (RFC 032). -/
+  clientShare : Option ByteArray
+  /-- The server's 32-byte Random, drawn from the CSPRNG via a core `randomBytes` op so it
+  is a core value the typed ServerHello can carry (RFC 032), not interpreter-supplied. -/
+  serverRandom : Option ByteArray
   deriving Inhabited
 
 namespace NegotiationState
 
 def empty : NegotiationState :=
   { selectedSuite := none, selectedGroup := none, selectedSigScheme := none
-    selectedSni := none, selectedAlpn := none, selectedCert := none }
+    selectedSni := none, selectedAlpn := none, selectedCert := none
+    serverShare := none, clientShare := none, serverRandom := none }
 
 end NegotiationState
 

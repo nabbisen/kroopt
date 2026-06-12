@@ -1,15 +1,70 @@
 # RFC 032 — Typed Handshake/Record Assembly Contract
 
 **Project.** kroopt  
-**Status.** Proposed  
+**Status.** Implemented (0.46.0-dev)  
 **Type.** Implementation RFC  
 **Target milestone.** M36  
 **Depends on.** RFC 002 (verified core), RFC 004 (record model), RFC 007 (transcript)  
-**Touches.** `Kroopt/Core/Action.lean`, `Kroopt/Core/Handshake.lean`, `Kroopt/Proofs/*`, `Kroopt/Conn/Flight.lean`, `Kroopt/Conn/Interpreter.lean`, `scripts/check-deps.sh`  
+**Touches.** `Kroopt/Core/Action.lean`, `Kroopt/Core/Handshake.lean`, `Kroopt/Core/Crypto.lean`, `Kroopt/Proofs/*`, `Kroopt/Conn/Interpreter.lean`, `scripts/check-no-placeholder.sh`  
 **Canonical source.** kroopt fixed requirements §7, §8; architect RFC review of 2026-06-12 (RFC 032 amendments).  
 
 ---
 
+> **Implemented (0.46.0-dev).** All five server-flight messages (ServerHello,
+> EncryptedExtensions, Certificate, CertificateVerify, Finished) are emitted as typed
+> `OutputAction`s and serialized by a single source (`serializeHandshakeOut` /
+> `serializeServerCertificate`); no production path recognizes a handshake message by a first
+> byte. The server Random and the server Finished verify_data are core values drawn via
+> purpose-typed crypto ops (`randomBytes`, `computeServerFinished`). The transcript is
+> committed over the serialized handshake-message bytes (§5), and `scripts/check-no-placeholder.sh`
+> (§7) gates against placeholder framers / first-byte dispatch in production. Proofs:
+> per-transition legality, action discipline, and the generic transcript binding all hold over
+> the typed actions (92 public theorems, axiom-clean). The Certificate's real DER remains
+> deferred to RFC 031 (the core commits an empty chain, matching the emitted action). The
+> per-slice implementation log follows.
+
+> **Status note — partial (unreleased, M36 slice 4d).** Finished is now a typed
+> `HandshakeOut.finished` action carrying the server Finished verify_data, computed by a
+> purpose-typed core op (`computeServerFinished` → `finishedMac`) — the write-secret mirror
+> of `verifyFinished`, over the transcript hash through CertificateVerify. A new
+> `requestedServerFinishedMac` phase splits the old `onCertVerifySigned` (which now requests
+> the MAC) from `onServerFinishedMac` (which commits Finished, resumes the app-key schedule
+> through Finished, and emits the typed action). **All five flight messages are now typed
+> (SH, EE, Cert, CV, Finished); no production path recognizes any by a first byte.** Theorem
+> set +1 public (92), axiom-clean. Remaining for this RFC: §5 (commit the typed
+> serialization to the transcript instead of the abstract `frame*` placeholders) and the §7
+> CI gate (forbidding placeholder framers / first-byte dispatch) — at which point the
+> milestone release is cut.
+>
+> **Status note — partial (unreleased, M36 slice 4c).** ServerHello is now a typed
+> `HandshakeOut.serverHello` action carrying the core-held Random, share, and
+> suite/group/version (wire code points via new `cipherSuiteToU16`/`namedGroupToU16`
+> encoders), serialized by `Wire.serverHello`. It is emitted by `onEcdheDone` via
+> `writeHandshake`, so no production path recognizes ServerHello by a first byte. The real
+> driver commits it in the clear (no AEAD seal) and fixes the CH‥SH transcript hash. Four of
+> five flight messages are now typed (SH, EE, Cert, CV); only **Finished** remains (slice
+> 4d, its MAC op). Proofs unchanged (91, axiom-clean).
+>
+> **Status note — partial (unreleased, M36 slice 4b).** The server Random is now a core
+> value: a new `requestedServerRandom` phase draws it via a `randomBytes` core op before
+> ECDHE (`onClientHello` → `onServerRandomDone` → `onEcdheDone`), and the client share is
+> carried across the phase so ECDHE can still be requested. Entropy stays an IO-layer
+> concern (RFC 034) — the pure provider errors on `randomBytes`; the interpreter/driver
+> draws it. With both the share (4a) and the Random (4b) now core-held, ServerHello has all
+> the values it needs; slice 4c makes it a typed `serverHello` action (`Wire.serverHello`)
+> with suite/group→`UInt16` encoders and the driver's plaintext no-seal path. Proofs
+> unchanged (91, axiom-clean).
+>
+> **Status note — partial (unreleased, M36 slice 4a).** Prerequisite for the typed
+> ServerHello: `onEcdheDone` now captures the server's x25519 public share from the
+> `ecdheComplete` crypto result (previously discarded) into `NegotiationState.serverShare`,
+> making the share a core fact. ServerHello also needs the server *random* as a core value
+> — that is the next step (a `randomBytes` op and a handshake phase to await it), after
+> which `serverHello` becomes a typed action serialized via `Wire.serverHello`. Proofs
+> unchanged (91, axiom-clean). Per the milestone-release policy this and the following
+> ServerHello/Finished slices accumulate unreleased until the "all five typed + CI gate"
+> theme completes.
+>
 > **Status note — partial (0.45.0-dev, M36 slice 3).** Certificate is now a typed action.
 > Unlike EncryptedExtensions/CertificateVerify it is *not* pure-serializable — the core
 > holds only an opaque `CertificateChainHandle` (no DER) — so it is a distinct

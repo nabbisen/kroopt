@@ -10,9 +10,9 @@ Validated byte-for-byte against the RFC 8448 §3 "Simple 1-RTT Handshake" trace 
 `Tests.Wire` — including that `SHA-256(ClientHello ‖ ServerHello)` equals the
 RFC 8448 CH‥ServerHello transcript hash the key schedule already derives over.
 
-This replaces the structural placeholder frames (e.g. `frameServerHello`) used by
-the synthetic handshake; wiring it into the live handshake transcript is a
-follow-up so the real handshake produces real wire bytes a TLS peer accepts.
+This replaces the structural placeholder frames once used by the synthetic
+handshake; the core now commits these serialized bytes to the transcript (RFC 032
+§5), so the handshake transcript is over real serialized handshake messages.
 -/
 
 namespace Kroopt.Parse.Wire

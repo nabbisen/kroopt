@@ -3,6 +3,126 @@
 All notable changes to kroopt are recorded here. RFC lifecycle transitions are
 governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycle-policy.md).
 
+## [0.46.0-dev] — RFC 032 RESOLVED: typed flight assembly, no first-byte dispatch — 2026-06-12
+
+Milestone release (RFC 032 "no first-byte dispatch" theme complete; RFC moved to
+`rfcs/done/`). All five server-flight messages are emitted as typed `OutputAction`s and
+serialized by a single source; the transcript is committed over those serialized bytes; a CI
+gate forbids placeholder framers / first-byte dispatch in production. Accumulated over
+session slices 4a–4d plus §5/§7 (below).
+
+### RFC 032 slice 4a — server ECDHE share captured into the core
+
+- `Core/State.lean`: `NegotiationState.serverShare : Option ByteArray`.
+- `Core/Handshake.lean`: `onEcdheDone` now takes the server share from the
+  `ecdheComplete` crypto result (previously discarded) and stores it in negotiation
+  state — the prerequisite for emitting ServerHello as a typed core-authorized action
+  (the share is now a core fact, not an interpreter-invented value). Transition shape and
+  emitted actions are otherwise unchanged.
+- Proofs/tests updated for the new `onEcdheDone` arity; theorem set unchanged (91,
+  axiom-clean). `kroopt-realhandshake-test` (+1) asserts the core captures the 32-byte
+  share and that it matches the value the interpreter sees.
+
+### RFC 032 slice 4b — server Random drawn via a core op + handshake phase
+
+- `Core/State.lean`: new handshake phase `requestedServerRandom`; `NegotiationState`
+  gains `clientShare` (carried from the ClientHello) and `serverRandom`.
+- `Core/Handshake.lean`: `onClientHello` now draws the server Random first — it stores
+  the client share and requests a `randomBytes 32` op, moving to `requestedServerRandom`.
+  New `onServerRandomDone` records the drawn Random and then requests ECDHE over the
+  stored client share (`→ requestedEcdhe`). The server Random is now a **core value**
+  sourced from the CSPRNG, not an interpreter-invented one — the second prerequisite for a
+  typed ServerHello (RFC 032 §3). `legalEdge` gains the two new edges.
+- `Core/RecordPath.lean`: the `randomBytes` crypto result, previously a no-op at the
+  correlation layer, is now routed into the handshake gating dispatch so it reaches
+  `onServerRandomDone`.
+- Entropy stays an IO/interpreter-layer concern (RFC 034): the pure real provider still
+  errors on `randomBytes`; the real-handshake driver supplies the fixed test Random.
+- Proofs: `onServerRandomDone` `no_emit`/`no_accept` lemmas added and wired into the
+  gating-dispatch proofs; per-transition legality holds via the new edges. Theorem set
+  unchanged (91, axiom-clean). `kroopt-realhandshake-test` (+1, 30) asserts the core draws
+  and holds the server Random; the manual `kroopt-handshake-test` phase trace now includes
+  `requestedServerRandom`.
+- *Still to do for typed ServerHello (slice 4c):* the typed `serverHello` action
+  (`Wire.serverHello` over the now core-held Random + share + suite/group/version),
+  `CipherSuite`/`NamedGroup` → `UInt16` wire encoders, and the driver's plaintext (no-seal)
+  ServerHello path. The 32-byte Random length will be made wire-faithful there (the test
+  Random fixture is presently 28 bytes; SH bytes are not yet wire-validated). Then Finished
+  (MAC op), the §5 transcript restatement, and the §7 CI gate → milestone release.
+
+### RFC 032 slice 4c — typed ServerHello action (4 of 5 flight messages typed)
+
+- `Core/Action.lean`: `HandshakeOut.serverHello (random share : ByteArray) (suite group
+  version : UInt16)` — every field a core value (Random from the core `randomBytes` op,
+  share from the ECDHE result, suite/group from negotiation).
+- `Core/Handshake.lean`: `cipherSuiteToU16` / `namedGroupToU16` wire encoders;
+  `serializeHandshakeOut` serializes `serverHello` via `Wire.serverHello`. `onEcdheDone`
+  now emits `writeHandshake (.serverHello …)` instead of `writeTransport` of placeholder
+  bytes — **ServerHello is no longer recognized by a first byte anywhere on the production
+  path.** Transcript commitment stays the abstract snapshot (unchanged), so the binding
+  proofs are untouched.
+- `Tests/RealHandshake.lean`: `appendRealHandshakeOut` now branches — ServerHello is
+  committed **in the clear** (no AEAD seal, no handshake-record sequence consumed) and fixes
+  the CH‥SH transcript hash; the rest of the flight stays sealed. The first-byte tag-2 path
+  is now dead. The test server Random is a wire-correct 32 bytes.
+- Four of five server-flight messages are now typed (ServerHello, EncryptedExtensions,
+  Certificate, CertificateVerify); only Finished remains (its MAC op is slice 4d).
+- Theorem set unchanged (91, axiom-clean). `kroopt-realhandshake-test` (30) confirms the
+  emitted ServerHello equals the independently assembled real ServerHello and that the
+  32-byte Random is core-held; e2e/conn/https complete through the production interpreter.
+
+### RFC 032 slice 4d — typed Finished action (all 5 flight messages typed)
+
+- `Core/Crypto.lean`: new `CryptoOp.computeServerFinished (alg) (transcriptHash)` (+ kind)
+  and `CryptoResult.finishedMac (verifyData)` — the server Finished verify_data is computed
+  by a purpose-typed core op (RFC 008 §4), the write-secret mirror of `verifyFinished`.
+- `Core/Action.lean`: `HandshakeOut.finished (verifyData)`; `serializeHandshakeOut` emits
+  `Wire.finished`.
+- `Core/State.lean`/`Core/Handshake.lean`: new phase `requestedServerFinishedMac`.
+  `onCertVerifySigned` now commits CertificateVerify, snapshots the transcript **through
+  CertificateVerify**, and requests `computeServerFinished` over that hash (→
+  `requestedServerFinishedMac`). New `onServerFinishedMac` commits Finished, resumes the
+  application-key schedule **through Finished**, and emits the typed `finished` action
+  carrying the core-computed verify_data (→ `sentCertificateVerify`). `legalEdge` gains the
+  two edges. The `finishedMac` result is routed through the correlation layer into the
+  gating dispatch.
+- `Crypto/RealProvider.lean`: computes the verify_data = HMAC(server_finished_key, H) by
+  looking up the **write** handshake-traffic secret; fake provider / `fakeCrypto` answer it.
+- `Tests/RealHandshake.lean`: `substitute` maps the MAC's abstract ref to the real
+  through-CV hash (`hCHCertVerify`); the typed Finished is sealed (it is) and fixes the
+  CH‥SF hash. `kroopt-handshake-test` phase trace gains `requestedServerFinishedMac`.
+- **All five server-flight messages are now typed** (ServerHello, EncryptedExtensions,
+  Certificate, CertificateVerify, Finished). No production path recognizes any of them by a
+  first byte. Theorem set: +1 public (`onServerFinishedMac_legal`, 92), axiom-clean; 24/24
+  suites; the real and production interpreters complete the handshake with the
+  core-computed Finished MAC.
+- *Remaining before the milestone release:* §5 transcript restatement (commit the typed
+  serialization to the transcript instead of the abstract `frame*` placeholders) and the §7
+  CI gate forbidding placeholder framers / first-byte dispatch (it can pass only once §5
+  removes the placeholders from production). Plus removing the now-dead `appendReal`
+  first-byte dispatch in the test driver.
+
+### RFC 032 §5 — transcript over serialized handshake bytes; §7 — CI gate
+
+- `Core/Handshake.lean`: the transcript now commits the **typed serialization** of each
+  server-flight message (`serializeHandshakeOut` for SH/EE/CV/Finished; new
+  `serializeServerCertificate` for Certificate — empty DER until RFC 031, matching the
+  emitted `writeCertificate`), not the abstract `frame*` placeholders. Each message is built
+  once and used for both the transcript contribution and the emitted action, so the two
+  agree by construction (RFC 032 §5; the §15.6 transcript guarantee now reads over serialized
+  handshake-message bytes). The `frameServerHello`/`frameEncryptedExtensions`/
+  `frameCertificate`/`frameCertificateVerify`/`frameServerFinished` placeholder functions are
+  removed.
+- `Tests/RealHandshake.lean`: the dead `appendReal` first-byte dispatch helper is removed;
+  `writeTransport` now appends ciphertext to outbound without inspecting a first byte.
+- `scripts/check-no-placeholder.sh` (new, RFC 032 §7): fails the build if any production
+  module under `Kroopt/` contains a placeholder framer name or a first-byte
+  handshake-dispatch helper. Wired into the gate suite; green.
+- The generic transcript-binding proofs (`appendFramed_binds_exact_bytes`, ordering,
+  snapshot-before-append) are unchanged and now guarantee consistency over the serialized
+  handshake-message bytes. 92 public theorems, axiom-clean; 24/24 suites; fuzz 40000; both
+  interop green.
+
 ## [0.45.0-dev] — M36 (RFC 032 slice 3): typed Certificate action — 2026-06-12
 
 Third step of RFC 032: Certificate becomes a typed action. Because the core holds only an

@@ -52,7 +52,12 @@ def eqB (a b : ByteArray) : Bool := a.toList == b.toList
 def clientShare : ByteArray := hx "99381de560e4bd43d23d8e435a7dbafeb3c06e51c13cae4d5413691e529aaf2c"
 -- Chosen server values (server ephemeral private from RFC 8448 §3; any random for SH).
 def serverPriv   : ByteArray := hx "b1580eeadf6dd589b8ef4f2d5652578cc810e9980191ec8d058308cea216a21e"
-def serverRandom : ByteArray := hx "a6af06a412186024" |>.append (hx "9cd34c95930c8ac5cb1434dac155772ed3e26928")
+-- A 32-byte server Random (RFC 8446 §4.1.3 requires exactly 32). The first 28 bytes are the
+-- RFC 8448 §3 example value; the final 4 are test padding — the Random is a nonce with no
+-- known-answer dependence here, so its exact bytes are irrelevant to the derived secrets.
+def serverRandom : ByteArray :=
+  hx "a6af06a412186024" |>.append (hx "9cd34c95930c8ac5cb1434dac155772ed3e26928")
+                        |>.append (hx "00000000")
 -- kroopt's Ed25519 certificate key (provenance: RFC 8032 §7.1 Test 1).
 def certSeed : ByteArray := hx "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60"
 def certPub  : ByteArray := hx "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a"
@@ -115,12 +120,19 @@ def substitute (d : RD) : CryptoOp → CryptoOp
       .hkdfExpandLabel alg secret label ctx' len
   | .signCertificateVerify scheme _ => .signCertificateVerify scheme (Flight.certVerifyContent d.hCHCert)
   | .verifyFinished alg _ received => .verifyFinished alg d.hCHSF received
+  | .computeServerFinished alg _ => .computeServerFinished alg d.hCHCertVerify
   | op => op
 
 /-- Run one crypto op against the real provider, threading the arena and capturing
 the server share, the CertificateVerify signature, and the server hs-traffic secret. -/
 def runReal (d : RD) (op : CryptoOp) : RD × CryptoResult :=
   let op' := substitute d op
+  match op' with
+  | .randomBytes _ =>
+      -- Entropy is an IO/interpreter-layer concern (RFC 034): the pure provider errors on
+      -- `randomBytes`. The driver supplies the fixed test ServerHello Random here.
+      (d, .randomBytes serverRandom)
+  | _ =>
   match RealProvider.submit cfg d.arena ⟨0⟩ op' with
   | .error _ => ({ d with errored := true }, CryptoResult.verifyFailed)
   | .ok (a', r) =>
@@ -140,36 +152,6 @@ def runReal (d : RD) (op : CryptoOp) : RD × CryptoResult :=
         | _ => d
       (d, r)
 
-/-- On a placeholder `writeTransport`, assemble the real message, append it to the
-real transcript, and snapshot the bound transcript hash. -/
-def appendReal (d : RD) (placeholder : ByteArray) : RD :=
-  if placeholder.size == 0 then d else
-  let tag := placeholder.get! 0
-  let msg : ByteArray :=
-    if tag == 2 then Flight.serverHelloMessage serverRandom d.serverShare 0x1303 0x001d 0x0304
-    else if tag == 8 then Wire.encryptedExtensions ByteArray.empty
-    else if tag == 11 then Wire.certificate ByteArray.empty (Wire.certificateEntry certDer ByteArray.empty)
-    else if tag == 15 then Wire.certificateVerify 0x0807 d.lastSig
-    else if tag == 20 then Flight.serverFinishedMessage d.sHsTraffic d.hCHCertVerify
-    else placeholder
-  let transcript' := d.transcript ++ msg
-  -- Wire record protection (interpreter): ServerHello goes in the clear; the rest of
-  -- the flight is sealed as real TLSCiphertext records under the server
-  -- handshake-traffic key, one record per message with an increasing sequence.
-  let d :=
-    if tag == 8 || tag == 11 || tag == 15 || tag == 20 then
-      let hsKey := KeySchedule.trafficKey .chacha20Poly1305Sha256 d.sHsTraffic
-      let hsIv  := KeySchedule.trafficIv d.sHsTraffic
-      let sealed := Record13.sealRecord hsKey hsIv d.writeSeq.toUInt64 msg .handshake 0
-      { d with sealedFlight := d.sealedFlight ++ [(d.writeSeq, msg, sealed)], writeSeq := d.writeSeq + 1 }
-    else d
-  let d := { d with transcript := transcript', outbound := d.outbound ++ [msg] }
-  if tag == 2 then { d with hCHSH := Hacl.sha256 transcript' }
-  else if tag == 11 then { d with hCHCert := Hacl.sha256 transcript' }
-  else if tag == 15 then { d with hCHCertVerify := Hacl.sha256 transcript' }
-  else if tag == 20 then { d with hCHSF := Hacl.sha256 transcript' }
-  else d
-
 /-- Realize a typed `writeHandshake` message (RFC 032) the same way `appendReal` realizes
 the EncryptedExtensions placeholder: serialize via the shared core serializer, seal it as
 a handshake-epoch record, and commit it to the real transcript and outbound. No first-byte
@@ -177,14 +159,24 @@ dispatch. (Slice 1: EncryptedExtensions, which carries no bound transcript hash.
 def appendRealHandshakeOut (d : RD) (m : Kroopt.Core.HandshakeOut) : RD :=
   let msg := Kroopt.Core.serializeHandshakeOut m
   let transcript' := d.transcript ++ msg
+  match m with
+  | .serverHello _ _ _ _ _ =>
+      -- ServerHello goes in the clear (it precedes the encrypted flight) and fixes the
+      -- CH‥SH transcript hash the handshake-traffic secrets are derived against. No seal,
+      -- no handshake-record sequence consumed.
+      { d with transcript := transcript', outbound := d.outbound ++ [msg],
+               hCHSH := Hacl.sha256 transcript' }
+  | _ =>
   let hsKey := KeySchedule.trafficKey .chacha20Poly1305Sha256 d.sHsTraffic
   let hsIv  := KeySchedule.trafficIv d.sHsTraffic
   let sealed := Record13.sealRecord hsKey hsIv d.writeSeq.toUInt64 msg .handshake 0
   let d := { d with sealedFlight := d.sealedFlight ++ [(d.writeSeq, msg, sealed)], writeSeq := d.writeSeq + 1,
                     transcript := transcript', outbound := d.outbound ++ [msg] }
-  -- CertificateVerify binds the transcript hash the server Finished MAC is taken over.
+  -- CertificateVerify binds the transcript hash the server Finished MAC is taken over;
+  -- the server Finished fixes the CH‥SF hash the client Finished MAC / app secrets use.
   match m with
   | .certificateVerify _ _ => { d with hCHCertVerify := Hacl.sha256 transcript' }
+  | .finished _ => { d with hCHSF := Hacl.sha256 transcript' }
   | _ => d
 
 /-- Realize a typed `writeCertificate` action (RFC 032): the interpreter resolves the
@@ -202,7 +194,7 @@ def appendRealCert (d : RD) : RD :=
            hCHCert := Hacl.sha256 transcript' }
 
 def applyAction (d : RD) : OutputAction → RD × List InputEvent
-  | .writeTransport _ bytes => (appendReal d bytes, [])
+  | .writeTransport _ bytes => ({ d with outbound := d.outbound ++ [bytes] }, [])
   | .writeHandshake _ msg => (appendRealHandshakeOut d msg, [])
   | .writeCertificate _ _ => (appendRealCert d, [])
   | .callCrypto c op req =>
@@ -441,6 +433,14 @@ def main : IO UInt32 := do
         fragmentedClientHelloReachesSameState)
     , ("an over-large handshake reassembly buffer fails the connection (RFC 033)",
         oversizedReasmFails)
+    , ("the core captures the server ECDHE share into negotiation state (RFC 032)",
+        (match run.st.negotiated.serverShare with
+         | some ss => ss.size == 32 && eqB ss run.serverShare
+         | none => false))
+    , ("the core draws and holds the server Random via a core op (RFC 032/034)",
+        (match run.st.negotiated.serverRandom with
+         | some r => r.size == 32 && eqB r serverRandom
+         | none => false))
     ]
 
   let mut failed := 0

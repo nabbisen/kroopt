@@ -51,8 +51,8 @@ theorem onClientHello_legal
 
 /-- `onEcdheDone` moves along a legal edge. -/
 theorem onEcdheDone_legal
-    (s s' : State) (secret : SecretKeyHandle) (acts : List OutputAction)
-    (h : onEcdheDone s secret = .ok (s', acts))
+    (s s' : State) (serverShare : ByteArray) (secret : SecretKeyHandle) (acts : List OutputAction)
+    (h : onEcdheDone s serverShare secret = .ok (s', acts))
     (hnt : s.handshake.isTerminal = false) :
     legalEdge s.handshake s'.handshake = true := by
   unfold onEcdheDone at h
@@ -102,6 +102,21 @@ theorem onCertVerifySigned_legal
     (hnt : s.handshake.isTerminal = false) :
     legalEdge s.handshake s'.handshake = true := by
   unfold onCertVerifySigned at h
+  split at h
+  · rename_i hcond
+    simp only [TranscriptState.snapshot, State.allocOp, Except.ok.injEq, Prod.mk.injEq] at h
+    obtain ⟨hs, -⟩ := h
+    rw [← hs, hcond]; rfl
+  · exact hsFail_legal _ _ _ _ _ h hnt
+
+/-- `onServerFinishedMac` moves along a legal edge: it advances
+`requestedServerFinishedMac → sentCertificateVerify`, or fails. -/
+theorem onServerFinishedMac_legal
+    (s s' : State) (vd : ByteArray) (acts : List OutputAction)
+    (h : onServerFinishedMac s vd = .ok (s', acts))
+    (hnt : s.handshake.isTerminal = false) :
+    legalEdge s.handshake s'.handshake = true := by
+  unfold onServerFinishedMac at h
   split at h
   · rename_i hcond
     split at h
@@ -223,13 +238,25 @@ private theorem hs_no_emit_onClientHello
        or_self, or_false] at hmem)
 
 private theorem hs_no_emit_onEcdheDone
-    (s s' : State) (secret : SecretKeyHandle) (acts : List OutputAction)
-    (h : onEcdheDone s secret = .ok (s', acts)) (c : ConnId) (bb : ByteArray) :
+    (s s' : State) (serverShare : ByteArray) (secret : SecretKeyHandle) (acts : List OutputAction)
+    (h : onEcdheDone s serverShare secret = .ok (s', acts)) (c : ConnId) (bb : ByteArray) :
     OutputAction.emitPlaintext c bb ∉ acts := by
   intro hmem
   unfold onEcdheDone hsFail at h
   split at h <;>
     (simp only [State.allocOp, TranscriptState.snapshot, Except.ok.injEq, Prod.mk.injEq] at h
+     obtain ⟨-, rfl⟩ := h
+     simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+       or_self, or_false] at hmem)
+
+private theorem hs_no_emit_onServerRandomDone
+    (s s' : State) (random : ByteArray) (acts : List OutputAction)
+    (h : onServerRandomDone s random = .ok (s', acts)) (c : ConnId) (bb : ByteArray) :
+    OutputAction.emitPlaintext c bb ∉ acts := by
+  intro hmem
+  unfold onServerRandomDone hsFail at h
+  split at h <;>
+    (simp only [State.allocOp, Except.ok.injEq, Prod.mk.injEq] at h
      obtain ⟨-, rfl⟩ := h
      simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
        or_self, or_false] at hmem)
@@ -253,6 +280,20 @@ private theorem hs_no_emit_onCertVerifySigned
     OutputAction.emitPlaintext c bb ∉ acts := by
   intro hmem
   unfold onCertVerifySigned hsFail at h
+  simp only [TranscriptState.snapshot] at h
+  repeat' split at h
+  all_goals
+    (simp only [State.allocOp, TranscriptState.snapshot, Except.ok.injEq, Prod.mk.injEq] at h
+     obtain ⟨-, rfl⟩ := h
+     simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+       or_self, or_false] at hmem)
+
+private theorem hs_no_emit_onServerFinishedMac
+    (s s' : State) (vd : ByteArray) (acts : List OutputAction)
+    (h : onServerFinishedMac s vd = .ok (s', acts)) (c : ConnId) (bb : ByteArray) :
+    OutputAction.emitPlaintext c bb ∉ acts := by
+  intro hmem
+  unfold onServerFinishedMac hsFail at h
   simp only [TranscriptState.snapshot] at h
   repeat' split at h
   all_goals
@@ -314,12 +355,15 @@ theorem handshakeOnGatingResult_no_emit
   split at h
   all_goals (try split at h)
   all_goals (try split at h)
+  all_goals (try split at h)
   all_goals (
     first
-    | exact hs_no_emit_onEcdheDone _ _ _ _ h c bb hmem
+    | exact hs_no_emit_onEcdheDone _ _ _ _ _ h c bb hmem
+    | exact hs_no_emit_onServerRandomDone _ _ _ _ h c bb hmem
     | exact hs_no_emit_onHsScheduleResult _ _ _ _ h c bb hmem
     | exact hs_no_emit_onApScheduleResult _ _ _ _ h c bb hmem
     | exact hs_no_emit_onCertVerifySigned _ _ _ _ h c bb hmem
+    | exact hs_no_emit_onServerFinishedMac _ _ _ _ h c bb hmem
     | exact hs_no_emit_onClientFinishedVerified _ _ _ _ _ h c bb hmem
     | (simp only [Except.ok.injEq, Prod.mk.injEq] at h
        obtain ⟨-, rfl⟩ := h
@@ -354,13 +398,25 @@ private theorem hs_no_accept_generic_onClientHello
        or_self, or_false] at hmem)
 
 private theorem hs_no_accept_onEcdheDone
-    (s s' : State) (secret : SecretKeyHandle) (acts : List OutputAction)
-    (h : onEcdheDone s secret = .ok (s', acts)) (c : ConnId) (n : Nat) :
+    (s s' : State) (serverShare : ByteArray) (secret : SecretKeyHandle) (acts : List OutputAction)
+    (h : onEcdheDone s serverShare secret = .ok (s', acts)) (c : ConnId) (n : Nat) :
     OutputAction.acceptPlaintextBytes c n ∉ acts := by
   intro hmem
   unfold onEcdheDone hsFail at h
   split at h <;>
     (simp only [State.allocOp, TranscriptState.snapshot, Except.ok.injEq, Prod.mk.injEq] at h
+     obtain ⟨-, rfl⟩ := h
+     simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+       or_self, or_false] at hmem)
+
+private theorem hs_no_accept_onServerRandomDone
+    (s s' : State) (random : ByteArray) (acts : List OutputAction)
+    (h : onServerRandomDone s random = .ok (s', acts)) (c : ConnId) (n : Nat) :
+    OutputAction.acceptPlaintextBytes c n ∉ acts := by
+  intro hmem
+  unfold onServerRandomDone hsFail at h
+  split at h <;>
+    (simp only [State.allocOp, Except.ok.injEq, Prod.mk.injEq] at h
      obtain ⟨-, rfl⟩ := h
      simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
        or_self, or_false] at hmem)
@@ -384,6 +440,20 @@ private theorem hs_no_accept_onCertVerifySigned
     OutputAction.acceptPlaintextBytes c n ∉ acts := by
   intro hmem
   unfold onCertVerifySigned hsFail at h
+  simp only [TranscriptState.snapshot] at h
+  repeat' split at h
+  all_goals
+    (simp only [State.allocOp, TranscriptState.snapshot, Except.ok.injEq, Prod.mk.injEq] at h
+     obtain ⟨-, rfl⟩ := h
+     simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+       or_self, or_false] at hmem)
+
+private theorem hs_no_accept_onServerFinishedMac
+    (s s' : State) (vd : ByteArray) (acts : List OutputAction)
+    (h : onServerFinishedMac s vd = .ok (s', acts)) (c : ConnId) (n : Nat) :
+    OutputAction.acceptPlaintextBytes c n ∉ acts := by
+  intro hmem
+  unfold onServerFinishedMac hsFail at h
   simp only [TranscriptState.snapshot] at h
   repeat' split at h
   all_goals
@@ -432,12 +502,15 @@ theorem handshakeOnGatingResult_no_accept
   split at h
   all_goals (try split at h)
   all_goals (try split at h)
+  all_goals (try split at h)
   all_goals (
     first
-    | exact hs_no_accept_onEcdheDone _ _ _ _ h c n hmem
+    | exact hs_no_accept_onEcdheDone _ _ _ _ _ h c n hmem
+    | exact hs_no_accept_onServerRandomDone _ _ _ _ h c n hmem
     | exact hs_no_accept_onHsScheduleResult _ _ _ _ h c n hmem
     | exact hs_no_accept_onApScheduleResult _ _ _ _ h c n hmem
     | exact hs_no_accept_onCertVerifySigned _ _ _ _ h c n hmem
+    | exact hs_no_accept_onServerFinishedMac _ _ _ _ h c n hmem
     | exact hs_no_accept_onClientFinishedVerified _ _ _ _ _ h c n hmem
     | (simp only [Except.ok.injEq, Prod.mk.injEq] at h
        obtain ⟨-, rfl⟩ := h

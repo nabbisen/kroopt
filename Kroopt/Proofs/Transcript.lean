@@ -12,6 +12,15 @@ produced is appended.
 These are structural facts about the append/snapshot functions, proved here so
 the handshake driver cannot silently violate them.
 
+**RFC 032 §5/§6 upgrade.** The bytes these proofs bind are now the *serialized
+handshake messages* the core commits (`serializeHandshakeOut` /
+`serializeServerCertificate`), identical to the bytes the typed `writeHandshake` /
+`writeCertificate` actions carry — each server-flight message is built once and used
+for both the transcript and the emitted action. `appendFramed_binds_exact_bytes` thus
+guarantees transcript consistency *over the serialized handshake-message bytes*, the
+intended §15.6 guarantee, with no placeholder framers remaining in production
+(enforced by `scripts/check-no-placeholder.sh`).
+
 All proofs are `sorry`/`axiom`/`unsafe`-free.
 -/
 

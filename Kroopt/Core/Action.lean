@@ -38,11 +38,20 @@ module without importing the config/negotiation layer. Slice 1 covers
 EncryptedExtensions; the remaining server-flight messages migrate as their
 crypto-result plumbing lands. -/
 inductive HandshakeOut where
+  /-- ServerHello carrying the server Random, the server's x25519 key_share, and the
+  negotiated cipher suite / group / selected version as wire code points. All values are
+  core-held (RFC 032): the Random is drawn via a core `randomBytes` op, the share comes from
+  the ECDHE result, and the suite/group are the core's negotiation result. -/
+  | serverHello (random : ByteArray) (share : ByteArray)
+                (suite : UInt16) (group : UInt16) (version : UInt16)
   /-- EncryptedExtensions carrying the negotiated ALPN protocol id, if any. -/
   | encryptedExtensions (alpn : Option ByteArray)
   /-- CertificateVerify carrying the negotiated signature scheme (wire code point) and
   the signature produced by the core's `signCertificateVerify` crypto result. -/
   | certificateVerify (scheme : UInt16) (signature : ByteArray)
+  /-- Finished carrying the server Finished verify_data computed by the core's
+  `computeServerFinished` crypto op (RFC 8446 §4.4.4). -/
+  | finished (verifyData : ByteArray)
 
 /-- Actions the core asks the interpreter to perform (RFC 002 §3). -/
 inductive OutputAction where

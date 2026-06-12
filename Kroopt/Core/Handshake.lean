@@ -38,11 +38,24 @@ def sigSchemeToU16 : SignatureScheme → UInt16
   | .ecdsaSecp256r1Sha256 => 0x0403
   | .rsaPssRsaeSha256     => 0x0804
 
+/-- Cipher-suite wire code point (RFC 8446 §B.4). -/
+def cipherSuiteToU16 : CipherSuite → UInt16
+  | .aes128GcmSha256       => 0x1301
+  | .aes256GcmSha384       => 0x1302
+  | .chacha20Poly1305Sha256 => 0x1303
+
+/-- Named-group wire code point (RFC 8446 §4.2.7). -/
+def namedGroupToU16 : NamedGroup → UInt16
+  | .x25519   => 0x001d
+  | .secp256r1 => 0x0017
+
 /-- Realize a typed server-flight handshake message into its wire bytes (RFC 032 §3).
 A single pure serializer is the one source of byte layout: the interpreter and the
 test drivers all call it, so no production path recognizes a message by its first
 byte. Slice 1 covers EncryptedExtensions (ALPN); slice 2 adds CertificateVerify. -/
 def serializeHandshakeOut : HandshakeOut → ByteArray
+  | .serverHello random share suite group version =>
+      Kroopt.Parse.Wire.serverHello random (ByteArray.mk #[]) suite group share version
   | .encryptedExtensions alpn =>
       let exts := match alpn with
         | none   => ByteArray.mk #[]
@@ -51,6 +64,15 @@ def serializeHandshakeOut : HandshakeOut → ByteArray
       Kroopt.Parse.Wire.encryptedExtensions exts
   | .certificateVerify scheme signature =>
       Kroopt.Parse.Wire.certificateVerify scheme signature
+  | .finished verifyData =>
+      Kroopt.Parse.Wire.finished verifyData
+
+/-- Serialize the server Certificate message (RFC 032 §5). The core holds only an opaque
+chain handle, not the DER; until RFC 031 threads configured DER through, both the emitted
+`writeCertificate` action and this transcript contribution serialize an empty chain, so the
+two agree by construction. -/
+def serializeServerCertificate (_chain : CertificateChainHandle) : ByteArray :=
+  Kroopt.Parse.Wire.certificate (ByteArray.mk #[]) (ByteArray.mk #[])
 
 /-- A validated ClientHello: the negotiated parameters the parser/policy checker
 produced (RFC 006 §5). Holding one is evidence the mandatory checks passed —
@@ -75,26 +97,15 @@ def legalEdge (a b : HandshakeState) : Bool :=
   || (!a.isTerminal && (match b with | .failed _ => true | _ => false))
   || (!a.isTerminal && b == .closing)
   || (a == .closing && b == .closed)
-  || (a == .start && b == .requestedEcdhe)
+  || (a == .start && b == .requestedServerRandom)
+  || (a == .requestedServerRandom && b == .requestedEcdhe)
   || (a == .requestedEcdhe && b == .derivedHandshakeSecrets)
   || (a == .derivedHandshakeSecrets && b == .requestedCertificateVerifySignature)
-  || (a == .requestedCertificateVerifySignature && b == .sentCertificateVerify)
+  || (a == .requestedCertificateVerifySignature && b == .requestedServerFinishedMac)
+  || (a == .requestedServerFinishedMac && b == .sentCertificateVerify)
   || (a == .sentCertificateVerify && b == .sentServerFinished)
   || (a == .sentServerFinished && b == .requestedClientFinishedVerify)
   || (a == .requestedClientFinishedVerify && b == .connected)
-
-/-! ## Frame builders (synthetic)
-
-Representative framed bytes for each server-flight message. The exact bytes are
-what enter the transcript; the binding proof (RFC 007) cares that the transcript
-stores them verbatim, not their specific shape. Real wire framing lands with the
-crypto/interop milestones. -/
-
-def frameServerHello (_vch : ValidClientHello) : ByteArray := ByteArray.mk #[2, 0, 0, 0]
-def frameEncryptedExtensions : ByteArray := ByteArray.mk #[8, 0, 0, 0]
-def frameCertificate : ByteArray := ByteArray.mk #[11, 0, 0, 0]
-def frameCertificateVerify (_sig : ByteArray) : ByteArray := ByteArray.mk #[15, 0, 0, 0]
-def frameServerFinished : ByteArray := ByteArray.mk #[20, 0, 0, 0]
 
 /-- The handshake-step result type (same as `Step.StepResult`). -/
 abbrev HsResult := Except TlsError (State × List OutputAction)
@@ -126,31 +137,48 @@ def onClientHello (s : State) (vch : ValidClientHello) (chWire : ByteArray) : Hs
                       selectedSigScheme := some vch.selectedSigScheme
                       selectedSni := vch.sni
                       selectedAlpn := alpn
-                      selectedCert := cert }
+                      selectedCert := cert
+                      serverShare := none
+                      clientShare := some vch.clientShare
+                      serverRandom := none }
       transcript := s.transcript.appendFramed .clientHello .read chWire }
-    let (oid, s) := s.allocOp .ecdhe .handshake (some .read)
-    .ok ({ s with handshake := .requestedEcdhe },
-         [OutputAction.callCrypto s.connId oid (CryptoOp.ecdheX25519 vch.clientShare)])
+    let (oid, s) := s.allocOp .randomBytes .handshake (some .write)
+    .ok ({ s with handshake := .requestedServerRandom },
+         [OutputAction.callCrypto s.connId oid (CryptoOp.randomBytes 32)])
   else
     hsFail s .unexpectedMessage (.protocol .illegalMessageForState)
 
-/-- `requestedEcdhe → derivedHandshakeSecrets`. Frame ServerHello (committing it to
-the transcript), install the handshake epoch, and **start the handshake-key stage
-of the key schedule**: record the ECDHE shared-secret handle and request the
-Early-Secret extraction. The rest of the stage is pumped by `onHsScheduleResult`.
-(The transcript context is the core's abstract snapshot reference; the provider
-resolves it to the real hash in the real-transcript milestone.) -/
-def onEcdheDone (s : State) (secret : SecretKeyHandle) : HsResult :=
+/-- `requestedServerRandom → requestedEcdhe`. Record the drawn server Random and request
+the ECDHE shared secret over the client's key_share (RFC 032: the random is now a core
+value, sourced from the CSPRNG before ServerHello is assembled). -/
+def onServerRandomDone (s : State) (random : ByteArray) : HsResult :=
+  if s.handshake = .requestedServerRandom then
+    let s := { s with negotiated := { s.negotiated with serverRandom := some random } }
+    let (oid, s) := s.allocOp .ecdhe .handshake (some .read)
+    .ok ({ s with handshake := .requestedEcdhe },
+         [OutputAction.callCrypto s.connId oid
+            (CryptoOp.ecdheX25519 (s.negotiated.clientShare.getD (ByteArray.mk #[])))])
+  else
+    hsFail s .unexpectedMessage (.protocol .illegalMessageForState)
+
+/-- `requestedEcdhe → derivedHandshakeSecrets`. Build the typed ServerHello, commit its
+**serialized bytes** to the transcript (RFC 032 §5 — the transcript is over serialized
+handshake messages, not placeholders), install the handshake epoch, and **start the
+handshake-key stage of the key schedule**: record the ECDHE shared-secret handle and request
+the Early-Secret extraction. The rest of the stage is pumped by `onHsScheduleResult`. -/
+def onEcdheDone (s : State) (serverShare : ByteArray) (secret : SecretKeyHandle) : HsResult :=
   if s.handshake = .requestedEcdhe then
-    let sh := frameServerHello { selectedSuite := s.negotiated.selectedSuite.getD .aes128GcmSha256
-                                 selectedGroup := s.negotiated.selectedGroup.getD .x25519
-                                 clientShare := ByteArray.mk #[]
-                                 selectedSigScheme := s.negotiated.selectedSigScheme.getD .ed25519
-                                 sni := none, alpn := [] }
-    let ts := s.transcript.appendFramed .serverHello .write sh
+    let shMsg : HandshakeOut :=
+      .serverHello (s.negotiated.serverRandom.getD (ByteArray.mk #[]))
+                   serverShare
+                   (cipherSuiteToU16 (s.negotiated.selectedSuite.getD .chacha20Poly1305Sha256))
+                   (namedGroupToU16 (s.negotiated.selectedGroup.getD .x25519))
+                   0x0304
+    let ts := s.transcript.appendFramed .serverHello .write (serializeHandshakeOut shMsg)
     let (snap, ts) := ts.snapshot
     let hsTh := ByteArray.mk #[snap.id.toUInt8]
     let s := { s with transcript := ts
+                      negotiated := { s.negotiated with serverShare := some serverShare }
                       readEpoch := installEpoch .handshake
                       writeEpoch := installEpoch .handshake }
     let suite := s.negotiated.selectedSuite.getD .aes128GcmSha256
@@ -158,7 +186,7 @@ def onEcdheDone (s : State) (secret : SecretKeyHandle) : HsResult :=
                             KeyScheduleDriver.emptyHashSha256 hsTh secret
     let (oid, s) := s.allocOp earlyOp.kind .handshake (some .write)
     .ok ({ s with handshake := .derivedHandshakeSecrets, keySched := some ksd },
-         [ OutputAction.writeTransport s.connId sh,
+         [ OutputAction.writeHandshake s.connId shMsg,
            OutputAction.callCrypto s.connId oid earlyOp ])
   else
     hsFail s .unexpectedMessage (.protocol .illegalMessageForState)
@@ -181,19 +209,20 @@ def onHsScheduleResult (s : State) (r : CryptoResult) : HsResult :=
                [OutputAction.callCrypto s.connId oid op])
       | .ok (ksd, []) =>
           if ksd.phase = .handshakeKeysInstalled then
-            let ee := frameEncryptedExtensions
-            let cert := frameCertificate
-            let ts := s.transcript.appendFramed .encryptedExtensions .write ee
-            let ts := ts.appendFramed .certificate .write cert
+            let eeMsg : HandshakeOut :=
+              .encryptedExtensions (s.negotiated.selectedAlpn.map (·.bytes))
+            let certHandle := s.negotiated.selectedCert.getD default
+            let ts := s.transcript.appendFramed .encryptedExtensions .write
+                        (serializeHandshakeOut eeMsg)
+            let ts := ts.appendFramed .certificate .write
+                        (serializeServerCertificate certHandle)
             let (snap, ts) := ts.snapshot
             let s := { s with transcript := ts, keySched := some ksd }
             let (oid, s) := s.allocOp .signCertificateVerify .handshake (some .write)
             let scheme := s.negotiated.selectedSigScheme.getD .ed25519
             .ok ({ s with handshake := .requestedCertificateVerifySignature },
-                 [ OutputAction.writeHandshake s.connId
-                     (.encryptedExtensions (s.negotiated.selectedAlpn.map (·.bytes))),
-                   OutputAction.writeCertificate s.connId
-                     (s.negotiated.selectedCert.getD default),
+                 [ OutputAction.writeHandshake s.connId eeMsg,
+                   OutputAction.writeCertificate s.connId certHandle,
                    OutputAction.callCrypto s.connId oid
                      (CryptoOp.signCertificateVerify scheme
                        (ByteArray.mk #[snap.id.toUInt8])) ])
@@ -202,17 +231,37 @@ def onHsScheduleResult (s : State) (r : CryptoResult) : HsResult :=
   else
     hsFail s .unexpectedMessage (.protocol .illegalMessageForState)
 
-/-- `requestedCertificateVerifySignature → sentServerFinished`. Commit the framed
-CertificateVerify and server Finished to the transcript, install application
-keys, and emit the server flight tail. -/
+/-- `requestedCertificateVerifySignature → requestedServerFinishedMac`. Commit the framed
+CertificateVerify to the transcript and request the server Finished verify_data — a MAC over
+the transcript hash **through CertificateVerify**, computed by the core's
+`computeServerFinished` op (the verify_data is a core value, not interpreter-assembled). -/
 def onCertVerifySigned (s : State) (sig : ByteArray) : HsResult :=
   if s.handshake = .requestedCertificateVerifySignature then
+    let cvMsg : HandshakeOut :=
+      .certificateVerify (sigSchemeToU16 (s.negotiated.selectedSigScheme.getD .ed25519)) sig
+    let ts := s.transcript.appendFramed .certificateVerify .write (serializeHandshakeOut cvMsg)
+    let (snap, ts) := ts.snapshot
+    let cvTh := ByteArray.mk #[snap.id.toUInt8]
+    let s := { s with transcript := ts }
+    let (oid, s) := s.allocOp .computeServerFinished .handshake (some .write)
+    .ok ({ s with handshake := .requestedServerFinishedMac },
+         [ OutputAction.writeHandshake s.connId cvMsg,
+           OutputAction.callCrypto s.connId oid
+             (CryptoOp.computeServerFinished s.transcript.hashAlg cvTh) ])
+  else
+    hsFail s .unexpectedMessage (.protocol .illegalMessageForState)
+
+/-- `requestedServerFinishedMac → sentCertificateVerify`. The server Finished verify_data
+has been computed; commit the framed Finished to the transcript, derive the application keys
+(the schedule resumes over the transcript hash **through Finished**), and emit the typed
+Finished action carrying the verify_data. -/
+def onServerFinishedMac (s : State) (verifyData : ByteArray) : HsResult :=
+  if s.handshake = .requestedServerFinishedMac then
     match s.keySched with
     | none => hsFail s .internalError (.protocol .illegalMessageForState)
     | some ksd =>
-      let cv := frameCertificateVerify sig
-      let ts := s.transcript.appendFramed .certificateVerify .write cv
-      let ts := ts.appendFramed .finished .write frameServerFinished
+      let ts := s.transcript.appendFramed .finished .write
+                  (serializeHandshakeOut (.finished verifyData))
       let (snap, ts) := ts.snapshot
       let apTh := ByteArray.mk #[snap.id.toUInt8]
       match KeyScheduleDriver.resumeApplication ksd apTh with
@@ -221,10 +270,7 @@ def onCertVerifySigned (s : State) (sig : ByteArray) : HsResult :=
           let s := { s with transcript := ts }
           let (oid, s) := s.allocOp op.kind .application (some .write)
           .ok ({ s with handshake := .sentCertificateVerify, keySched := some ksd },
-               [ OutputAction.writeHandshake s.connId
-                   (.certificateVerify
-                     (sigSchemeToU16 (s.negotiated.selectedSigScheme.getD .ed25519)) sig),
-                 OutputAction.writeTransport s.connId frameServerFinished,
+               [ OutputAction.writeHandshake s.connId (.finished verifyData),
                  OutputAction.callCrypto s.connId oid op ])
       | .ok (_, []) => hsFail s .internalError (.protocol .illegalMessageForState)
   else
@@ -300,8 +346,8 @@ advance exactly one phase; an unexpected result for the current phase is ignored
 def handshakeOnGatingResult (s0 : State) (op : OperationId) (r : CryptoResult) : HsResult :=
   let s := s0.clearOp op
   match r with
-  | .ecdheComplete _ h =>
-      if s.handshake = .requestedEcdhe then onEcdheDone s h else .ok (s, [])
+  | .ecdheComplete srv h =>
+      if s.handshake = .requestedEcdhe then onEcdheDone s srv h else .ok (s, [])
   | .signature sig =>
       if s.handshake = .requestedCertificateVerifySignature then onCertVerifySigned s sig
       else .ok (s, [])
@@ -309,7 +355,10 @@ def handshakeOnGatingResult (s0 : State) (op : OperationId) (r : CryptoResult) :
       if s.handshake = .requestedClientFinishedVerify then
         onClientFinishedVerified s true (s.pendingClientFinished.getD (ByteArray.mk #[]))
       else .ok (s, [])
-  | .randomBytes _ => .ok (s, [])
+  | .randomBytes b =>
+      if s.handshake = .requestedServerRandom then onServerRandomDone s b else .ok (s, [])
+  | .finishedMac vd =>
+      if s.handshake = .requestedServerFinishedMac then onServerFinishedMac s vd else .ok (s, [])
   | .hkdfSecret _ =>
       if s.handshake = .derivedHandshakeSecrets then onHsScheduleResult s r
       else if s.handshake = .sentCertificateVerify then onApScheduleResult s r

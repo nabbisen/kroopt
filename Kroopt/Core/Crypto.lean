@@ -62,6 +62,7 @@ inductive CryptoOpKind where
   | aeadOpen
   | signCertificateVerify
   | verifyFinished
+  | computeServerFinished
   deriving DecidableEq, Repr, Inhabited
 
 /-- A crypto operation the core asks the interpreter to perform. Typed by
@@ -92,6 +93,10 @@ inductive CryptoOp where
   | aeadOpen (meta : RecordCryptoMeta) (aad : ByteArray) (ciphertext : ByteArray)
   | signCertificateVerify (scheme : SignatureScheme) (input : ByteArray)
   | verifyFinished (alg : HashAlgorithm) (transcriptHash : ByteArray) (received : ByteArray)
+  /-- Compute the server Finished verify_data = HMAC(server_finished_key, transcriptHash)
+  over the transcript hash through CertificateVerify (RFC 8446 §4.4.4). The mirror of
+  `verifyFinished`, but with the *write* (server) handshake-traffic secret. -/
+  | computeServerFinished (alg : HashAlgorithm) (transcriptHash : ByteArray)
 
 namespace CryptoOp
 
@@ -106,6 +111,7 @@ def kind : CryptoOp → CryptoOpKind
   | aeadOpen _ _ _             => .aeadOpen
   | signCertificateVerify _ _  => .signCertificateVerify
   | verifyFinished _ _ _       => .verifyFinished
+  | computeServerFinished _ _  => .computeServerFinished
 
 end CryptoOp
 
@@ -121,6 +127,7 @@ inductive CryptoResult where
   | aeadSealed (ciphertext : ByteArray)
   | aeadOpened (plaintext : ByteArray)
   | signature (bytes : ByteArray)
+  | finishedMac (verifyData : ByteArray)
   | verified
   | verifyFailed
   | failed (e : CryptoError)
