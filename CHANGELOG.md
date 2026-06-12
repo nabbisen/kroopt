@@ -3,6 +3,37 @@
 All notable changes to kroopt are recorded here. RFC lifecycle transitions are
 governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycle-policy.md).
 
+## [0.29.0-dev] — M29 live `step`-driven real handshake (real provider + real transcript) — 2026-06-12
+
+Drives the verified core `Kroopt.Core.step` state machine through a server
+handshake against the **real** crypto provider with a **real transcript** assembled
+by `Kroopt.Conn.Flight`, to `sentServerFinished`. The verified state machine is
+unchanged: the 87 theorems and the 36 pure-zone files are untouched.
+
+### Added
+
+- `Tests/RealHandshake.lean` (`kroopt-realhandshake-test`, 12 checks): a driver that
+  runs each `callCrypto` against `RealProvider.submit` (real HACL X25519 / HKDF /
+  Ed25519 / HMAC, threading a real `SecretArena`) and maintains a real transcript —
+  recognising each server-flight placeholder by message type, assembling the real
+  bytes via `Flight`/`Wire`, and substituting the real transcript hashes
+  (`CH‥SH`, `CH‥Cert`, `CH‥ServerFinished`) at the crypto seam. It checks that the
+  live core runs without error to `sentServerFinished`, emits the full real server
+  flight (SH, EE, Cert, CertVerify, Finished, in order), and produces a **valid
+  Ed25519 CertificateVerify over the real transcript** (verifies against the leaf
+  key; rejected against a wrong hash). CI now runs 20 suites (`realhandshake`).
+- `docs/src/live-handshake.md` (linked in `SUMMARY.md`).
+
+### Notes
+
+This is a self-consistent handshake, not a replay of RFC 8448 §3: kroopt's cert is
+Ed25519 (no RSA/P-256 in the vendored HACL), so the ClientHello offers `ed25519`
+and the transcript is kroopt's own. The certificate entry is an opaque placeholder
+DER (real provisioning is separate); it does not affect the CertificateVerify, which
+signs the transcript hash. Remaining toward live interop: client Finished →
+`connected`, real record encryption, the iotakt socket transport (RFC 010), and
+OpenSSL/curl interop (RFC 015 / 026).
+
 ## [0.28.0-dev] — M28 real server-flight assembler + Ed25519 CertificateVerify — 2026-06-12
 
 Adds the interpreter-side component that turns negotiated parameters and real
