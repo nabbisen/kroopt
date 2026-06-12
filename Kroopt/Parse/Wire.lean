@@ -77,4 +77,20 @@ def encryptedExtensions (exts : ByteArray) : ByteArray :=
 def finished (verifyData : ByteArray) : ByteArray :=
   handshake 0x14 verifyData
 
+/-- A CertificateEntry (RFC 8446 §4.4.2): `cert_data` as a 3-byte-vector, then a
+2-byte-vector of per-certificate extensions. -/
+def certificateEntry (certData : ByteArray) (extensions : ByteArray) : ByteArray :=
+  u24Len certData ++ u16Len extensions
+
+/-- A Certificate handshake message (RFC 8446 §4.4.2): type 11, body =
+`certificate_request_context` (1-byte-vector, empty for a server) then
+`certificate_list` (3-byte-vector of concatenated `CertificateEntry` values). -/
+def certificate (context : ByteArray) (entries : ByteArray) : ByteArray :=
+  handshake 0x0b (u8Len context ++ u24Len entries)
+
+/-- A CertificateVerify handshake message (RFC 8446 §4.4.3): type 15, body =
+the 2-byte signature scheme then a 2-byte-vector signature. -/
+def certificateVerify (scheme : UInt16) (signature : ByteArray) : ByteArray :=
+  handshake 0x0f (be16 scheme ++ u16Len signature)
+
 end Kroopt.Parse.Wire

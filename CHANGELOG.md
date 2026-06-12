@@ -3,6 +3,38 @@
 All notable changes to kroopt are recorded here. RFC lifecycle transitions are
 governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycle-policy.md).
 
+## [0.27.0-dev] — M27 real server-flight serializers + server-Finished MAC KAT (RFC 8448 §3) — 2026-06-12
+
+Extends the wire serializer (M26) to the **entire** TLS 1.3 server flight and adds
+a real server-Finished MAC known-answer test. No change to the verified state
+machine: the 87 theorems and existing suites are unchanged.
+
+### Added
+
+- `Kroopt/Parse/Wire.lean`: `certificate` / `certificateEntry` (RFC 8446 §4.4.2)
+  and `certificateVerify` (§4.4.3) serializers, alongside the existing
+  `serverHello` / `encryptedExtensions` / `finished`.
+- `kroopt-wire-test` grew from 11 to **13 checks**, all against RFC 8448 §3:
+  - **Framing** — ServerHello, EncryptedExtensions, Certificate, CertificateVerify,
+    and Finished each serialize **byte-for-byte** to the trace. RFC 8448 §3 uses an
+    RSA cert / RSA-PSS signature (outside the vendored HACL subset), so the
+    432-byte cert DER and 128-byte signature are sliced from the vector and fed
+    back as opaque inputs — the framing is validated, not the RSA math.
+  - **Real server-Finished KAT** — `finished_key = HKDF-Expand-Label(server hs
+    traffic, "finished", "", 32)` matches RFC 8448, and `verify_data =
+    HMAC(finished_key, Transcript-Hash(CH ‖ SH ‖ EE ‖ Cert ‖ CertVerify))`
+    recomputed over the *serialized* flight equals the RFC 8448 server Finished
+    `verify_data` (`9b 9b 14 1d …`). Ties serializers + transcript + Finished MAC
+    to the authoritative trace.
+
+### Notes
+
+Remaining toward real interop (RFC 010/015/026): sign CertificateVerify with
+kroopt's own Ed25519 cert key (RSA stays out of scope); wire the serializers into
+the live handshake transcript (replacing the `[snap.id]` placeholders in
+`Core/Handshake.lean`); real record encryption; an iotakt socket transport; then
+OpenSSL/curl handshake interop.
+
 ## [0.26.0-dev] — M26 real handshake wire serializer (RFC 8448 §3 byte-exact) — 2026-06-12
 
 First increment of the structural→real wire work. Adds a real TLS 1.3 handshake

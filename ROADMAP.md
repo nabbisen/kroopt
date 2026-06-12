@@ -162,14 +162,20 @@ driving a full TLS 1.3 handshake against OpenSSL `s_client` / `curl` with an Ed2
 certificate (the `CertificateVerify` *construction* is already cross-validated against
 OpenSSL; what remains is the live handshake).
 
-*M26 shipped the first increment:* `Kroopt/Parse/Wire.lean`, a real TLS 1.3 handshake wire
-serializer validated byte-for-byte against RFC 8448 §3, with the key join checked —
-`SHA-256(ClientHello ‖ serialized ServerHello)` equals the RFC 8448 CH‥ServerHello transcript
-hash the (already-validated) key schedule derives over. Remaining for v0.3, in order: real
-Certificate / CertificateVerify / Finished bodies; wire the serializers into the live
-handshake transcript (removing the `[snap.id]` placeholders in `Core/Handshake.lean`); real
-record encryption; the iotakt `Transport` socket adapter; then OpenSSL/curl interop. Still
-pending beyond v0.3: P-256 (no `Hacl_P256.c` vendored — header only), ASan/UBSan jobs, and
+*M26–M27 shipped the first increments:* `Kroopt/Parse/Wire.lean`, a real TLS 1.3
+handshake wire serializer for the **whole server flight** (ServerHello,
+EncryptedExtensions, Certificate, CertificateVerify, Finished), validated
+byte-for-byte against RFC 8448 §3 (RSA cert/sig blobs treated as opaque, since RSA
+is outside the vendored HACL subset). Two real-crypto joins are checked:
+`SHA-256(ClientHello ‖ serialized ServerHello)` equals the RFC 8448 CH‥SH
+transcript hash the key schedule derives over; and the **server Finished MAC**
+recomputed over the serialized flight — `HMAC(finished_key, Transcript-Hash(CH‥
+CertVerify))` — equals the RFC 8448 `verify_data`. Remaining for v0.3, in order:
+sign CertificateVerify with kroopt's own Ed25519 cert key (RSA out of scope); wire
+the serializers into the live handshake transcript (removing the `[snap.id]`
+placeholders in `Core/Handshake.lean`); real record encryption; the iotakt
+`Transport` socket adapter; then OpenSSL/curl interop. Still pending beyond v0.3:
+P-256 (no `Hacl_P256.c` vendored — header only), ASan/UBSan jobs, and
 microbenchmarks.
 
 Exit criteria:
