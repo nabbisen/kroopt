@@ -64,3 +64,20 @@ in memory rather than over a socket. Folding this into the production send/recei
 path and the iotakt socket transport (RFC 010) is next, after which OpenSSL/curl
 interop (RFC 015 / 026) becomes testable. The verified core and its 87 theorems are
 untouched; `Record13` and the driver wiring are impure-zone code.
+
+## Opening the protected client Finished in-core (RFC 033, part 1)
+
+The client Finished arrives as a protected record (outer `application_data`) sealed
+under the client handshake-traffic key. The core opens it **before `connected`**:
+`handleTransportBytes` emits an `aeadOpen` under the **handshake** read epoch
+(`readMeta` follows `readEpoch.epoch`), and the opened inner handshake message is
+routed through the handshake model (`handshakeOnPlaintextRecord` →
+`onClientFinishedBytes`) to a `verifyFinished` request, then `connected`. Inner
+application data before `connected` is a fatal protocol violation, and the open
+never fills the application-plaintext buffer — the no-early / no-unauthenticated
+plaintext proofs are preserved (`buffered_plaintext_authenticated`).
+
+The read epoch stays `handshake` through `sentServerFinished` (the server's *write*
+switches to application after its own Finished) and becomes `application` only once
+the client Finished verifies. `KeySeparation.aeadOpen_uses_read_keys` proves an open
+always uses read-direction keys at the connection's current read epoch.

@@ -8,6 +8,24 @@
 **Touches.** `Kroopt/Core/RecordPath.lean`, `Kroopt/Core/Handshake.lean`, `Kroopt/Parse/Handshake.lean`, `Kroopt/Parse/Extensions.lean`, new `Kroopt/Core/HandshakeReasm.lean`, `Kroopt/Proofs/{RecordPath,NoUnauthPlaintext,ParserBounds}.lean`  
 **Canonical source.** kroopt fixed requirements §9, §10, §17.5; RFC 8446 §4, §5; architect reviews of 2026-06-12 (deep review blockers 2/5; RFC review RFC 033 amendments).  
 
+
+> **Status note — partial (0.37.0-dev, M36 part 1).** The receive-side blocker
+> (deep-review blocker #2) is fixed: the core now opens the protected client
+> Finished **in-core** under the handshake epoch (`Core/RecordPath.lean`,
+> `readMeta` is epoch-aware) and routes the opened inner message through the
+> handshake model to `verifyFinished` → `connected`, never buffering application
+> plaintext. A related epoch-modeling correction landed: the read epoch stays
+> `handshake` through `sentServerFinished` and switches to `application` only when
+> the client Finished verifies (`Core/Handshake.lean`). Proofs re-established:
+> `buffered_plaintext_authenticated` (+ four `pendingPlainOut`-preservation
+> lemmas), `KeySeparation.aeadOpen_uses_read_keys` (now `meta.epoch =
+> s.readEpoch.epoch`), and `Nonces.successful_open_increments_read_seq`.
+> **Still pending in this RFC:** the bounded handshake-message reassembler
+> (`Core/HandshakeReasm.lean`, for fragmented/coalesced records), overlap-selection
+> negotiation, ClientHello strictness, and explicit CCS policy. This RFC stays in
+> `proposed/` until those land. The current fix handles a client Finished that
+> arrives complete in one record.
+
 ---
 
 ## 1. Summary

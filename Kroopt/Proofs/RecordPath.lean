@@ -307,6 +307,55 @@ theorem stale_crypto_result_no_plaintext
   have := (stale_crypto_result_rejected s s' op r acts hstale h).2
   rw [this]; simp only [List.not_mem_nil, not_false_iff]
 
+/-- The handshake handlers never *newly* buffer application plaintext. The only
+write to `pendingPlainOut` anywhere in the handshake model is `hsFail`, which clears
+it to `none`; every other path leaves it untouched. So a handler's result has
+`pendingPlainOut` equal to the input's or `none` — never a fresh `some`. These feed
+the not-connected case of `buffered_plaintext_authenticated`. -/
+theorem onClientHello_pp
+    (s s' : State) (vch : ValidClientHello) (chWire : ByteArray) (acts : List OutputAction)
+    (h : onClientHello s vch chWire = .ok (s', acts)) :
+    s'.pendingPlainOut = s.pendingPlainOut ∨ s'.pendingPlainOut = none := by
+  unfold onClientHello hsFail at h
+  split at h
+  · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h; left; rfl
+  · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h; right; rfl
+
+theorem onClientFinishedBytes_pp
+    (s s' : State) (cfWire : ByteArray) (acts : List OutputAction)
+    (h : onClientFinishedBytes s cfWire = .ok (s', acts)) :
+    s'.pendingPlainOut = s.pendingPlainOut ∨ s'.pendingPlainOut = none := by
+  unfold onClientFinishedBytes hsFail at h
+  split at h
+  · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h; left; rfl
+  · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h; right; rfl
+
+theorem handshakeOnClientHello_pp
+    (s s' : State) (vch : ValidClientHello) (chWire : ByteArray) (acts : List OutputAction)
+    (h : handshakeOnClientHello s vch chWire = .ok (s', acts)) :
+    s'.pendingPlainOut = s.pendingPlainOut ∨ s'.pendingPlainOut = none := by
+  unfold handshakeOnClientHello at h; exact onClientHello_pp _ _ _ _ _ h
+
+theorem handshakeOnPlaintextRecord_pp
+    (s s' : State) (body : ByteArray) (acts : List OutputAction)
+    (h : handshakeOnPlaintextRecord s body = .ok (s', acts)) :
+    s'.pendingPlainOut = s.pendingPlainOut ∨ s'.pendingPlainOut = none := by
+  unfold handshakeOnPlaintextRecord at h
+  split at h
+  · split at h
+    · unfold recordFailAlert at h
+      simp only [Except.ok.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h; right; rfl
+    · exact handshakeOnClientHello_pp _ _ _ _ _ h
+  · split at h
+    · exact onClientFinishedBytes_pp _ _ _ _ h
+    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h; left; rfl
+
 /-- **No unauthenticated plaintext (headline, RFC 004 §10, RFC 015 §15.1).**
 If handling an `aeadOpened` crypto result newly buffers application plaintext
 (`pendingPlainOut` becomes `some b`, having not already been `some b`), then the
@@ -338,6 +387,9 @@ theorem buffered_plaintext_authenticated
   all_goals (
     first
     | assumption
+    | (cases handshakeOnPlaintextRecord_pp _ _ _ _ h with
+       | inl hpp => rw [hpp] at hb; exact absurd hb hne
+       | inr hpp => rw [hpp] at hb; simp only [reduceCtorEq] at hb)
     | (simp only [Except.ok.injEq, Prod.mk.injEq] at h
        obtain ⟨hs, -⟩ := h
        rw [← hs] at hb

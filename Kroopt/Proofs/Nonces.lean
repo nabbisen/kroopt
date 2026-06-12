@@ -1,5 +1,6 @@
 import Kroopt.Core.Step
 import Kroopt.Core.Nonce
+import Kroopt.Proofs.RecordPath
 
 /-!
 # Kroopt.Proofs.Nonces
@@ -70,8 +71,16 @@ theorem successful_open_increments_read_seq
   all_goals (try split at h)
   all_goals (try split at h)
   all_goals (try split at h)
+  all_goals (try split at h)
+  all_goals (try split at h)
+  all_goals (try split at h)
   all_goals (
     first
+    | (-- not-connected handshake leaf: routes to the handshake model, never buffers
+       -- application plaintext, so hb/hne are contradictory here
+       cases handshakeOnPlaintextRecord_pp _ _ _ _ h with
+       | inl hpp => rw [hpp] at hb; exact absurd hb hne
+       | inr hpp => rw [hpp] at hb; simp only [reduceCtorEq] at hb)
     | (-- stale-guard else leaf: s' = s, so the buffer is unchanged, contradicting hne
        simp only [Except.ok.injEq, Prod.mk.injEq] at h
        obtain ⟨hs, -⟩ := h

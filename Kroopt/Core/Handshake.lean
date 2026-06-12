@@ -221,8 +221,12 @@ def onApScheduleResult (s : State) (r : CryptoResult) : HsResult :=
                [OutputAction.callCrypto s.connId oid op])
       | .ok (ksd, []) =>
           if ksd.phase = .complete then
+            -- Server Finished sent: the server's *write* switches to application keys,
+            -- but the *read* epoch stays handshake — the client Finished is still sealed
+            -- under the client handshake-traffic key (RFC 8446 §4.4.4). Read switches to
+            -- application only once that Finished verifies (→ `connected`).
             .ok ({ s with handshake := .sentServerFinished, keySched := some ksd
-                          readEpoch := installEpoch .application
+                          readEpoch := installEpoch .handshake
                           writeEpoch := installEpoch .application }, [])
           else
             .ok ({ s with keySched := some ksd }, [])
@@ -252,7 +256,8 @@ def onClientFinishedVerified (s : State) (verified : Bool) (cfWire : ByteArray) 
   if s.handshake = .requestedClientFinishedVerify then
     if verified then
       let s := { s with transcript := s.transcript.appendFramed .finished .read cfWire }
-      .ok ({ s with handshake := .connected },
+      .ok ({ s with handshake := .connected
+                    readEpoch := installEpoch .application },
            [ OutputAction.reportHandshakeComplete s.connId
                { suite := s.negotiated.selectedSuite.getD .aes128GcmSha256
                  configGen := s.configGen } ])

@@ -236,6 +236,51 @@ def phaseName (p : HandshakeState) : String :=
   | .failed _ => "failed"
   | _ => "other"
 
+/-- **RFC 033 increment — the client Finished opens *in the core*.** Drive the
+real, sealed client-Finished record (outer `application_data`, the actual wire
+form) through `step`. The core must (1) open it under the **handshake** epoch
+rather than silently drop it, (2) route the opened inner Finished through the
+handshake model to a `verifyFinished` request, and (3) reach `connected` on a
+successful verify — all without ever buffering application plaintext. The opened
+inner bytes are supplied as the `aeadOpened` crypto result (the interpreter's job;
+real decryption is covered by the record/interop suites), so this exercises the
+core half of the contract that this increment changed. Returns
+`(opensUnderHandshake, routedToVerify, reachedConnected, noPlaintextLeak)`. -/
+def protectedFinishedDrive : Bool × Bool × Bool × Bool :=
+  let d1 := driveFuel 256 fresh [InputEvent.transportBytes ⟨0, 0⟩ (recordWrap clientHelloMsg)]
+  if d1.errored then (false, false, false, false) else
+  let cfVerifyData := Hacl.hmac256 (KeySchedule.finishedKey d1.cHsTraffic) d1.hCHSF
+  let clientFinished := Wire.finished cfVerifyData
+  let cKey := KeySchedule.trafficKey .chacha20Poly1305Sha256 d1.cHsTraffic
+  let cIv  := KeySchedule.trafficIv d1.cHsTraffic
+  let cfSealed := Record13.sealRecord cKey cIv 0 clientFinished .handshake 0
+  match step d1.st (InputEvent.transportBytes ⟨0, 0⟩ cfSealed) with
+  | .error _ => (false, false, false, false)
+  | .ok (s1, acts1) =>
+      match acts1.findSome? (fun a => match a with
+              | OutputAction.callCrypto _ oid (CryptoOp.aeadOpen meta _ _) => some (oid, meta.epoch)
+              | _ => none) with
+      | none => (false, false, false, false)
+      | some (oid, ep) =>
+          let opensUnderHandshake := match ep with | .handshake => true | _ => false
+          let innerPt := clientFinished ++ ByteArray.mk #[22]   -- inner content-type = handshake
+          match step s1 (InputEvent.cryptoResult ⟨0, 0⟩ oid (CryptoResult.aeadOpened innerPt)) with
+          | .error _ => (opensUnderHandshake, false, false, false)
+          | .ok (s2, acts2) =>
+              let noPlaintextLeak := match s2.pendingPlainOut with | none => true | _ => false
+              match acts2.findSome? (fun a => match a with
+                      | OutputAction.callCrypto _ o (CryptoOp.verifyFinished _ _ _) => some o
+                      | _ => none) with
+              | none => (opensUnderHandshake, false, false, noPlaintextLeak)
+              | some o2 =>
+                  let routedToVerify := match s2.handshake with
+                    | .requestedClientFinishedVerify => true | _ => false
+                  match step s2 (InputEvent.cryptoResult ⟨0, 0⟩ o2 CryptoResult.verified) with
+                  | .error _ => (opensUnderHandshake, routedToVerify, false, noPlaintextLeak)
+                  | .ok (s3, _) =>
+                      let reachedConnected := match s3.handshake with | .connected => true | _ => false
+                      (opensUnderHandshake, routedToVerify, reachedConnected, noPlaintextLeak)
+
 def main : IO UInt32 := do
   let d := run
   let reached := phaseName d.st.handshake
@@ -313,6 +358,14 @@ def main : IO UInt32 := do
     , ("each sealed flight record opens back to its plaintext handshake message", flightOpensBack)
     , ("the client's encrypted Finished record is ciphertext and opens to the plaintext Finished", inboundIsCiphertext && inboundOpensBack)
     , ("the Certificate message presents a real OpenSSL-parseable Ed25519 X.509 cert", realCertPresented)
+    , ("the SEALED client Finished opens IN THE CORE under the handshake epoch (RFC 033)",
+        protectedFinishedDrive.1)
+    , ("the opened inner Finished is routed to verifyFinished (not dropped)",
+        protectedFinishedDrive.2.1)
+    , ("the in-core protected-record path reaches connected",
+        protectedFinishedDrive.2.2.1)
+    , ("opening the protected handshake record buffers no application plaintext",
+        protectedFinishedDrive.2.2.2)
     ]
 
   let mut failed := 0

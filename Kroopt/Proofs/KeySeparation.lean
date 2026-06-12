@@ -51,17 +51,21 @@ theorem aeadSeal_uses_write_keys
     exact ⟨rfl, rfl⟩
 
 /-- **Directional + epoch separation for opens (RFC 005 §7.4, §7.5).** Any AEAD
-open a received record requests carries read-direction, application-epoch
-metadata. -/
+open a received record requests carries read-direction metadata at the connection's
+current read epoch — `handshake` while opening the protected client Finished before
+`connected`, `application` afterwards. It is never a write key, and never an epoch
+other than the installed read epoch. -/
 theorem aeadOpen_uses_read_keys
     (s s' : State) (bytes : ByteArray) (acts : List OutputAction)
     (h : handleTransportBytes s bytes = .ok (s', acts))
     (c : ConnId) (oid : OperationId) (meta : RecordCryptoMeta)
     (aad ct : ByteArray)
     (hmem : OutputAction.callCrypto c oid (CryptoOp.aeadOpen meta aad ct) ∈ acts) :
-    meta.direction = .read ∧ meta.epoch = .application := by
+    meta.direction = .read ∧ meta.epoch = s.readEpoch.epoch := by
   unfold handleTransportBytes recordFailAlert at h
   simp only [] at h
+  all_goals (try split at h)
+  all_goals (try split at h)
   all_goals (try split at h)
   all_goals (try split at h)
   all_goals (try split at h)

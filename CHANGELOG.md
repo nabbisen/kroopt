@@ -3,6 +3,52 @@
 All notable changes to kroopt are recorded here. RFC lifecycle transitions are
 governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycle-policy.md).
 
+## [0.37.0-dev] — M36 (part 1): the client Finished opens in the core (RFC 033) — 2026-06-12
+
+The receive-side blocker from the architecture review (deep-review blocker #2): the
+core now processes the **protected client Finished in-core** instead of silently
+dropping it, driving the handshake to `connected` entirely through `Core.step` with
+no out-of-core decryption workaround. The no-unauthenticated-plaintext guarantee is
+preserved and re-proved.
+
+### Changed
+
+- `Core/RecordPath.lean`: `readMeta` is **epoch-aware** (`epoch := s.readEpoch.epoch`).
+  A protected record arriving in `sentServerFinished` is opened under the **handshake**
+  read epoch; the opened inner message is routed through `handshakeOnPlaintextRecord`
+  → `onClientFinishedBytes` → `verifyFinished` → `connected`. Inner application data
+  before `connected` is fatal. The two pre-`connected` silent drops are gone.
+- `Core/Handshake.lean`: **read-epoch correctness.** The read epoch stays `handshake`
+  through `sentServerFinished` (only the server's *write* switches to application
+  after its Finished) and becomes `application` when the client Finished verifies.
+  Previously the application read epoch was installed too early.
+
+### Proofs (91 theorems, all axiom-clean; was 87)
+
+- `Proofs/RecordPath.lean`: re-proved `buffered_plaintext_authenticated` (no
+  unauthenticated plaintext) over the new branch, via four new
+  `pendingPlainOut`-preservation lemmas (`onClientHello_pp`, `onClientFinishedBytes_pp`,
+  `handshakeOnClientHello_pp`, `handshakeOnPlaintextRecord_pp`).
+- `Proofs/KeySeparation.lean`: `aeadOpen_uses_read_keys` now proves the honest
+  property `meta.direction = .read ∧ meta.epoch = s.readEpoch.epoch` (opens use the
+  current read epoch — handshake for the client Finished, application afterwards).
+- `Proofs/Nonces.lean`: `successful_open_increments_read_seq` re-proved over the new
+  branch (which buffers no plaintext).
+
+### Tests
+
+- `kroopt-realhandshake-test` (+4 checks, 25 total): the **sealed** client Finished is
+  driven through `step`, asserting the core opens it under the handshake epoch, routes
+  it to `verifyFinished`, reaches `connected`, and buffers no application plaintext.
+- `kroopt-nonce-test`: `connectedState` now carries application epochs (faithful to the
+  real connected transition).
+
+### RFC lifecycle
+
+- **RFC 033** — partial; stays in `proposed/`. Remaining: bounded handshake-message
+  reassembler (fragmented/coalesced records), overlap-selection negotiation, ClientHello
+  strictness, explicit CCS. The current fix handles a single-record-complete Finished.
+
 ## [0.36.0-dev] — M36-prelude: provider capability honesty + fail-closed entropy (RFC 034) — 2026-06-12
 
 The immediate honesty fixes the architecture review asked to fast-track ahead of the

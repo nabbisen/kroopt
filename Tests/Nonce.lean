@@ -23,7 +23,9 @@ def bytes (l : List UInt8) : ByteArray := ByteArray.mk l.toArray
 
 def connectedState : State :=
   let s := State.initial ⟨0, 0⟩ ⟨0⟩ .sha256
-  { s with handshake := .connected }
+  { s with handshake := .connected
+           readEpoch := { s.readEpoch with epoch := .application }
+           writeEpoch := { s.writeEpoch with epoch := .application } }
 
 /-- A connected state whose write sequence is one below the `UInt64` ceiling, so
 the next seal would overflow. -/

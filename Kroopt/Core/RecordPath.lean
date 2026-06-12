@@ -47,9 +47,11 @@ def recordFailAlert (s : State) (a : AlertDescription) (e : TlsError) : RecordSt
        [ OutputAction.failWithAlert s.connId a,
          OutputAction.reportError s.connId e ])
 
-/-- AEAD metadata for a read-direction protected record. -/
+/-- AEAD metadata for a read-direction protected record. The epoch follows the
+installed read epoch: `handshake` while opening a protected handshake record (the
+client Finished) before `connected`, `application` afterwards (RFC 004 §6.5). -/
 def readMeta (s : State) : RecordCryptoMeta :=
-  { conn := s.connId, direction := .read, epoch := .application
+  { conn := s.connId, direction := .read, epoch := s.readEpoch.epoch
     seq := s.readEpoch.seq
     suite := s.negotiated.selectedSuite.getD .aes128GcmSha256
     contentRole := .applicationData }
@@ -95,8 +97,18 @@ def handleTransportBytes (s0 : State) (b : ByteArray) : RecordStepResult :=
             let (oid, s) := s.allocOp .aeadOpen .application (some .read)
             .ok (s, [OutputAction.callCrypto s.connId oid
                       (CryptoOp.aeadOpen (readMeta s) (ByteArray.mk #[]) body)])
+          else if s.handshake = .sentServerFinished then
+            -- Protected handshake record expected here: the client Finished, sealed
+            -- under the client handshake-traffic key. Open it under the handshake
+            -- read epoch (`readMeta` follows `readEpoch.epoch`) and route the opened
+            -- inner message through the handshake model (RFC 033 §3). The result is
+            -- handled by the not-connected `aeadOpened` branch below — it never
+            -- reaches the application plaintext buffer.
+            let (oid, s) := s.allocOp .aeadOpen .handshake (some .read)
+            .ok (s, [OutputAction.callCrypto s.connId oid
+                      (CryptoOp.aeadOpen (readMeta s) (ByteArray.mk #[]) body)])
           else
-            -- Protected record before `connected`: handshake record path is M4.
+            -- No protected record is expected in any other pre-`connected` phase.
             .ok (s, [])
       | .changeCipherSpec =>
           match classifyCcs body with
@@ -146,8 +158,32 @@ def handleCryptoResultCorrelated (s : State) (op : OperationId) (r : CryptoResul
             | .changeCipherSpec => .ok (s.clearOp op, [])
             | .invalid => .ok (s.clearOp op, [])
       else
-        -- Open result while not connected: ignore (no plaintext).
-        .ok (s.clearOp op, [])
+        -- Open result before `connected`: this is a protected handshake record (the
+        -- client Finished). Route the opened inner message through the handshake model
+        -- (RFC 033 §3); it never fills `pendingPlainOut`, preserving the no-early /
+        -- no-unauthenticated-plaintext invariants. Inner application data here is a
+        -- protocol violation.
+        match parseInnerPlaintext pt with
+        | .error e => recordFailAlert s (alertForParseError e.toPublic) (.parse e.toPublic)
+        | .ok inner =>
+            match inner.ctype with
+            | .handshake =>
+                match s.readEpoch.seq.next with
+                | none => recordFailAlert s .internalError (.protocol .sequenceOverflow)
+                | some sq =>
+                    let s := { (s.clearOp op) with
+                               readEpoch := { s.readEpoch with seq := sq } }
+                    handshakeOnPlaintextRecord s inner.content
+            | .applicationData =>
+                recordFailAlert s .unexpectedMessage (.protocol .illegalMessageForState)
+            | .alert =>
+                .ok ((s.clearOp op |> fun s =>
+                      { s with handshake := .closing
+                               closeState := .receivedCloseNotify }),
+                     [OutputAction.closeTransport s.connId .graceful])
+            | .changeCipherSpec => .ok (s.clearOp op, [])
+            | .invalid =>
+                recordFailAlert s (alertForParseError .invalidContentType) (.parse .invalidContentType)
   | .aeadSealed ct =>
       .ok ((s.clearOp op |> fun s =>
             { s with outboundCiphertext := s.outboundCiphertext ++ ct }),

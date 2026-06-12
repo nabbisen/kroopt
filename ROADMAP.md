@@ -204,6 +204,17 @@ external interop (RFC 015/026) are **frozen** until these gates pass, in this or
 - **post-M38 — browser-grade crypto surface (RFC 035).** AES-GCM/P-256/ECDSA/RSA and a
   practical public-certificate story, only after the above are green.
 
+*M36 part 1 shipped — the client Finished opens in the core (RFC 033):* the protected
+client Finished (outer `application_data`) is now opened **in-core** under the handshake
+read epoch and routed through the handshake model to `connected`, with no out-of-core
+decryption workaround; inner application data before `connected` is fatal. Read-epoch
+correctness landed (read stays handshake until the client Finished verifies). Proofs
+re-established (91 theorems): `buffered_plaintext_authenticated` + four preservation
+lemmas, `KeySeparation.aeadOpen_uses_read_keys` (now read-epoch-relative), and
+`Nonces.successful_open_increments_read_seq`. RFC 033 stays in `proposed/` — the
+handshake-message reassembler, overlap negotiation, ClientHello strictness, and CCS
+policy remain. `kroopt-realhandshake-test` grew +4 checks (25).
+
 *M36-prelude shipped the honesty fixes (RFC 034):* the real provider now advertises only
 `realCapabilities` (the constrained ChaCha/X25519/Ed25519/SHA-256, OS-CSPRNG profile),
 `validateServerConfigCapabilities` rejects an out-of-profile config with a typed
