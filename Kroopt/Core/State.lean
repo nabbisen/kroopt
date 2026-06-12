@@ -141,6 +141,10 @@ structure State where
   nextOpId : UInt64
   inboundCiphertext : ByteArray
   outboundCiphertext : ByteArray
+  /-- Handshake-message reassembly buffer (RFC 033): handshake records carry an opaque
+  byte stream that may split a message across records or coalesce several; this holds
+  the unframed remainder between records. Bounded at runtime. -/
+  handshakeReasm : ByteArray
   pendingPlainOut : Option ByteArray
   pendingClientFinished : Option ByteArray
   transcript : TranscriptState
@@ -167,6 +171,7 @@ def initial (conn : ConnId) (cfg : ConfigGeneration) (alg : HashAlgorithm) : Sta
     nextOpId := 0
     inboundCiphertext := ByteArray.mk #[]
     outboundCiphertext := ByteArray.mk #[]
+    handshakeReasm := ByteArray.mk #[]
     pendingPlainOut := none
     pendingClientFinished := none
     transcript := TranscriptState.fresh alg

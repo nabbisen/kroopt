@@ -17,14 +17,15 @@ v0.4 hardening / release-governance bands.
 RFCs **031–037** were added after the 0.35.0-dev architecture review and amended after
 the review of the RFCs themselves. They form the pre-interop correspondence-and-hardening
 band: **034** (M36-prelude) shipped the immediate honesty fix in 0.36.0-dev (real
-provider capabilities + fail-closed entropy); **031–033** (M36) close the proof/runtime correspondence gap and
-make the production interpreter process real-client handshakes (typed actions, handshake
-reassembly, overlap negotiation, protected handshake records before `connected`); **037**
+provider capabilities + fail-closed entropy); **033** (M36, done in 0.42.0-dev) made the core process real-client handshakes
+(protected handshake records before `connected`, capability-bound overlap negotiation, ClientHello
+strictness, explicit CCS window, handshake-message reassembly); **031–032** (M36) remain open to close
+the proof/runtime correspondence gap (typed actions and production-interpreter correspondence); **037**
 (M37) hardens the native boundary, secret arena, and resource budgets; **036** adds the
 captured-client replay + trace harness for **038** constrained OpenSSL/curl interop; and
 **035** records the decision to defer browser-grade crypto breadth until the constrained
 profile is proven against live clients. iotakt binding (RFC 010) and external interop
-(RFC 015/026) are frozen until 031–033 (and, before live clients, 037) land; 034 is done.
+(RFC 015/026) are frozen until 031–032 (and, before live clients, 037) land; 033 and 034 are done.
 
 Read order: ROADMAP first, then RFCs 001–007 (pure verified core), 008–009
 (crypto integration), 010–015 (runtime integration and acceptance), 016 (scope
@@ -47,7 +48,6 @@ control), then 017–030 (cross-cutting security, lifecycle, and release governa
 | 030 | [Production Readiness and Release Runbook](proposed/030-production-readiness-and-release-runbook.md) | `docs/src/release-runbook.md` + release checklist |
 | 031 | [Production Interpreter Correspondence](proposed/031-production-interpreter-correspondence.md) | Byte-accurate handshake driven by the production interpreter from typed core-authorized actions; op-id lifecycle; correspondence ledger + tests (M36) |
 | 032 | [Typed Handshake/Record Assembly Contract](proposed/032-typed-flight-assembly-contract.md) | Typed core handshake/record actions replacing placeholder frames; two-stage crypto actions; handshake-bytes transcript; proofs re-established; CI gate (M36) |
-| 033 | [Real-Client Handshake Processing](proposed/033-real-client-handshake-processing.md) | Protected handshake records before `connected`; handshake-message reassembly; overlap-selection negotiation; explicit CCS; ClientHello strictness (M36) |
 | 035 | [Browser-Grade Crypto Surface](proposed/035-browser-grade-crypto-surface.md) | Deferred — AES-GCM/P-256/ECDSA/RSA + cert-ecosystem story only after M36/M37/M38 green |
 | 036 | [Live Interop Trace Harness and Captured-Client Replay](proposed/036-live-interop-trace-harness.md) | Captured-CH replay fixtures; no-secrets trace facility; constrained-vs-browser-grade separation (M38; prep in M36) |
 | 037 | [Native FFI Safety, Secret Arena, and Resource-Budget Enforcement](proposed/037-native-safety-and-budget-enforcement.md) | FFI length contracts (all `uint32_t` params); native/classified secret arena; budget charging in the core; record-size guards; sanitizers (M37) |
@@ -61,6 +61,7 @@ milestone where the work substantively landed (see CHANGELOG/ROADMAP for detail)
 |----|-------|------------|
 | 000 | [RFC lifecycle policy](done/000-rfc-lifecycle-policy.md) | Implemented |
 | 034 | [Provider Capability Honesty and Fail-Closed Entropy](done/034-provider-capability-honesty-and-entropy.md) | 0.36.0-dev (M36-prelude) |
+| 033 | [Real-Client Handshake Processing](done/033-real-client-handshake-processing.md) | 0.37–0.42.0-dev (M36 parts 1–6) |
 | 001 | [Boundary and Non-Goals](done/001-boundary-and-non-goals.md) | M0 |
 | 002 | [Verified Core and Proof/Runtime Correspondence](done/002-verified-core-and-proof-runtime-correspondence.md) | M0 |
 | 003 | [Bounds-Safe Parser and Framer Foundation](done/003-bounds-safe-parser-and-framer.md) | M1 |

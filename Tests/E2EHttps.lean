@@ -37,7 +37,7 @@ def chMsg : List UInt8 :=
 def record (ty : UInt8) (body : List UInt8) : ByteArray :=
   bytesOf ([ty, 0x03, 0x03] ++ u16be body.length ++ body)
 def chRecord : ByteArray := record 22 chMsg
-def clientFinishedRecord : ByteArray := record 22 ([20] ++ u16be 32 ++ List.replicate 32 0x55)
+def clientFinishedRecord : ByteArray := record 22 ([20] ++ [0, 0, 32] ++ List.replicate 32 0x55)
 
 -- An HTTP request, wrapped as a TLS application-data inner record (content + the
 -- inner content-type byte 23), then record-framed. The fake AEAD is identity, so

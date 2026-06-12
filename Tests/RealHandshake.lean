@@ -281,6 +281,42 @@ def protectedFinishedDrive : Bool × Bool × Bool × Bool :=
                       let reachedConnected := match s3.handshake with | .connected => true | _ => false
                       (opensUnderHandshake, routedToVerify, reachedConnected, noPlaintextLeak)
 
+/-- **RFC 033 reassembler — unit.** `frameHandshakeMessage` frames exactly one complete
+handshake message (header included), reports `none` while incomplete, and returns the
+tail when a record coalesces a message with trailing bytes. -/
+def reasmFramingOk : Bool :=
+  let complete  := ByteArray.mk #[1, 0, 0, 3, 0xAA, 0xBB, 0xCC]   -- type 1, len 3, 3 body
+  let incomplete := ByteArray.mk #[1, 0, 0, 3, 0xAA]              -- only 1 of 3 body bytes
+  let coalesced := ByteArray.mk #[1, 0, 0, 1, 0x42, 0x99]        -- a 1-byte msg + 1 trailing
+  (match frameHandshakeMessage complete with
+   | some (m, r) => m.size == 7 && r.size == 0 | none => false)
+  && (frameHandshakeMessage incomplete).isNone
+  && (match frameHandshakeMessage coalesced with
+      | some (m, r) => m.size == 5 && r.size == 1 | none => false)
+
+/-- **RFC 033 reassembler — fragmentation.** A ClientHello split across two handshake
+records is reassembled and drives to the *same* state as the same ClientHello delivered
+in one record (`run`). -/
+def fragmentedClientHelloReachesSameState : Bool :=
+  let ch := clientHelloMsg
+  let half := ch.size / 2
+  let whole := driveFuel 256 fresh [InputEvent.transportBytes ⟨0, 0⟩ (recordWrap ch)]
+  let frag := driveFuel 256 fresh
+    [InputEvent.transportBytes ⟨0, 0⟩ (recordWrap (ch.extract 0 half)),
+     InputEvent.transportBytes ⟨0, 0⟩ (recordWrap (ch.extract half ch.size))]
+  !frag.errored && !whole.errored
+    && frag.st.handshake == whole.st.handshake
+    && frag.st.handshake == .sentServerFinished
+
+/-- A handshake message whose header claims a huge length never completes; fed across
+enough records to pass `maxHandshakeReasmBytes`, it fails the connection rather than
+buffering without bound. -/
+def bigHdrFrag : ByteArray :=
+  (ByteArray.mk #[1, 0xFF, 0xFF, 0xFF]) ++ ByteArray.mk (Array.mkArray 16000 (0x00 : UInt8))
+def oversizedReasmFails : Bool :=
+  let ev := InputEvent.transportBytes ⟨0, 0⟩ (recordWrap bigHdrFrag)
+  (driveFuel 64 fresh [ev, ev, ev, ev, ev]).errored
+
 def main : IO UInt32 := do
   let d := run
   let reached := phaseName d.st.handshake
@@ -366,6 +402,12 @@ def main : IO UInt32 := do
         protectedFinishedDrive.2.2.1)
     , ("opening the protected handshake record buffers no application plaintext",
         protectedFinishedDrive.2.2.2)
+    , ("frameHandshakeMessage frames one message, reports incomplete, splits coalesced (RFC 033)",
+        reasmFramingOk)
+    , ("a ClientHello split across two records reassembles to the same state as one record (RFC 033)",
+        fragmentedClientHelloReachesSameState)
+    , ("an over-large handshake reassembly buffer fails the connection (RFC 033)",
+        oversizedReasmFails)
     ]
 
   let mut failed := 0

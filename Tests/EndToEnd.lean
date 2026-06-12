@@ -48,7 +48,7 @@ def record (body : List UInt8) : ByteArray :=
   b ([22, 0x03, 0x03] ++ u16be body.length ++ body)
 
 def chRecord : ByteArray := record chMsg
-def clientFinishedRecord : ByteArray := record ([20] ++ u16be 32 ++ List.replicate 32 0x55)
+def clientFinishedRecord : ByteArray := record ([20] ++ [0, 0, 32] ++ List.replicate 32 0x55)
 
 /-! ## Fake crypto provider (deterministic, purpose-aware) -/
 
@@ -111,7 +111,7 @@ def runE2E : Driver :=
 
 /-! ## Negative scenarios -/
 
-def malformedChRecord : ByteArray := record [1, 0, 0, 8, 0x03, 0x03, 0, 0]  -- truncated CH
+def malformedChRecord : ByteArray := record [1, 0, 0, 4, 0x03, 0x03, 0, 0]  -- complete header (len24=4), body too short for a CH
 def runMalformedCH : Driver :=
   driveFuel 16 fresh [InputEvent.transportBytes ⟨0, 0⟩ malformedChRecord]
 

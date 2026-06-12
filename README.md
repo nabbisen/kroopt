@@ -73,9 +73,9 @@ three proof gates run in CI on every change.
 
 Under active development toward a real TLS 1.3 server interop milestone. The verified
 core, parser, record layer, key schedule, real HACL\* provider, and a live
-step-driven handshake to `connected` (with a real transcript and an in-core protected
-client Finished) are in place; the production interpreter, handshake-message
-reassembly, and external-client interop are in progress. The ClientHello parser negotiates the signature scheme from the client's offer (selecting Ed25519 only when offered), which makes the constrained profile's interop limit explicit: a client that does not offer Ed25519 is rejected rather than served a certificate it cannot verify. Suite and group selection are bound the same way — kroopt negotiates ChaCha20-Poly1305 and X25519 from the client's offers and never a suite the provider cannot perform. The current milestone and
+step-driven handshake to `connected` (with a real transcript, an in-core protected
+client Finished, and handshake-message reassembly across records) are in place; the
+production interpreter and external-client interop are in progress. The ClientHello parser negotiates the signature scheme from the client's offer (selecting Ed25519 only when offered), which makes the constrained profile's interop limit explicit: a client that does not offer Ed25519 is rejected rather than served a certificate it cannot verify. Suite and group selection are bound the same way — kroopt negotiates ChaCha20-Poly1305 and X25519 from the client's offers and never a suite the provider cannot perform. The current milestone and
 the running tally of machine-checked theorems are tracked in
 [CHANGELOG.md](CHANGELOG.md) and the [ROADMAP](ROADMAP.md).
 

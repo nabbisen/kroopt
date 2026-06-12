@@ -1,7 +1,7 @@
 # RFC 033 — Real-Client Handshake Processing
 
 **Project.** kroopt  
-**Status.** Proposed  
+**Status.** Implemented (0.42.0-dev)  
 **Type.** Implementation RFC  
 **Target milestone.** M36  
 **Depends on.** RFC 004 (record model), RFC 006 (handshake state model), RFC 007 (transcript), RFC 003 (parser)  
@@ -36,10 +36,29 @@
 > makes the constrained profile's interop limit explicit and honest: it rejects the
 > RSA/ECDSA-only RFC 8448 §3 ClientHello (`Tests/Wire.lean` asserts this), since
 > kroopt presents Ed25519 only.
-> **Still pending in this RFC:** the bounded handshake-message reassembler
-> (`Core/HandshakeReasm.lean`, for fragmented/coalesced records — deferred pending a
-> clean `ByteArray.extract` size bound). This is the last item; the RFC stays in
-> `proposed/` until it lands.
+> **Status note — implemented (0.42.0-dev, M36 part 6, final).** The bounded
+> handshake-message reassembler landed, completing this RFC. The earlier deferral cited
+> a missing `ByteArray.extract` size bound; that premise was false. The reassembly
+> buffer is a plain `ByteArray` field (`State.handshakeReasm`) with a runtime capacity
+> check, exactly like `inboundCiphertext` — no proof reasons about its size, so no
+> extract lemma was ever needed. `Core/RecordPath.lean` adds `frameHandshakeMessage`
+> (frames one complete handshake message — 1-byte type, 3-byte length, body — returning
+> the message and the unconsumed tail, or `none` while incomplete) and a constant
+> `maxHandshakeReasmBytes`. The plaintext handshake branch of `handleTransportBytes` now
+> accumulates record fragments into `handshakeReasm`, frames and processes one complete
+> message, keeps the tail for the next record, and fails the connection if the buffer
+> exceeds the bound. This makes a ClientHello fragmented across records parse correctly
+> (it previously hit the parser as a truncated message and was rejected). The three
+> theorems that case-split `handleTransportBytes`
+> (`buffered_plaintext_authenticated`, `KeySeparation.aeadOpen_uses_read_keys`,
+> `Nonces.successful_open_increments_read_seq`) hold over the new branch unchanged — the
+> obligation is `pendingPlainOut` preservation, which the existing lemmas give.
+>
+> *Scope note.* The reassembler processes one handshake message per transport event; a
+> record that coalesces several messages leaves the tail buffered for the next event,
+> which suits the server flow (one inbound message per phase). The protected
+> client-Finished path stays single-record (the Finished is small and does not fragment
+> in practice). A follow-up may extend strictness/reassembly to the protected inner path.
 >
 > **Status note — partial (0.41.0-dev, M36 part 5).** The `change_cipher_spec` phase
 > window is now explicit (`Core/RecordPath.lean`, RFC 8446 §5): a compatibility-mode CCS

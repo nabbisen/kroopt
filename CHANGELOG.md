@@ -3,6 +3,54 @@
 All notable changes to kroopt are recorded here. RFC lifecycle transitions are
 governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycle-policy.md).
 
+## [0.42.0-dev] — M36 (part 6): handshake-message reassembler — RFC 033 complete — 2026-06-12
+
+The bounded handshake-message reassembler lands, completing RFC 033 (Real-Client
+Handshake Processing). A ClientHello fragmented across records now parses correctly.
+
+### Added
+
+- `Core/State.lean`: `handshakeReasm : ByteArray` — the handshake-message reassembly
+  buffer, a plain `ByteArray` with a runtime cap (like `inboundCiphertext`).
+- `Core/RecordPath.lean`: `frameHandshakeMessage` frames one complete handshake message
+  (1-byte type, 3-byte length, body), returning the message and the unconsumed tail, or
+  `none` while incomplete; `maxHandshakeReasmBytes` bounds the buffer.
+
+### Changed
+
+- `Core/RecordPath.lean`: the plaintext handshake branch of `handleTransportBytes` now
+  accumulates record fragments into `handshakeReasm`, frames and processes one complete
+  message, keeps the tail for the next record, and fails the connection (oversized-record
+  alert) if the buffer exceeds the bound. Previously each record body was assumed to be
+  one complete handshake message, so a fragmented ClientHello was rejected as truncated.
+
+### Tests
+
+- `kroopt-realhandshake-test` (+3 checks, 28 total): `frameHandshakeMessage` framing unit
+  (complete / incomplete / coalesced-with-tail); a ClientHello split across two records
+  reassembles to the same state as one delivered whole; an over-large reassembly buffer
+  fails the connection.
+- Fixed three synthetic client-Finished fixtures (`Tests/EndToEnd`, `Tests/Conn`,
+  `Tests/E2EHttps`) that used a 2-byte length where a handshake message requires a 3-byte
+  length, and one malformed-ClientHello fixture made complete-per-header so the parser
+  (not the reassembler) rejects it. These were latent malformations the old lenient path
+  ignored; the reassembler parses the header correctly and exposed them.
+
+### Proofs
+
+- No change to the proof set (91 theorems, all axiom-clean). The three theorems that
+  case-split `handleTransportBytes` hold over the new branch unchanged — the obligation
+  is `pendingPlainOut` preservation. The earlier deferral cited a missing
+  `ByteArray.extract` size bound; that premise was false (the buffer is unproven-size,
+  capped at runtime), so no extract lemma was needed.
+
+### RFC lifecycle
+
+- **RFC 033** (Real-Client Handshake Processing) → `done/`, **Implemented (0.42.0-dev)**.
+  All six M36 parts complete: protected client Finished in-core, capability-bound
+  negotiation of all three parameters, ClientHello strictness, the CCS phase window, and
+  the reassembler. RFC counts: done 22, proposed 16.
+
 ## [0.41.0-dev] — M36 (part 5): explicit change_cipher_spec phase window (RFC 033) — 2026-06-12
 
 The compatibility-mode `change_cipher_spec` record is now confined to its RFC 8446 §5

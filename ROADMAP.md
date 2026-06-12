@@ -204,6 +204,19 @@ external interop (RFC 015/026) are **frozen** until these gates pass, in this or
 - **post-M38 — browser-grade crypto surface (RFC 035).** AES-GCM/P-256/ECDSA/RSA and a
   practical public-certificate story, only after the above are green.
 
+*M36 part 6 shipped — handshake-message reassembler; RFC 033 COMPLETE (0.42.0-dev):* the record
+path now reassembles handshake messages across records via a bounded `State.handshakeReasm`
+buffer + `frameHandshakeMessage`, so a ClientHello fragmented across records parses correctly
+(it was previously rejected as truncated). The buffer is a plain `ByteArray` with a runtime cap
+(like `inboundCiphertext`) — the long-deferred `ByteArray.extract` size bound was a false premise,
+since no proof reasons about its size. `kroopt-realhandshake-test` +3 checks (28); three synthetic
+client-Finished fixtures and one malformed-CH fixture corrected (latent 2-byte-length malformations
+the old lenient path ignored). No proof change (91 theorems). **RFC 033 (Real-Client Handshake
+Processing) moves to done/ — Implemented (0.42.0-dev), all six M36 parts complete** (protected
+client Finished in-core, capability-bound negotiation of all three parameters, ClientHello
+strictness, CCS window, reassembler). RFC counts: done 22, proposed 16. Critical path now: RFC 032
+(typed actions), then RFC 031 (production-interpreter correspondence).
+
 *M36 part 5 shipped — explicit change_cipher_spec phase window (RFC 033):* the record path
 now confines a compatibility-mode CCS to its RFC 8446 §5 window — accepted-and-ignored only
 during an active handshake (after the ClientHello, before the client's Finished), and

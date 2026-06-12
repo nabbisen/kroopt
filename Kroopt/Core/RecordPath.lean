@@ -63,6 +63,24 @@ def writeMeta (s : State) : RecordCryptoMeta :=
     suite := s.negotiated.selectedSuite.getD .aes128GcmSha256
     contentRole := .applicationData }
 
+/-- Upper bound on the handshake reassembly buffer (RFC 033). A buffer larger than this
+is a resource-exhaustion attempt and fails the connection; it comfortably exceeds any
+real ClientHello (cf. `ResourceLimits.maxHandshakeBytes`). -/
+def maxHandshakeReasmBytes : Nat := 65536
+
+/-- Frame one complete handshake message from a reassembly buffer. A handshake message
+is a 1-byte msg_type, a 3-byte big-endian length, then that many body bytes (RFC 8446
+§4). Returns the complete message (header included, as `handshakeOnPlaintextRecord`
+expects) and the unconsumed tail, or `none` if the buffer does not yet hold a full
+message. -/
+def frameHandshakeMessage (buf : ByteArray) : Option (ByteArray × ByteArray) :=
+  if buf.size < 4 then none
+  else
+    let len := (buf.get! 1).toNat * 65536 + (buf.get! 2).toNat * 256 + (buf.get! 3).toNat
+    let total := 4 + len
+    if buf.size < total then none
+    else some (buf.extract 0 total, buf.extract total buf.size)
+
 /-- Route a plaintext handshake record to the handshake model by phase
 (RFC 006 §5, §10): in `start` it is the ClientHello (parsed and validated, else a
 clean decode failure); in `sentServerFinished` it is the client Finished; other
@@ -124,8 +142,20 @@ def handleTransportBytes (s0 : State) (b : ByteArray) : RecordStepResult :=
             | .rejected =>
                 recordFailAlert s .unexpectedMessage (.protocol .illegalMessageForState)
       | .handshake =>
-          -- Drive the handshake from a plaintext handshake record (RFC 006 §5, §10).
-          handshakeOnPlaintextRecord s body
+          -- Reassemble handshake messages across records (RFC 033): a record fragment
+          -- may carry a partial handshake message. Accumulate into the reassembly
+          -- buffer, then frame and process one complete message, keeping any tail for
+          -- the next record. An over-large buffer is a resource-exhaustion failure.
+          let buf := s.handshakeReasm ++ body
+          if buf.size > maxHandshakeReasmBytes then
+            recordFailAlert s (alertForParseError .oversizedRecord) (.parse .oversizedRecord)
+          else
+            match frameHandshakeMessage buf with
+            | none =>
+                -- Incomplete message: buffer it and ask the interpreter for more bytes.
+                .ok ({ s with handshakeReasm := buf }, [OutputAction.readTransport s.connId])
+            | some (msg, rest) =>
+                handshakeOnPlaintextRecord { s with handshakeReasm := rest } msg
       | .alert =>
           -- Minimal inbound-alert handling: begin close (full policy at M9).
           .ok ({ s with handshake := .closing, closeState := .receivedCloseNotify },

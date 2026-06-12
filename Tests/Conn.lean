@@ -35,7 +35,7 @@ def chMsg : List UInt8 :=
   [1] ++ [0, (chBody.length / 256).toUInt8, (chBody.length % 256).toUInt8] ++ chBody
 def record (body : List UInt8) : ByteArray := bytesOf ([22, 0x03, 0x03] ++ u16be body.length ++ body)
 def chRecord : ByteArray := record chMsg
-def clientFinishedRecord : ByteArray := record ([20] ++ u16be 32 ++ List.replicate 32 0x55)
+def clientFinishedRecord : ByteArray := record ([20] ++ [0, 0, 32] ++ List.replicate 32 0x55)
 
 def fd0 : FdKey := { fd := 1, generation := 1 }
 

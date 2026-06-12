@@ -97,3 +97,22 @@ handshake phase. A CCS arriving before any ClientHello (`start`), after `connect
 while closing or terminal is rejected as an illegal record (`unexpectedMessage`). The
 classification is returned to the core and the gate lives in the core — neither is
 hidden in the interpreter.
+
+## Handshake-message reassembly (RFC 033)
+
+The record layer frames TLS *records*; a handshake *message* is a separate framing
+inside the record stream (a 1-byte msg_type, a 3-byte length, then the body) and a single
+message may span several records or, in principle, several may share one. The record path
+keeps a small reassembly buffer (`State.handshakeReasm`) for this second layer: each
+plaintext handshake record's body is appended to the buffer, then `frameHandshakeMessage`
+peels off one complete message — header included, as the handshake model expects — and
+leaves any tail for the next record. While a message is still incomplete the buffer is
+retained and the interpreter is asked to read more; if the buffer ever exceeds
+`maxHandshakeReasmBytes` the connection fails rather than buffering without bound.
+
+The buffer is a plain `ByteArray` with that runtime cap, mirroring `inboundCiphertext`;
+no proof reasons about its size. The only proof obligation the new branch carries is the
+same one the rest of the record path carries — that it emits no application plaintext —
+and the existing `pendingPlainOut`-preservation lemmas discharge it unchanged. The
+practical effect is that a ClientHello fragmented across records now parses correctly; it
+previously reached the parser as a truncated message and was rejected.
