@@ -47,6 +47,7 @@ inductive Phase where
   | awaitClientHs
   | awaitInstallWriteHs
   | awaitInstallReadHs
+  | handshakeKeysInstalled
   | awaitDerivedMs
   | awaitMaster
   | awaitServerAp
@@ -56,8 +57,9 @@ inductive Phase where
   | complete
   deriving DecidableEq, Repr, Inhabited
 
-/-- Position of a phase in the chain (0 = first await, 14 = complete). The
-progress proof shows each accepted result increases this by one. -/
+/-- Position of a phase in the chain (0 = first await, 15 = complete). Strictly
+increasing along the schedule. `handshakeKeysInstalled` (rank 8) is the pause
+between the handshake-key stage and the application-key stage. -/
 def Phase.rank : Phase → Nat
   | awaitShared => 0
   | awaitEarly => 1
@@ -67,13 +69,14 @@ def Phase.rank : Phase → Nat
   | awaitClientHs => 5
   | awaitInstallWriteHs => 6
   | awaitInstallReadHs => 7
-  | awaitDerivedMs => 8
-  | awaitMaster => 9
-  | awaitServerAp => 10
-  | awaitClientAp => 11
-  | awaitInstallWriteAp => 12
-  | awaitInstallReadAp => 13
-  | complete => 14
+  | handshakeKeysInstalled => 8
+  | awaitDerivedMs => 9
+  | awaitMaster => 10
+  | awaitServerAp => 11
+  | awaitClientAp => 12
+  | awaitInstallWriteAp => 13
+  | awaitInstallReadAp => 14
+  | complete => 15
 
 /-- Secret handles collected as the schedule runs. Each is filled when its
 producing operation's result is accepted. -/
@@ -100,7 +103,9 @@ structure State where
   suite     : CipherSuite
   emptyHash : ByteArray
   hsTranscript : ByteArray
-  apTranscript : ByteArray
+  /-- The CH..server-Finished transcript hash, not known when the handshake-key
+  stage starts; supplied later by `resumeApplication`. -/
+  apTranscript : ByteArray := ByteArray.empty
   deriving Inhabited
 
 /-- Whether an op is a legitimate key-schedule op (the only kinds the driver ever
@@ -113,11 +118,13 @@ def isScheduleOp : CryptoOp → Bool
   | .installTrafficKeys _ _ _ _ => true
   | _ => false
 
-/-- Begin the schedule: emit the ECDHE operation and await its result. -/
-def start (suite : CipherSuite) (peerShare emptyHash hsTranscript apTranscript : ByteArray) :
+/-- Begin the handshake-key stage: emit the ECDHE operation and await its result.
+The application transcript is not yet known and is supplied later by
+`resumeApplication`. -/
+def start (suite : CipherSuite) (peerShare emptyHash hsTranscript : ByteArray) :
     State × CryptoOp :=
   ({ phase := .awaitShared, handles := {}, suite := suite, emptyHash := emptyHash,
-     hsTranscript := hsTranscript, apTranscript := apTranscript },
+     hsTranscript := hsTranscript },
    CryptoOp.ecdheX25519 peerShare)
 
 /-- Helper: an HKDF-Expand-Label op for a 32-byte secret derivation. -/
@@ -158,8 +165,11 @@ def advance (s : State) (r : CryptoResult) : Except TlsError (State × List Cryp
       .ok ({ s with phase := .awaitInstallReadHs },
            [CryptoOp.installTrafficKeys s.suite .read .handshake (h.cHs.getD ⟨0, 0⟩)])
   | .awaitInstallReadHs, .keysInstalled =>
-      .ok ({ s with phase := .awaitDerivedMs },
-           [expand (h.handshake.getD ⟨0, 0⟩) "derived" s.emptyHash])
+      -- handshake-key stage complete; pause until the application transcript is
+      -- known (the server flight must be committed first). `resumeApplication`
+      -- drives the rest.
+      .ok ({ s with phase := .handshakeKeysInstalled }, [])
+  | .handshakeKeysInstalled, _ => .ok (s, [])
   | .awaitDerivedMs, .hkdfSecret d =>
       let h := { h with derivedMs := some d }
       .ok ({ s with phase := .awaitMaster, handles := h },
@@ -183,5 +193,18 @@ def advance (s : State) (r : CryptoResult) : Except TlsError (State × List Cryp
       .ok ({ s with phase := .complete }, [])
   | .complete, _ => .ok (s, [])
   | _, _ => .error .internalInvariantFailure
+
+/-- Begin the application-key stage. Called once the server flight is committed
+and the CH..server-Finished transcript hash is known. Requires the handshake-key
+stage to have finished (`handshakeKeysInstalled`); records the application
+transcript and emits the Derive-Secret(handshake, "derived") op that opens the
+master-secret chain. -/
+def resumeApplication (s : State) (apTranscript : ByteArray) :
+    Except TlsError (State × List CryptoOp) :=
+  if s.phase = .handshakeKeysInstalled then
+    .ok ({ s with phase := .awaitDerivedMs, apTranscript := apTranscript },
+         [expand (s.handles.handshake.getD ⟨0, 0⟩) "derived" s.emptyHash])
+  else
+    .error .internalInvariantFailure
 
 end Kroopt.Core.KeyScheduleDriver

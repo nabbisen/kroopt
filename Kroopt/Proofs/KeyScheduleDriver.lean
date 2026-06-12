@@ -34,10 +34,12 @@ theorem advance_emits_schedule_ops
       | simp_all
 
 /-- Each accepted result advances the phase by exactly one rank — the schedule is
-finite and strictly progressing. -/
+finite and strictly progressing. The two non-advancing phases (`complete` and the
+`handshakeKeysInstalled` pause, which is driven onward by `resumeApplication`, not
+by a crypto result) are excluded. -/
 theorem advance_progress
     (s s' : State) (r : Kroopt.Core.CryptoResult) (ops : List Kroopt.Core.CryptoOp)
-    (hne : s.phase ≠ .complete)
+    (hne : s.phase ≠ .complete) (hpause : s.phase ≠ .handshakeKeysInstalled)
     (hok : advance s r = .ok (s', ops)) :
     s'.phase.rank = s.phase.rank + 1 := by
   unfold advance at hok
@@ -54,10 +56,42 @@ theorem advance_complete_terminal
   unfold advance
   split <;> simp_all
 
+/-- The `handshakeKeysInstalled` pause is inert under `advance`: a crypto result
+delivered there emits nothing and is held until `resumeApplication`. -/
+theorem advance_pause_inert
+    (s : State) (r : Kroopt.Core.CryptoResult) (h : s.phase = .handshakeKeysInstalled) :
+    advance s r = .ok (s, []) := by
+  unfold advance
+  split <;> simp_all
+
+/-- The application-key stage opens with a schedule op (Derive-Secret). -/
+theorem resumeApplication_emits_schedule_ops
+    (s s' : State) (apTh : ByteArray) (ops : List Kroopt.Core.CryptoOp)
+    (hok : resumeApplication s apTh = .ok (s', ops)) :
+    ops.all isScheduleOp = true := by
+  unfold resumeApplication at hok
+  split at hok <;>
+    first
+      | (obtain ⟨_, rfl⟩ := hok; simp [isScheduleOp, expand])
+      | simp_all
+
+/-- Resuming advances out of the pause by exactly one rank
+(`handshakeKeysInstalled` → `awaitDerivedMs`). -/
+theorem resumeApplication_progress
+    (s s' : State) (apTh : ByteArray) (ops : List Kroopt.Core.CryptoOp)
+    (hph : s.phase = .handshakeKeysInstalled)
+    (hok : resumeApplication s apTh = .ok (s', ops)) :
+    s'.phase.rank = s.phase.rank + 1 := by
+  unfold resumeApplication at hok
+  split at hok <;>
+    first
+      | (obtain ⟨rfl, _⟩ := hok; simp_all [Phase.rank])
+      | simp_all
+
 /-- The opening operation of the schedule is itself a schedule op. -/
 theorem start_emits_schedule_op
-    (suite : Kroopt.Core.CipherSuite) (peer eh hs ap : ByteArray) :
-    isScheduleOp (start suite peer eh hs ap).2 = true := by
+    (suite : Kroopt.Core.CipherSuite) (peer eh hs : ByteArray) :
+    isScheduleOp (start suite peer eh hs).2 = true := by
   simp [start, isScheduleOp]
 
 end Kroopt.Core.Proofs

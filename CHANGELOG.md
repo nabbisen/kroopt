@@ -3,6 +3,57 @@
 All notable changes to kroopt are recorded here. RFC lifecycle transitions are
 governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycle-policy.md).
 
+## [0.17.0-dev] — M16 two-stage (interleaved) key-schedule orchestrator — 2026-06-11
+
+Corrects the orchestrator's derivation timing to match TLS 1.3. The M15 version
+took both transcript hashes up front, which assumes the whole schedule runs at
+once; in a real handshake the handshake-traffic keys are installed right after
+ServerHello, but the application-traffic keys can only be derived after the server
+Finished is committed (their transcript runs CH..server-Finished). The
+orchestrator now pauses between the two stages, so it can be driven exactly the way
+the live handshake will drive it. Still not invoked by `Kroopt.Core.step` — wiring
+is the next milestone — so the existing handshake proofs remain untouched.
+
+### Changed — orchestrator splits into two stages (`Kroopt.Core.KeyScheduleDriver`)
+
+- `start` now takes only the suite, peer share, empty-hash, and the
+  CH..ServerHello transcript (the application transcript is not yet known) and runs
+  the **handshake-key stage** (ECDHE → … → install handshake keys), then parks at a
+  new `handshakeKeysInstalled` phase. A crypto result delivered at the pause is
+  held, not consumed.
+- New `resumeApplication apTranscript` supplies the CH..server-Finished transcript
+  once the server flight is committed and opens the **application-key stage**
+  (Derive-Secret(handshake, "derived") → master → application-traffic secrets →
+  install application keys → `complete`).
+
+### Changed — proofs (→ 85 theorems)
+
+- `advance_progress` now excludes both non-advancing phases (`complete` and the
+  `handshakeKeysInstalled` pause). Added `advance_pause_inert` (the pause emits
+  nothing under a crypto result), `resumeApplication_emits_schedule_ops`, and
+  `resumeApplication_progress`. The schedule-ops-only and progress disciplines now
+  cover both stages. Axiom audit green; `{propext, Quot.sound}`.
+
+### Changed — test drives both stages (`kroopt-scheduledriver-test`, 12 checks)
+
+- Stage 1 runs from `start` to the `handshakeKeysInstalled` pause and checks the
+  handshake secrets and installed handshake `write_key`/`write_iv` against RFC 8448
+  §3; `resumeApplication` then supplies the CH..server-Finished transcript and stage
+  2 runs to `complete`, checking the Master and application-traffic secrets and all
+  four installed traffic keys. Both stages run against the real provider.
+
+### The honest boundary (next)
+
+- The orchestrator now matches the handshake's interleaving but is still not
+  invoked by `Kroopt.Core.step`. Faithful wiring is now two insertions: pump the
+  handshake-key stage after ServerHello is framed, then `resumeApplication` and
+  pump the application-key stage after the server Finished is committed. The
+  handshake's safety proofs are absence-dominated and the orchestrator is proved to
+  emit only schedule ops, so the integration is expected to preserve them. See
+  `docs/src/key-schedule-orchestrator.md`.
+
+
+
 ## [0.16.0-dev] — M15 verified key-schedule orchestrator, driven through the real provider — 2026-06-11
 
 Moves the *sequence* of the TLS 1.3 key schedule — which operation comes next,

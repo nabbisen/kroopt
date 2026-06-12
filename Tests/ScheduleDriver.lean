@@ -59,7 +59,7 @@ def drive (cfg : RealCryptoConfig) : Nat → State → SecretArena → CryptoRes
     Except Kroopt.CryptoError (State × SecretArena)
   | 0, _, _, _ => .error .providerInternal
   | fuel + 1, st, a, r =>
-    if st.phase = .complete then .ok (st, a)
+    if st.phase = .complete ∨ st.phase = .handshakeKeysInstalled then .ok (st, a)
     else
       match advance st r with
       | .error _ => .error .providerInternal
@@ -76,11 +76,23 @@ def runChecks : Except Kroopt.CryptoError (List (String × Bool)) := do
   let cfg : RealCryptoConfig :=
     { ephemeralPrivate := hexToBytes serverPriv, certPrivate := certPriv
     , certPublic := Kroopt.Crypto.Hacl.ed25519Public certPriv }
-  -- the verified orchestrator produces the opening ECDHE op
+  -- the verified orchestrator produces the opening ECDHE op (handshake-key stage,
+  -- knowing only the CH..ServerHello transcript)
   let (st0, op0) := start .aes128GcmSha256 (hexToBytes clientPub)
-                      (hexToBytes emptyHashHex) (hexToBytes th1) (hexToBytes th2)
+                      (hexToBytes emptyHashHex) (hexToBytes th1)
   let (a0, r0) ← RealProvider.submit cfg SecretArena.empty ⟨0⟩ op0
-  let (st, a) ← drive cfg 64 st0 a0 r0
+  -- stage 1: drive to the handshake-keys pause
+  let (st1, a1) ← drive cfg 64 st0 a0 r0
+  -- stage 2: the server flight is now committed, so the CH..server-Finished
+  -- transcript is known; resume the application-key stage with it
+  let (st2, ops2) ← (resumeApplication st1 (hexToBytes th2)).mapError (fun _ => Kroopt.CryptoError.providerInternal)
+  let (a2, st, a) ← (match ops2 with
+    | op :: _ => do
+        let (a2, r2) ← RealProvider.submit cfg a1 ⟨0⟩ op
+        let (st, a) ← drive cfg 64 st2 a2 r2
+        pure (a2, st, a)
+    | [] => .error .providerInternal)
+  let _ := a2
 
   let getEq : Option Kroopt.Core.SecretKeyHandle → String → Bool :=
     fun oh hex => match oh with
@@ -98,10 +110,11 @@ def runChecks : Except Kroopt.CryptoError (List (String × Bool)) := do
     (a.lookupInstalled dir epoch).isSome
 
   let checks : List (String × Bool) :=
-    [ ("orchestrator drove the schedule to completion", decide (st.phase = .complete))
-    , ("ECDHE shared secret (orchestrator handle) = RFC 8448", getEq st.handles.shared ecdhe)
-    , ("Handshake Secret (orchestrator handle) = RFC 8448", getEq st.handles.handshake handshake)
-    , ("server_handshake_traffic_secret (orchestrator handle) = RFC 8448", getEq st.handles.sHs sHs)
+    [ ("handshake-key stage paused at handshakeKeysInstalled", decide (st1.phase = .handshakeKeysInstalled))
+    , ("application-key stage drove to completion", decide (st.phase = .complete))
+    , ("ECDHE shared secret (orchestrator handle) = RFC 8448", getEq st1.handles.shared ecdhe)
+    , ("Handshake Secret (orchestrator handle) = RFC 8448", getEq st1.handles.handshake handshake)
+    , ("server_handshake_traffic_secret (orchestrator handle) = RFC 8448", getEq st1.handles.sHs sHs)
     , ("Master Secret (orchestrator handle) = RFC 8448", getEq st.handles.master master)
     , ("server_application_traffic_secret_0 (orchestrator handle) = RFC 8448", getEq st.handles.sAp sAp)
     , ("installed server handshake write_key = RFC 8448", installedKeyEq .write .handshake sHsKey)

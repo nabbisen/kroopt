@@ -12,7 +12,7 @@ actions; a thin interpreter executes those actions over real crypto and sockets
 and never makes protocol decisions of its own. That separation carries
 machine-checked safety properties into the running code.
 
-## Status: M0–M15 (verified core → handshake → TlsConn → config → alerts/close → HTTPS → hardening → native crypto → key schedule → real provider → key-schedule orchestrator)
+## Status: M0–M16 (verified core → handshake → TlsConn → config → alerts/close → HTTPS → hardening → native crypto → key schedule → real provider → key-schedule orchestrator → two-stage interleave)
 
 This tree implements milestones **M0**–**M5** from the [ROADMAP](ROADMAP.md). M0
 fixes the pure-core/interpreter architecture; M1 adds the bounds-safe parsing
@@ -95,6 +95,17 @@ feeding each result back to get the next op, and checks every collected secret a
 the installed handshake key/IV against the RFC 8448 §3 trace. What remains is for
 `Kroopt.Core.step` to *invoke* the orchestrator in the live handshake; see
 [`docs/src/key-schedule-orchestrator.md`](docs/src/key-schedule-orchestrator.md).
+
+M16 corrects the orchestrator's derivation timing to match TLS 1.3: handshake
+keys are installed right after ServerHello, but application keys only after the
+server Finished is committed. So the orchestrator now runs in **two stages** — a
+handshake-key stage that parks at a `handshakeKeysInstalled` pause, then a
+`resumeApplication` that supplies the CH..server-Finished transcript and runs the
+application-key stage. The schedule-ops-only and progress proofs now cover both
+stages (85 theorems), and `kroopt-scheduledriver-test` drives both through the real
+provider, checking each stage against RFC 8448. The orchestrator now matches the
+handshake's interleaving, so it can be driven exactly the way `step` will — the
+wiring itself is the next milestone.
 
 The headline M5 result: every M2/M3 safety theorem — above all *no early
 plaintext* — **still holds over the live handshake**, which is the
