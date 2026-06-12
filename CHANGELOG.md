@@ -3,6 +3,42 @@
 All notable changes to kroopt are recorded here. RFC lifecycle transitions are
 governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycle-policy.md).
 
+## [0.26.0-dev] — M26 real handshake wire serializer (RFC 8448 §3 byte-exact) — 2026-06-12
+
+First increment of the structural→real wire work. Adds a real TLS 1.3 handshake
+serializer and validates it byte-for-byte against an authoritative vector. No
+change to the verified state machine: the 87 theorems and existing suites are
+unchanged.
+
+### Added
+
+- `Kroopt/Parse/Wire.lean` — pure, total TLS 1.3 handshake wire serializers (the
+  counterpart to the bounds-safe `Reader` parser): big-endian integers,
+  length-prefixed vectors, the handshake header, extensions, and `serverHello` /
+  `encryptedExtensions` / `finished`. Pure-zone module (now 36 clean); no proof
+  obligations (serialization has no over-read risk).
+- `kroopt-wire-test` (`Tests/Wire.lean`, 11 checks) validating against the
+  **RFC 8448 §3 "Simple 1-RTT Handshake"** trace (vectors transcribed verbatim
+  from rfc-editor.org, provenance recorded in-test):
+  - `serverHello` serializes **byte-for-byte** to the 90-octet RFC 8448 ServerHello;
+  - `SHA-256(ClientHello ‖ serialized ServerHello)` equals the RFC 8448
+    CH‥ServerHello transcript hash the key schedule already derives over — the
+    real-wire-bytes → real-transcript-hash join;
+  - the existing `parseClientHello` accepts the real RFC 8448 ClientHello and
+    extracts its x25519 `key_share` (parser is not over-strict on real input).
+- `docs/src/wire-format.md` (linked in `SUMMARY.md`) describing the serializer,
+  the RFC 8448 validation, and the remaining structural→real steps. CI test loop
+  now runs `wire` (18 suites).
+
+### Notes
+
+This is step 1 of several toward real interop. Still pending (RFC 010/015/026):
+real Certificate/CertificateVerify/Finished bodies, wiring the serializers into
+the live handshake transcript (replacing the `[snap.id]` placeholders in
+`Core/Handshake.lean`), real record encryption, an iotakt socket transport, and
+OpenSSL/curl handshake interop. The placeholder frames remain in use by the
+synthetic handshake until that wiring lands.
+
 ## [0.25.0-dev] — M25 RFC lifecycle migration (audit + `proposed/` → `done/`) — 2026-06-12
 
 Governance only; no code, test, or proof change (87 theorems unchanged). Audits the

@@ -169,3 +169,7 @@ lean_exe «kroopt-scheduledriver-test» where
 lean_exe «kroopt-provision-test» where
   root := `Tests.Provision
   moreLinkArgs := #["-Wl,--gc-sections"]
+
+lean_exe «kroopt-wire-test» where
+  root := `Tests.Wire
+  moreLinkArgs := #["-Wl,--gc-sections"]

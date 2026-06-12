@@ -156,12 +156,21 @@ language stripped from the changelog, provenance comments on every crypto KAT, a
 postmortem at `docs/src/postmortem-ed25519.md`.)
 
 **Top pending — the structural-to-real handshake.** Now that Ed25519 is cleared, the real
-next priority is replacing the structural transcript snapshots with real wire-byte
-transcript hashes and computing the real server `Finished` MAC, then driving a full TLS 1.3
-handshake against OpenSSL `s_client` / `curl` with an Ed25519 server certificate (the
-`CertificateVerify` *construction* is already cross-validated against OpenSSL; what remains
-is the live handshake). Still pending after that: P-256 (no `Hacl_P256.c` vendored — header
-only), ASan/UBSan jobs, the iotakt `Transport` socket adapter, and microbenchmarks.
+next priority is replacing the structural placeholder frames and snapshot transcript with
+real wire bytes and real transcript hashes, computing the real server `Finished` MAC, then
+driving a full TLS 1.3 handshake against OpenSSL `s_client` / `curl` with an Ed25519 server
+certificate (the `CertificateVerify` *construction* is already cross-validated against
+OpenSSL; what remains is the live handshake).
+
+*M26 shipped the first increment:* `Kroopt/Parse/Wire.lean`, a real TLS 1.3 handshake wire
+serializer validated byte-for-byte against RFC 8448 §3, with the key join checked —
+`SHA-256(ClientHello ‖ serialized ServerHello)` equals the RFC 8448 CH‥ServerHello transcript
+hash the (already-validated) key schedule derives over. Remaining for v0.3, in order: real
+Certificate / CertificateVerify / Finished bodies; wire the serializers into the live
+handshake transcript (removing the `[snap.id]` placeholders in `Core/Handshake.lean`); real
+record encryption; the iotakt `Transport` socket adapter; then OpenSSL/curl interop. Still
+pending beyond v0.3: P-256 (no `Hacl_P256.c` vendored — header only), ASan/UBSan jobs, and
+microbenchmarks.
 
 Exit criteria:
 
