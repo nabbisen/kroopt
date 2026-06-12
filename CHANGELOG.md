@@ -3,6 +3,56 @@
 All notable changes to kroopt are recorded here. RFC lifecycle transitions are
 governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycle-policy.md).
 
+## [0.20.0-dev] — M19 connection provisioning + crypto KAT hardening; Ed25519 defect found — 2026-06-11
+
+Adds production connection provisioning (fresh ephemeral entropy + certificate
+material), strengthens the crypto known-answer tests, and — as a direct result of
+that hardening — **discovers and documents a non-RFC-8032 defect in the vendored
+HACL Ed25519**, the top interop blocker before a real handshake.
+
+### ⚠ Discovered: vendored Ed25519 is not RFC 8032 compliant (interop blocker)
+
+Strengthening the crypto KATs (the HACL suite previously only *size-checked*
+SHA-384) showed SHA-384 matches FIPS 180-4 and X25519 matches RFC 7748, but the
+vendored HACL Ed25519 does not match RFC 8032: `Hacl_Ed25519_sign(seed, "")` returns
+`6b66cdc2…` rather than the RFC 8032 §7.1 Test 1 signature `e5564300…`, and
+`secret_to_public` returns `bcd55c06…` rather than `d75a9801…`. The sign and derive
+paths are self-consistent (so every prior round-trip test passed and the defect went
+unnoticed), but a real TLS 1.3 peer would reject a `CertificateVerify` signed this
+way. The defect is localised to the Ed25519 implementation — its SHA-512 and
+Curve25519 dependencies and the FFI shim's argument order are all confirmed correct.
+Re-vendoring `Hacl_Ed25519.c` blind (the upstream revision is not recorded) would
+risk the build, so M19 surfaces and tracks the defect rather than fixing it under
+time pressure. See `docs/src/provisioning.md` and the ROADMAP top pending item.
+
+### Added — connection provisioning (`Kroopt.Crypto.Provision`)
+
+- `genEphemeralX25519 : IO (priv × pub)` draws a fresh ephemeral X25519 key pair
+  from the OS CSPRNG (`Hacl.randomBytes`) per connection — no longer injected.
+- `CertProvision` (signing seed, opaque DER chain, signature scheme) plus a
+  deterministic config lint: `Provision.lint` checks seed length and scheme support
+  and returns the *derived* leaf public; `lintAgainstClaimed` additionally rejects a
+  mis-paired claimed public (`keyMismatch`), failing closed at load with a typed
+  `ProvisionError`. `provisionRealConfig` assembles a `RealCryptoConfig` from linted
+  certificate material and a fresh ephemeral pair.
+
+### Changed — tests and CI (17 suites)
+
+- New `kroopt-provision-test` (16 checks): ephemeral liveness / well-formedness /
+  X25519 determinism, the four lint branches, the certificate-key sign+verify
+  round-trip, a value-KAT for SHA-384 (FIPS 180-4), and an Ed25519 non-compliance
+  **tripwire** that flips when the defect is fixed. Added to the verification loop
+  and the CI test matrix. All 17 suites, parser fuzz, and the three gates green;
+  theorem count unchanged at 87 (provisioning is `Crypto`-zone, no proof obligations).
+
+### Boundary / next
+
+- Fixing the vendored Ed25519 binding is the top blocker before real interop. Then
+  the structural-to-real handshake work (real transcript hashes, real Finished MAC,
+  real wire framing) and a handshake against OpenSSL/curl.
+
+
+
 ## [0.19.0-dev] — M18 wire the application-key schedule stage into live `step` — 2026-06-11
 
 Completes the schedule wiring: `Kroopt.Core.step` now drives **both** stages of the

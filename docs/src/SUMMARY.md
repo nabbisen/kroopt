@@ -16,6 +16,7 @@
 - [Secret arena and the TLS 1.3 key schedule (M13)](key-schedule.md)
 - [Enriched crypto interface and the real provider (M14)](enriched-crypto-interface.md)
 - [The verified key-schedule orchestrator (M15)](key-schedule-orchestrator.md)
+- [Connection provisioning and a discovered Ed25519 defect (M19)](provisioning.md)
 - [Vendored crypto: provenance and licensing](third-party.md)
 - [TlsConn API and the interpreter](tlsconn-interpreter.md)
 - [SNI/ALPN config and certificate presentation](config-cert.md)

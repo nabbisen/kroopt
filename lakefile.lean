@@ -160,3 +160,7 @@ RFC 8448 §3 handshake. Links the FFI lib. -/
 lean_exe «kroopt-scheduledriver-test» where
   root := `Tests.ScheduleDriver
   moreLinkArgs := #["-Wl,--gc-sections"]
+
+lean_exe «kroopt-provision-test» where
+  root := `Tests.Provision
+  moreLinkArgs := #["-Wl,--gc-sections"]

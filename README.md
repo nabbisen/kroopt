@@ -12,7 +12,7 @@ actions; a thin interpreter executes those actions over real crypto and sockets
 and never makes protocol decisions of its own. That separation carries
 machine-checked safety properties into the running code.
 
-## Status: M0–M18 (verified core → handshake → TlsConn → config → alerts/close → HTTPS → hardening → native crypto → key schedule → real provider → orchestrator → two-stage interleave → both schedule stages wired into step)
+## Status: M0–M19 (verified core → handshake → TlsConn → config → alerts/close → HTTPS → hardening → native crypto → key schedule → real provider → orchestrator → both schedule stages wired into step → connection provisioning + crypto KAT hardening)
 
 This tree implements milestones **M0**–**M5** from the [ROADMAP](ROADMAP.md). M0
 fixes the pure-core/interpreter architecture; M1 adds the bounds-safe parsing
@@ -124,9 +124,17 @@ application-key stage (→ `sentCertificateVerify`); `onApScheduleResult` pumps 
 `complete`, installs the application epoch, and moves to `sentServerFinished`. Both
 pump phases are proved to take legal edges and emit no plaintext (87 theorems), and
 the full synthetic handshake drives the entire RFC 8446 §7.1 schedule end-to-end
-through `step`. What remains is structural-to-real: resolving the abstract transcript
-snapshots to real hashes and the real server-Finished MAC, then production entropy /
-certificate provisioning, then a real handshake against OpenSSL/curl.
+through `step`. M19 adds production connection provisioning (`Kroopt.Crypto.Provision`):
+a fresh ephemeral X25519 key pair drawn from the OS CSPRNG per connection, and
+certificate material derived (not trusted) from a signing seed with a fail-closed
+config lint. Strengthening the crypto KATs in the process surfaced a real,
+previously-hidden defect — the **vendored HACL Ed25519 is not RFC 8032 compliant**
+(self-consistent but non-standard sign/derive; SHA-384 and X25519 are confirmed
+correct, localising the fault to Ed25519). It is round-trip-safe but would not
+interop with a real peer, so it is tracked by a test tripwire and is the top blocker
+before real interop. What remains: fix the Ed25519 binding, then resolve the abstract
+transcript snapshots to real hashes and the real server-Finished MAC, then a real
+handshake against OpenSSL/curl.
 
 The headline M5 result: every M2/M3 safety theorem — above all *no early
 plaintext* — **still holds over the live handshake**, which is the
