@@ -5,6 +5,25 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.64.0-dev] — RFC (v0.4): wildcard SNI — LIVE — 2026-06-14
+
+The `ServerNamePattern.wildcard` route — implemented and proven since the SNI config model, but never
+exercised over the wire — is now validated live. No core or proof change: this confirms the existing
+`patternMatches` semantics (a single leftmost label followed by the suffix) against a real client.
+
+- **Fixture + driver.** A new `wildcardServerConfig` routes `*.example.com` (one leftmost label) to
+  the ECDSA-P256 leaf, with everything else falling to the default Ed25519 leaf; a `wildcard` driver
+  profile serves it and lints both leaves at startup (`CONFIG_LINT_OK`).
+- **Live-validated** against `openssl s_client -servername …`, each completing HTTP 200:
+  `api.example.com` → ECDSA (wildcard matched the single leftmost label), while the bare
+  `example.com` (no leftmost label), the multi-label `a.b.example.com` (wildcard matches exactly one
+  label), and an unrelated `other.test` all correctly fall to the default Ed25519 leaf. This is the
+  proven negative behavior — bare domain and multi-label prefix do **not** match — confirmed on the
+  wire.
+- **No core/proof surface touched.** The wildcard matching and its ambiguity rejection were already
+  PROVEN/TESTED in the config suite; 94 theorems and the axiom profile are unchanged. Full sweep 392;
+  hygiene/deps/axioms clean; fuzz 20000 clean.
+
 ## [0.63.0-dev] — RFC (v0.4): RSA leaf lint completes the cert/key check — TESTED + LIVE — 2026-06-14
 
 Closes the one `CONFIG_LINT_SKIPPED` case from 0.62: the cert/private-key compatibility lint now

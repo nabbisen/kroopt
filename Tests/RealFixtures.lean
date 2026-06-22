@@ -157,4 +157,13 @@ def multiCertServerConfig : Kroopt.Core.ValidatedServerConfig :=
       [ { pattern := .exact (String.toUTF8 "ecdsa.test"), endpoint := ecEndpoint }
       , { pattern := .exact (String.toUTF8 "rsa.test"),   endpoint := rsaEndpoint } ] }
 
+/-- A wildcard SNI config exercising `ServerNamePattern.wildcard` over the wire: a single leftmost
+label before `example.com` (e.g. `api.example.com`) → the ECDSA-P256 leaf; anything else — the bare
+`example.com`, a multi-label prefix like `a.b.example.com`, any other host, or no SNI — → the default
+Ed25519 leaf. -/
+def wildcardServerConfig : Kroopt.Core.ValidatedServerConfig :=
+  { (default : Kroopt.Core.ValidatedServerConfig) with
+    defaultEndpoint := some edEndpoint
+    sniRoutes := [ { pattern := .wildcard (String.toUTF8 "example.com"), endpoint := ecEndpoint } ] }
+
 end Tests.RealFixtures
