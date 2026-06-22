@@ -5,6 +5,36 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.103.0-dev] — security-review remediation C: threat-model hardening (HIGH-2/HIGH-4/MEDIUM-5/LOW-1) — 2026-06-15
+
+Third increment of the v0.100.0 docs security review remediation: the threat-model additions gated on
+the architect's HIGH-2 (delegate global DoS + declare explicitly) and HIGH-4 rulings. All claims
+verified against source (`TimeoutKind = {handshake, idle, closeNotify}`; `ErrorCategory` is eight-way).
+
+### Changed (`verification/threat-model.md`)
+- **HIGH-2 — global/listener DoS.** Added a threat-table row for many concurrent *bounded* handshakes,
+  and a `Per-connection vs listener-wide DoS` section declaring explicitly that kroopt owns
+  per-connection bounds + handshake/idle timeouts, while listener-wide admission control, per-peer rate
+  limiting, accept-backlog, max concurrent connections/handshakes, and global CPU/memory budgets are
+  **iotakt + jemmet integration responsibilities** — kroopt owns neither the accept loop nor the fd
+  lifecycle.
+- **HIGH-4 — memory-disclosure classification.** Added an explicit classification of what best-effort
+  traffic-secret invalidation does **not** defend against (core dumps, swap/paging, crash
+  diagnostics/minidumps, debugger inspection, borrowed-crypto copies) — broader than the "compromised
+  host" exclusion — and the honest operator mitigation until the v1 native arena. The C-owned,
+  volatile-wiped server private key is noted as outside this gap.
+- **MEDIUM-5 — error/alert oracle posture.** Added a section pinning the four distinct surfaces:
+  peer-visible alerts (deterministic, bounded), public errors (coarse eight-way `ErrorCategory`), debug
+  trace (default-off, no raw bytes/secrets), internal diagnostics (local/dev only).
+- **LOW-1 — adversary wording.** Replaced "fragment or reorder" with fragment/coalesce/delay/truncate,
+  and stated that in-order stream delivery is the transport adapter's (iotakt's) responsibility — a
+  network attacker cannot reorder bytes within a delivered reliable stream.
+- Promoted the secret-memory honesty lead to a proper `## Secret-memory honesty` heading (anchor target)
+  and linked the trust matrix from the adversary section.
+
+Gate: build green; all internal doc links resolve; `TimeoutKind` and `ErrorCategory` arity verified.
+Docs-only change (no `Kroopt/` source, proofs, or pure-zone code touched).
+
 ## [0.102.0-dev] — security-review remediation B: consolidated trust matrix + crypto provenance (MEDIUM-1/2) — 2026-06-15
 
 Second increment of the v0.100.0 docs security review remediation. Adds the single consolidated trust
