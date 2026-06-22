@@ -38,7 +38,8 @@ connection-lifetime traffic secrets move onto the C-owned zeroizing arena via a 
 — the pre-stable line keeps documented best-effort traffic-secret zeroization (the server *private
 key* is already C-owned). iotakt binding (RFC 010) and external interop
 (RFC 015/026) were frozen until 031 locked; with **031 locked for synchronous correspondence
-(0.88.0-dev)** the real-wire band is **unfrozen** — RFC 010 (iotakt socket adapter) is active, with
+(0.88.0-dev)** the real-wire band is **unfrozen** — RFC 010 (iotakt socket adapter) is **locked
+(Implemented, 0.91.0-dev)** with live OpenSSL/Python interop, with
 the RFC 037 inbound-alert residue and live OpenSSL/curl interop (RFC 015/026/036) the headline
 track; 031, 032, 033, 034 and 039 are done.
 
@@ -51,7 +52,6 @@ control), then 017–030 (cross-cutting security, lifecycle, and release governa
 | ID | Title | Pending before `done/` |
 |----|-------|------------------------|
 | 009 | [HACL*/EverCrypt Shim, KATs, and Sanitizer Strategy](proposed/009-hacl-evercrypt-shim-kat-sanitizer.md) | ASan/UBSan sanitizer CI job (shim + KATs done) |
-| 010 | [TlsConn API and Non-Blocking iotakt Interpreter](proposed/010-tlsconn-api-nonblocking-interpreter.md) | Real iotakt socket `Transport` adapter (API/interpreter done over the fake transport) |
 | 015 | [jemmet Integration and End-to-End Acceptance](proposed/015-jemmet-integration-and-e2e-acceptance.md) | Real OpenSSL/curl handshake + jemmet HTTPS E2E over the wire |
 | 020 | [Observability, Audit Logging, and Redaction](proposed/020-observability-audit-logging-and-redaction.md) | Operator-facing event/metric reference doc (redaction + typed errors done) |
 | 024 | [Native Build, Lake Packaging, and Feature Gates](proposed/024-native-build-lake-packaging-and-features.md) | Sanitizer build profile in CI (pure + native profiles done) |
@@ -75,6 +75,7 @@ milestone where the work substantively landed (see CHANGELOG/ROADMAP for detail)
 | 000 | [RFC lifecycle policy](done/000-rfc-lifecycle-policy.md) | Implemented |
 | 039 | [Named-Group Policy and Selection Enforcement](done/039-named-group-policy-and-enforcement.md) | Implemented (0.81.0-dev) |
 | 031 | [Production Interpreter Correspondence](done/031-production-interpreter-correspondence.md) | Implemented (0.88.0-dev) — **synchronous** correspondence locked; async ledger + stale-result refinements relocated to RFC 040 |
+| 010 | [TlsConn API and Non-Blocking iotakt Interpreter](done/010-tlsconn-api-nonblocking-interpreter.md) | Implemented (0.91.0-dev) — TlsConn API + non-blocking interpreter + real-socket driver; live OpenSSL/Python interop. Live-interop breadth (026) / jemmet E2E (015) tracked separately |
 | 028 | [Security Review and Vulnerability Process](done/028-security-review-and-vulnerability-process.md) | Implemented (0.86.0-dev) |
 | 032 | [Typed Handshake/Record Assembly Contract](done/032-typed-flight-assembly-contract.md) | Implemented (0.46.0-dev) |
 | 034 | [Provider Capability Honesty and Fail-Closed Entropy](done/034-provider-capability-honesty-and-entropy.md) | 0.36.0-dev (M36-prelude) |
@@ -105,7 +106,8 @@ RFCs, as RFC 016 requires._
 
 ## Current state — constrained-profile edge band (post-0.48.0-dev)
 
-After the M37 native-hardening band (0.48.0-dev), work proceeded under RFC 010 (ACTIVE) and the
+After the M37 native-hardening band (0.48.0-dev), work proceeded under RFC 010 (now Implemented at
+0.91.0-dev) and the
 constrained crypto profile to make the server feature-complete for HTTPS edge serving and validate it
 against live clients (OpenSSL/curl). Landed and live-validated through **0.65.0-dev**:
 

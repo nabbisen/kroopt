@@ -1,7 +1,7 @@
 # RFC 010 — TlsConn API and Non-Blocking iotakt Interpreter
 
 **Project.** kroopt  
-**Status.** Proposed (ACTIVE — unfrozen after the RFC 037 M37 native-hardening band landed at 0.48.0-dev; the verified core + production interpreter now drive a real handshake, so the real-socket I/O driver and live interop are in scope)  
+**Status.** Implemented (0.91.0-dev) — **TlsConn API + non-blocking interpreter + real-socket driver locked** (architect approval 2026-06-15). All §12 acceptance criteria are met: the public API is documented with consumption semantics; the interpreter executes action variants without protocol branching (`execAction` does not take the core `State`, so it cannot branch on phase); iotakt integration requires no iotakt source changes (`Tests.IotaktBinding`); queues and progress budgets are bounded; and partial-write / `wouldBlock` / stale-event coverage is in place (`Tests.Conn` §8). The verified core + production interpreter drive a real handshake over an AF_UNIX socket to `connected` (`Tests.SocketDriver`) under a non-blocking readiness reactor (`Tests.LiveServerNb`, 0.51.0-dev), with live OpenSSL/Python interop and a post-handshake application-data round-trip (`scripts/tls-interop.sh`). Live external-client **breadth** (RFC 026) and jemmet HTTPS **E2E** (RFC 015) continue as their own RFCs; this lock covers RFC 010's own scope, not theirs.
 **Type.** Implementation RFC  
 **Target milestone.** M7  
 **Depends on.** RFC 002, RFC 004, RFC 008  

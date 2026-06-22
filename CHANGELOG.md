@@ -5,6 +5,26 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.91.0-dev] — RFC 010 locked (ACTIVE → Implemented, → `done/`) — 2026-06-15
+
+Resolves the headline real-socket RFC. No code or proofs changed; this is an RFC-lifecycle
+increment. RFC 010's five §12 acceptance criteria are all met and tested, so its `ACTIVE` workflow
+label (a pre-`done` "current work item" marker stamped at 0.48.0-dev, not a claim of remaining work)
+is flipped to Implemented and the RFC moves `proposed/ → done/`.
+
+### Changed
+- **RFC 010 status → Implemented (0.91.0-dev)**, moved to `done/`. Acceptance evidence recorded:
+  documented public API with consumption semantics; interpreter without protocol branching
+  (`execAction` does not take the core `State`); no iotakt source changes (`Tests.IotaktBinding`);
+  bounded queues + progress budgets; partial-write / `wouldBlock` / stale-event coverage
+  (`Tests.Conn`); real AF_UNIX handshake to `connected` (`Tests.SocketDriver`); non-blocking
+  readiness reactor (`Tests.LiveServerNb`); live OpenSSL/Python interop + app-data round-trip
+  (`scripts/tls-interop.sh`). Live-interop **breadth** (RFC 026) and jemmet HTTPS **E2E** (RFC 015)
+  continue as their own RFCs — this lock covers RFC 010's own scope only.
+- **`rfcs/README.md`, `ROADMAP.md`**: RFC 010 moved Proposed→Done; the `ACTIVE` labels updated to
+  Implemented; post-lock headline order refreshed (010 locked; 036 §2/§3 first slices landed; 037
+  inbound-alert residue done).
+
 ## [0.90.0-dev] — RFC 036 §2 captured-client replay bridge (first slice) — 2026-06-15
 
 Second slice of RFC 036 on the real-wire band: a deterministic replay bridge that exercises

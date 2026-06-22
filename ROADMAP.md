@@ -219,12 +219,13 @@ landed), and the §5 correspondence ledger plus the async §4 refinements
 (duplicate/stale-cross-generation/after-terminal) are **relocated to RFC 040 §4.4** — the IO band
 where async crypto results first occur. RFC 031 must not be cited for async-result behavior; RFC 040
 is mandatory before any production/stable native-secret or async-result claim. Approved post-lock
-order: **headline track** RFC 010 (socket adapter, active) → RFC 036 (replay + trace harness) → RFC
-037 inbound-alert residue → RFC 015/026 (live OpenSSL/curl + jemmet HTTPS E2E); **parallel
-governance** RFC 030/027/020; **stable/v1** RFC 040.
+order: **headline track** RFC 010 (socket adapter — **locked Implemented 0.91.0-dev**) → RFC 036
+(replay + trace harness; §2/§3 first slices landed) → RFC 037 inbound-alert residue (done) → RFC
+015/026 (live OpenSSL/curl + jemmet HTTPS E2E); **parallel governance** RFC 030/027/020;
+**stable/v1** RFC 040.
 
-*v0.3 phase kickoff — RFC 010 (ACTIVE): the verified core drives a handshake over a real OS socket.* RFC 010
-unfrozen now that the M37 band landed. `Tests/SocketDriver.lean` (`kroopt-socketdriver-test`) runs the actual
+*v0.3 phase kickoff — RFC 010 (Implemented 0.91.0-dev): the verified core drives a handshake over a real OS socket.* RFC 010
+unfrozen after the M37 band landed and now locked. `Tests/SocketDriver.lean` (`kroopt-socketdriver-test`) runs the actual
 `Kroopt.Core.step` + production interpreter over an AF_UNIX socketpair: a real ClientHello arrives from the
 wire, the core (real HACL* provider, RFC 8448 fixtures) processes it, and the sealed server flight is written
 back to the wire; the peer confirms a cleartext ServerHello record followed by encrypted records (outer 0x17),
