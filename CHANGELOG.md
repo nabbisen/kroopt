@@ -5,6 +5,47 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.69.0-dev] — AES-128-GCM-SHA256 negotiated + served end-to-end (real OpenSSL interop) — 2026-06-14
+
+The payoff of 0.66–0.68. `TLS_AES_128_GCM_SHA256` is now a fully negotiable, fully served suite: the
+verified core selects it, the suite-aware seal path (0.68.0-dev) seals the flight with it, and an
+independent TLS stack completes the handshake and an application-data round-trip. **OpenSSL 3.0.13
+negotiates AES-128-GCM with kroopt and exchanges data on both the blocking and non-blocking server
+drivers.** ChaCha20-Poly1305 is unchanged and remains fully servable; both are validated side by side.
+
+### This increment
+- `Kroopt/Parse/Handshake.lean`: `suiteOfU16` recognizes `0x1301` → `aes128GcmSha256`. Negotiation is
+  client-preference among server-supported suites (first client-offered suite the server can serve).
+  `0x1302` (AES-256-GCM-SHA384) is still withheld pending the SHA-384 schedule.
+- `Kroopt/Crypto/Provider.lean`: `realCapabilities` advertises `TLS_AES_128_GCM_SHA256` alongside
+  `TLS_CHACHA20_POLY1305_SHA256`. AES-256-GCM-SHA384 remains rejected at config validation.
+
+### Tests / interop
+- `kroopt-hardening-test` (+2 checks, **22**): negotiation-policy coverage — AES-128-only → AES-128;
+  AES-128-before-ChaCha → AES-128; ChaCha-only → ChaCha; ChaCha-before-AES-128 → ChaCha.
+- `kroopt-capabilities-test`: AES-128 now accepted at config validation; AES-256-GCM-SHA384 still
+  rejected.
+- `kroopt-correspondence-test` (33) and `kroopt-socketdriver-test` (6) migrated to AES-128: the
+  production interpreter + real provider drive a full handshake to `connected` under AES-128 — over a
+  real OS socket in the socket driver — with the post-`connected` app record and the close_notify all
+  sealed and opened under AES-128. The shared `clientHelloMsg` fixture offers AES-128 first (like a
+  browser), so the server now negotiates AES-128 from it; the client Finished verify_data is computed
+  from the actual transcript (SHA-256 for both suites), so the migration was a key-length/primitive
+  swap only.
+- `scripts/tls-interop.sh`: `test_openssl` is parameterized by ciphersuite; the script now runs both
+  `TLS_CHACHA20_POLY1305_SHA256` and `TLS_AES_128_GCM_SHA256` against OpenSSL on both drivers. All
+  pass: OpenSSL reports `Cipher is TLS_AES_128_GCM_SHA256`, kroopt reaches `connected`, and app data
+  round-trips in both directions.
+
+### Trust posture
+- No protocol proof affected; 94 public theorems unchanged. AES-128-GCM stays in the ASSUMED-verified
+  crypto tier (Vale assembly); kroopt proves the protocol structure around it.
+
+### Remaining
+1. `TLS_AES_256_GCM_SHA384`: the SHA-384 key schedule + transcript (the one place SHA-384 changes the
+   key-schedule/Finished lengths).
+2. Broader interop (browsers — not testable in this environment).
+
 ## [0.68.0-dev] — Suite-aware handshake-flight seal path (last ChaCha hardcode removed) — 2026-06-14
 
 Closes the gap 0.67.0-dev surfaced. The interpreter's `Conn.Interpreter.sealHandshakeRecord` — the

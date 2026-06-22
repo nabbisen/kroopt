@@ -34,13 +34,13 @@ the vendored provider, so they map to `none` and are skipped by the overlap sele
 *negotiation* to suite *capability*: kroopt will not select a suite it cannot perform,
 even if the client lists it first. -/
 def suiteOfU16 : UInt16 → Option CipherSuite
+  | 0x1301 => some .aes128GcmSha256
   | 0x1303 => some .chacha20Poly1305Sha256
   | _      => none
-  -- AES-GCM (0x1301/0x1302) is intentionally not yet negotiable. The AEAD *provider* dispatch is
-  -- suite-aware as of 0.67.0-dev, but the interpreter's record/handshake-seal path
-  -- (`Conn.Interpreter.sealHandshakeRecord`) still hardcodes ChaCha20-Poly1305, so the server
-  -- cannot yet seal an AES-GCM flight end-to-end. Recognizing these here before the seal path is
-  -- suite-aware would let the core negotiate a suite it cannot actually serve.
+  -- 0x1302 (TLS_AES_256_GCM_SHA384) is intentionally not yet recognized: it needs the SHA-384 key
+  -- schedule + transcript, which a later increment adds. Recognizing it before that lands would let
+  -- the core negotiate a suite it cannot key. AES-128-GCM and ChaCha20-Poly1305 both use SHA-256 and
+  -- are fully servable end-to-end (the interpreter seal path is suite-aware as of 0.68.0-dev).
 
 /-- Parse a length-prefixed list of `UInt16` values from a byte slice, reusing
 the bounds-safe fuel combinator. -/

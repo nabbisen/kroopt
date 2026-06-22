@@ -40,16 +40,16 @@ def tr0 : FakeTransport := { fd := fd0, inbound := [] }
 def hsSecret : ByteArray := ByteArray.mk (Array.mkArray 32 0x2b)
 def keyedArena : SecretArena :=
   match SecretArena.empty.store hsSecret with
-  | .ok (h, a) => a.recordBaseSecret .write .handshake h.id
+  | .ok (h, a) => (a.recordBaseSecret .write .handshake h.id).recordInstalledSuite .write .handshake .aes128GcmSha256
   | .error _   => SecretArena.empty
-def hsKey : ByteArray := Kroopt.Crypto.KeySchedule.trafficKey .chacha20Poly1305Sha256 hsSecret
+def hsKey : ByteArray := Kroopt.Crypto.KeySchedule.trafficKey .aes128GcmSha256 hsSecret
 def hsIv  : ByteArray := Kroopt.Crypto.KeySchedule.trafficIv hsSecret
 
 -- Drive the core handshake far enough to emit the CertificateVerify op, then extract the exact
 -- transcript-prefix bytes the core carried in it (RFC 031 §3 — the core is the single transcript
 -- authority). The flow mirrors Tests.Handshake's synthetic drive.
 def vch : ValidClientHello :=
-  { selectedSuite := .chacha20Poly1305Sha256, selectedGroup := .x25519
+  { selectedSuite := .aes128GcmSha256, selectedGroup := .x25519
     clientShare := ByteArray.mk (Array.mkArray 32 0x07), offeredSigSchemes := [.ed25519]
     sni := some (ByteArray.mk #[0x65, 0x78]), alpn := [ByteArray.mk #[0x68, 0x32]]
     sessionId := ByteArray.empty }
@@ -126,9 +126,9 @@ def clientFinishedSealed : ByteArray :=
   let throughServerFinished := core1.transcript.events.foldl (fun acc e => acc ++ e.wireBytes) (ByteArray.mk #[])
   let hCHSF := Hacl.sha256 throughServerFinished
   let verifyData := Hacl.hmac256 (Kroopt.Crypto.KeySchedule.finishedKey cHsSecret) hCHSF
-  let cKey := Kroopt.Crypto.KeySchedule.trafficKey .chacha20Poly1305Sha256 cHsSecret
+  let cKey := Kroopt.Crypto.KeySchedule.trafficKey .aes128GcmSha256 cHsSecret
   let cIv  := Kroopt.Crypto.KeySchedule.trafficIv cHsSecret
-  Record13.sealRecord! cKey cIv 0 (Kroopt.Parse.Wire.finished verifyData) .handshake 0
+  Record13.sealRecord! cKey cIv 0 (Kroopt.Parse.Wire.finished verifyData) .handshake 0 .aes128GcmSha256
 
 /-- Phase 2: feed the sealed client Finished; the core emits `aeadOpen .handshake`, the real
 provider opens it, `verifyFinished` checks the MAC, and the handshake reaches `connected`. -/
@@ -142,10 +142,10 @@ will not match what `verifyFinished` recomputes. -/
 def badClientFinishedSealed : ByteArray :=
   let (_, rt1, _) := phase1
   let cHsSecret := ((rt1.arena.lookupBaseSecret .read .handshake).bind rt1.arena.getById).getD ByteArray.empty
-  let cKey := Kroopt.Crypto.KeySchedule.trafficKey .chacha20Poly1305Sha256 cHsSecret
+  let cKey := Kroopt.Crypto.KeySchedule.trafficKey .aes128GcmSha256 cHsSecret
   let cIv  := Kroopt.Crypto.KeySchedule.trafficIv cHsSecret
   let badVerifyData := ByteArray.mk (Array.mkArray 32 (0 : UInt8))
-  Record13.sealRecord! cKey cIv 0 (Kroopt.Parse.Wire.finished badVerifyData) .handshake 0
+  Record13.sealRecord! cKey cIv 0 (Kroopt.Parse.Wire.finished badVerifyData) .handshake 0 .aes128GcmSha256
 
 def reachedBad : State × RuntimeState × FakeTransport :=
   let (core1, rt1, tr1) := phase1
@@ -238,7 +238,7 @@ def checks : List Check :=
     , ok := (let plain := serializeHandshakeOut eeMsg
              let wire := (handshakeWire keyedArena .handshake 0 plain).toOption.get!
              (wire.size > 0 && wire.get! 0 == 0x17)
-             && (match Record13.openRecord hsKey hsIv 0 wire with
+             && (match Record13.openRecord hsKey hsIv 0 wire .aes128GcmSha256 with
                  | some (content, _) => eqB content plain
                  | none => false)) }
     -- (8) the core-authorized sequence is honoured: the same message at seq 3 opens at seq 3
@@ -246,9 +246,9 @@ def checks : List Check :=
   , { name := "the sealed record uses the core-authorized sequence number"
     , ok := (let plain := serializeHandshakeOut cvMsg
              let wire := (handshakeWire keyedArena .handshake 3 plain).toOption.get!
-             (match Record13.openRecord hsKey hsIv 3 wire with
+             (match Record13.openRecord hsKey hsIv 3 wire .aes128GcmSha256 with
               | some (content, _) => eqB content plain | none => false)
-             && (match Record13.openRecord hsKey hsIv 0 wire with
+             && (match Record13.openRecord hsKey hsIv 0 wire .aes128GcmSha256 with
                  | some _ => false | none => true)) }
     -- (9) with no handshake write key installed, the seal path falls back to a cleartext
     -- handshake record (outer type 22) — the transitional keyless path, never a crash.
@@ -301,7 +301,8 @@ def checks : List Check :=
              | some (kId, ivId) =>
                  (match afterSend.2.1.arena.getById kId, afterSend.2.1.arena.getById ivId with
                   | some key, some iv =>
-                      (match Record13.openRecord key iv 0 record with
+                      (match Record13.openRecord key iv 0 record
+                              ((afterSend.2.1.arena.lookupInstalledSuite .write .application).getD .aes128GcmSha256) with
                        | some (content, ct) =>
                            eqB content appData && (match ct with | .applicationData => true | _ => false)
                        | none => false)

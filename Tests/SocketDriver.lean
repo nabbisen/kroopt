@@ -114,9 +114,9 @@ def buildClientFinished (core1 : State) (rt1 : RuntimeState) : ByteArray :=
   let cHsSecret := ((rt1.arena.lookupBaseSecret .read .handshake).bind rt1.arena.getById).getD ByteArray.empty
   let through := core1.transcript.events.foldl (fun acc e => acc ++ e.wireBytes) (ByteArray.mk #[])
   let verifyData := Hacl.hmac256 (KeySchedule.finishedKey cHsSecret) (Hacl.sha256 through)
-  let cKey := KeySchedule.trafficKey .chacha20Poly1305Sha256 cHsSecret
+  let cKey := KeySchedule.trafficKey .aes128GcmSha256 cHsSecret
   let cIv  := KeySchedule.trafficIv cHsSecret
-  Record13.sealRecord! cKey cIv 0 (Kroopt.Parse.Wire.finished verifyData) .handshake 0
+  Record13.sealRecord! cKey cIv 0 (Kroopt.Parse.Wire.finished verifyData) .handshake 0 .aes128GcmSha256
 
 def main : IO Unit := do
   IO.println "kroopt verified core driving a TLS 1.3 server handshake over a real OS socket:"

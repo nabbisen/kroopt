@@ -115,15 +115,14 @@ def fakeCapabilities : CryptoCapabilities :=
     supportsSecretHandles := true }
 
 /-- The **real** provider's honest capability profile (RFC 034 §2): exactly what
-the vendored HACL\* / EverCrypt backend can serve **end-to-end**. The AEAD provider dispatch is
-suite-aware as of 0.67.0-dev (AES-128/256-GCM bound + KAT'd via the Vale verified assembly in
-0.66.0-dev), but the interpreter's record/handshake-seal path still hardcodes ChaCha20-Poly1305, so
-the only suite the server can actually negotiate and serve is `TLS_CHACHA20_POLY1305_SHA256` (with
-X25519, Ed25519, SHA-256, OS CSPRNG). AES-GCM suites are withheld from the advertised profile until
-the seal path is suite-aware; a config requiring them is rejected at validation rather than
-negotiated and then failed at the record layer. -/
+the vendored HACL\* / EverCrypt backend can serve **end-to-end**. As of 0.68.0-dev the interpreter
+seal path is suite-aware, so this now includes `TLS_AES_128_GCM_SHA256` (bound + KAT'd via the Vale
+verified assembly in 0.66.0-dev; it reuses the SHA-256 schedule) alongside
+`TLS_CHACHA20_POLY1305_SHA256`, with X25519, Ed25519, SHA-256, OS CSPRNG. `TLS_AES_256_GCM_SHA384`
+is withheld until the SHA-384 key schedule lands; a config requiring it is rejected at validation
+rather than negotiated and then failed at the record layer. -/
 def realCapabilities : CryptoCapabilities :=
-  { suites := [.chacha20Poly1305Sha256]
+  { suites := [.aes128GcmSha256, .chacha20Poly1305Sha256]
     hashAlgorithms := [.sha256]
     groups := [.x25519]
     signatureSchemes := [.ed25519]

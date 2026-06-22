@@ -22,7 +22,8 @@ def ep (suite : Kroopt.Core.CipherSuite) (scheme : Kroopt.Core.SignatureScheme) 
 def cfgOf (e : EndpointConfig) : ServerConfig :=
   { (default : ServerConfig) with defaultEndpoint := some e }
 
-def aesConfig   : ServerConfig := cfgOf (ep .aes128GcmSha256 .ed25519)
+def aesConfig    : ServerConfig := cfgOf (ep .aes128GcmSha256 .ed25519)
+def aes256Config : ServerConfig := cfgOf (ep .aes256GcmSha384 .ed25519)
 def ecdsaConfig : ServerConfig := cfgOf (ep .chacha20Poly1305Sha256 .ecdsaSecp256r1Sha256)
 def goodConfig  : ServerConfig := cfgOf (ep .chacha20Poly1305Sha256 .ed25519)
 
@@ -31,8 +32,11 @@ def testCfg : RealCryptoConfig :=
   { ephemeralPrivate := seed, certPrivate := seed, certPublic := Hacl.ed25519Public seed }
 
 def main : IO Unit := do
-  let realRejectsAes :=
+  let realAcceptsAes128 :=
     match validateServerConfigCapabilities realCapabilities aesConfig with
+    | .ok () => true | _ => false
+  let realRejectsAes256 :=
+    match validateServerConfigCapabilities realCapabilities aes256Config with
     | .error (.unsupportedSuite _) => true | _ => false
   let realRejectsEcdsa :=
     match validateServerConfigCapabilities realCapabilities ecdsaConfig with
@@ -41,14 +45,14 @@ def main : IO Unit := do
     match validateServerConfigCapabilities realCapabilities goodConfig with
     | .ok () => true | _ => false
   let fakeAcceptsAes :=
-    match validateServerConfigCapabilities fakeCapabilities aesConfig with
+    match validateServerConfigCapabilities fakeCapabilities aes256Config with
     | .ok () => true | _ => false
   let realIsOsCsprng :=
     match realCapabilities.randomSource with | .osCsprng => true | _ => false
-  -- the real *provider* (not just the constant) advertises the constrained end-to-end profile
+  -- the real *provider* (not just the constant) advertises the AES-256/SHA-384 boundary
   let realProv := mkRealProvider testCfg
-  let provRejectsAes :=
-    match validateServerConfigCapabilities realProv.capabilities aesConfig with
+  let provRejectsAes256 :=
+    match validateServerConfigCapabilities realProv.capabilities aes256Config with
     | .error (.unsupportedSuite _) => true | _ => false
   -- deterministic randomness cannot come out of the real provider
   let provRandErrors :=
@@ -59,12 +63,13 @@ def main : IO Unit := do
   let entropyTypedOk := match ent with | .bytes b => b.size == 32 | .error _ => false
 
   let checks : List (String × Bool) :=
-    [ ("real profile rejects an AES-GCM suite at config validation (seal path not suite-aware yet)", realRejectsAes)
+    [ ("real profile accepts TLS_AES_128_GCM_SHA256 (seal path suite-aware, SHA-256 schedule)", realAcceptsAes128)
+    , ("real profile still rejects TLS_AES_256_GCM_SHA384 (SHA-384 schedule not yet landed)", realRejectsAes256)
     , ("real profile rejects an ECDSA signature scheme at config validation", realRejectsEcdsa)
     , ("real profile accepts the constrained ChaCha/Ed25519 config", realAcceptsGood)
-    , ("the fake/test profile still accepts AES (the two profiles differ)", fakeAcceptsAes)
+    , ("the fake/test profile accepts AES-256 too (the two profiles still differ)", fakeAcceptsAes)
     , ("the real profile's random source is the OS CSPRNG", realIsOsCsprng)
-    , ("mkRealProvider advertises the constrained profile (rejects AES)", provRejectsAes)
+    , ("mkRealProvider advertises the AES-256/SHA-384 boundary (rejects AES-256)", provRejectsAes256)
     , ("a randomBytes op reaching the real provider is an error, not zeros", provRandErrors)
     , ("Hacl.randomBytes is fail-closed and typed (32-byte success)", entropyTypedOk) ]
   let mut passed := 0

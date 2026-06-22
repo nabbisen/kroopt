@@ -112,11 +112,18 @@ def checks : List Check :=
     , ok := parseOk (extSupVer13 ++ extKeyShare ++ extSigAlgsRsa) }
   , { name := "ClientHello with no signature_algorithms is refused (cert-authenticating server, RFC 8446 §4.2.3)"
     , ok := !parseOk (extSupVer13 ++ extKeyShare) }
-  , { name := "ClientHello offering only AES-128-GCM is refused (constrained profile performs ChaCha20-Poly1305 only, RFC 033)"
-    , ok := (negotiatedSuite [0x13, 0x01] (extSupVer13 ++ extKeyShare ++ extSigAlgs)).isNone }
-  , { name := "ClientHello listing AES-128-GCM before ChaCha20 negotiates ChaCha20 (capability overlap, not first-offered)"
+  , { name := "ClientHello offering only AES-128-GCM now negotiates AES-128-GCM (suite-aware seal path, 0.68)"
+    , ok := (negotiatedSuite [0x13, 0x01] (extSupVer13 ++ extKeyShare ++ extSigAlgs))
+              == some .aes128GcmSha256 }
+  , { name := "ClientHello listing AES-128-GCM before ChaCha20 negotiates AES-128 (first client-offered the server supports)"
     , ok := (negotiatedSuite [0x13, 0x01, 0x13, 0x03] (extSupVer13 ++ extKeyShare ++ extSigAlgs)
-              == some .chacha20Poly1305Sha256) }
+              == some .aes128GcmSha256) }
+  , { name := "ClientHello offering only ChaCha20-Poly1305 still negotiates ChaCha20 (both suites servable)"
+    , ok := (negotiatedSuite [0x13, 0x03] (extSupVer13 ++ extKeyShare ++ extSigAlgs))
+              == some .chacha20Poly1305Sha256 }
+  , { name := "ClientHello listing ChaCha20 before AES-128 negotiates ChaCha20 (client preference honoured)"
+    , ok := (negotiatedSuite [0x13, 0x03, 0x13, 0x01] (extSupVer13 ++ extKeyShare ++ extSigAlgs))
+              == some .chacha20Poly1305Sha256 }
   , { name := "ClientHello with legacy_version ≠ 0x0303 is refused (RFC 8446 §4.1.2)"
     , ok := rejects (chBadVersion (extSupVer13 ++ extKeyShare ++ extSigAlgs)) }
   , { name := "ClientHello offering non-null compression is refused (TLS 1.3 forbids compression, RFC 8446 §4.1.2)"
