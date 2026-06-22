@@ -1,9 +1,9 @@
 # RFC 031 — Production Interpreter Correspondence
 
 **Project.** kroopt  
-**Status.** Proposed — **milestone reached (0.47.0-dev): `RealHandshake` retired** (§5/§7.5). Slices 1–9 plus the driver removal land the correspondence substance: the production interpreter (`Kroopt.Conn.Interpreter`, `driveEvents`) drives the real `Kroopt.Core.step` from an inbound ClientHello to `connected` against a real crypto provider — real ECDHE/HKDF/CertificateVerify/Finished, real inbound AEAD-open of the protected client Finished, and a complete post-`connected` application-data wire path (record-header framing + first-record sequence 0 + record-header AAD for both `aeadSeal` and `aeadOpen`). The core carries the exact ClientHello-inclusive committed transcript prefix in every bound op and the interpreter hashes that carried prefix (§3); real records are sealed by the interpreter under the core-authorized epoch/sequence (§2); a wrong-kind crypto result drives the interpreter terminal (§4). The bespoke `Tests/RealHandshake.lean` RD driver (alternative flight assembly, transcript substitution, record sealing) is **deleted**; `Tests/Correspondence.lean` (25 checks, real fixtures in `Tests/RealFixtures.lean`) is the §6 suite, including the negative-bypass set (wrong-kind result, no early plaintext emit, no app accept before-`connected`/after-close, wrong client Finished rejected) and the migrated RFC 033 reassembly checks. **Deferred to the async-crypto work:** the §5 runtime ledger and the async §4 refinements (duplicate/stale/after-terminal results) — in the synchronous interpreter the properties they witness are already pinned by the direct §6 checks, and the ledger's negative-space value (no *unauthorized* effect) first applies where stale/duplicate effects become possible.
+**Status.** Implemented (0.88.0-dev) — **synchronous production-interpreter correspondence locked** (architect review 2026-06-15). §7 criterion 4 is re-scoped to its synchronous completion line; the §5 correspondence ledger and the async §4 refinements (duplicate / stale-cross-generation / result-after-terminal) are **relocated to RFC 040**, the band where asynchronous crypto results first become possible — see "§7.1 Relocation and lock conditions" below. This RFC locks **synchronous** correspondence only; it must **not** be cited as proving duplicate/stale/after-terminal async-result behavior. Milestone substance reached at 0.47.0-dev: **`RealHandshake` retired** (§5/§7.5). Slices 1–9 plus the driver removal land the correspondence substance: the production interpreter (`Kroopt.Conn.Interpreter`, `driveEvents`) drives the real `Kroopt.Core.step` from an inbound ClientHello to `connected` against a real crypto provider — real ECDHE/HKDF/CertificateVerify/Finished, real inbound AEAD-open of the protected client Finished, and a complete post-`connected` application-data wire path (record-header framing + first-record sequence 0 + record-header AAD for both `aeadSeal` and `aeadOpen`). The core carries the exact ClientHello-inclusive committed transcript prefix in every bound op and the interpreter hashes that carried prefix (§3); real records are sealed by the interpreter under the core-authorized epoch/sequence (§2); a wrong-kind crypto result drives the interpreter terminal (§4). The bespoke `Tests/RealHandshake.lean` RD driver (alternative flight assembly, transcript substitution, record sealing) is **deleted**; `Tests/Correspondence.lean` (25 checks, real fixtures in `Tests/RealFixtures.lean`) is the §6 suite, including the negative-bypass set (wrong-kind result, no early plaintext emit, no app accept before-`connected`/after-close, wrong client Finished rejected) and the migrated RFC 033 reassembly checks. **Deferred to the async-crypto work:** the §5 runtime ledger and the async §4 refinements (duplicate/stale/after-terminal results) — in the synchronous interpreter the properties they witness are already pinned by the direct §6 checks, and the ledger's negative-space value (no *unauthorized* effect) first applies where stale/duplicate effects become possible.
 
-Remaining for the milestone, in priority order: **(1)** crypto-op-id lifecycle (§4) — the wrong-kind guard (`resultMatchesKind`) is implemented and tested (`Tests/Correspondence.lean` checks 16–17), with a first §6 no-early-plaintext bypass check (18); the remaining refinements (duplicate→fatal, stale cross-generation→ignored+metric, result-after-terminal→released) concern asynchronous crypto results the synchronous interpreter never produces and land with async crypto; **(2)** correspondence ledger (§5) + the rest of the negative-bypass set (§6) — the §6 set now covers wrong-kind crypto results (checks 16–17), no early plaintext emission (18), and no application plaintext accepted before `connected` or after close (19–20); the ledger (§5) remains; **(3)** reduce/delete `Tests/RealHandshake.lean` (§5 criterion).  
+Remaining at the time of the lock (resolved as of 0.88.0-dev — see Status and §7.1): **(1)** crypto-op-id lifecycle (§4) — the wrong-kind guard (`resultMatchesKind`) is implemented and tested (`Tests/Correspondence.lean` checks 16–17), with a first §6 no-early-plaintext bypass check (18); the remaining refinements (duplicate→fatal, stale cross-generation→ignored+metric, result-after-terminal→released) concern asynchronous crypto results the synchronous interpreter never produces and land with async crypto; **(2)** correspondence ledger (§5) + the rest of the negative-bypass set (§6) — the §6 set now covers wrong-kind crypto results (checks 16–17), no early plaintext emission (18), and no application plaintext accepted before `connected` or after close (19–20); the ledger (§5) remains; **(3)** reduce/delete `Tests/RealHandshake.lean` (§5 criterion).  
 **Type.** Implementation RFC  
 **Target milestone.** M36  
 **Depends on.** RFC 002 (verified-core correspondence), RFC 010 (TlsConn/interpreter), RFC 032 (typed assembly contract), RFC 033 (real-client handshake processing); benefits from RFC 034 (capability honesty) landing first  
@@ -128,12 +128,33 @@ Assert the full authorization chain, not only end-state:
    the real provider and reaches `connected`; the flight is real TLS records.
 3. Transcript hashes for key schedule, CertificateVerify, server Finished, and client
    Finished verification derive from the same serialized handshake-message bytes.
-4. The crypto-op-id lifecycle (§4) is implemented and tested; the correspondence ledger
-   (§5) and tests (§6), including the negative-bypass set, pass.
+4. **Synchronous crypto-result authorization.** The synchronous production interpreter rejects
+   wrong-kind or otherwise unauthorized crypto results through the direct correspondence
+   negative-bypass tests (`Tests/Correspondence.lean`). Duplicate, stale-cross-generation, and
+   result-after-terminal behavior are **not** synchronous-interpreter phenomena and are owned by
+   RFC 040's async/IO correspondence ledger.
 5. `Tests/RealHandshake.lean` is wrapper-only or removed, with **no** alternative
    assembly/substitution/sealing logic remaining.
 6. The three gates stay green (re-establishing any proofs touched by RFC 032/033); the
    suite set and `conn`/`https` suites are updated for the production interpreter.
+
+### 7.1 Relocation and lock conditions
+
+The §5 ledger and the async §4 refinements are **not waived**. They are **relocated to RFC 040**,
+where asynchronous crypto results, generation-namespaced handles, stale-result metrics, and
+pure↔IO public-observation correspondence are introduced — the first layer where duplicate, stale,
+cross-generation, or after-terminal crypto results can actually occur. In the synchronous
+interpreter those behaviors are unobservable and the relevant bypass properties are already pinned
+by the direct §6 negative-bypass checks.
+
+This lock is acceptable only because the documentation is explicit that:
+
+1. RFC 031 locks **synchronous** correspondence, not the future IO/asynchronous correspondence;
+2. RFC 040 is now **mandatory** before any production/stable native-secret or async-result claim;
+3. external live interop may proceed on the current interpreter path, but production-grade async
+   secret-runtime guarantees remain later work (RFC 040);
+4. no one may cite RFC 031 as proving duplicate / stale-cross-generation / after-terminal
+   async-result behavior — that evidence lives in RFC 040.
 
 ## 8. Sequencing, risks, alternatives
 

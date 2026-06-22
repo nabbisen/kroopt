@@ -5,6 +5,38 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.88.0-dev] — RFC 031 locked for synchronous correspondence (→ `done/`); async ledger relocated to RFC 040 — 2026-06-15
+
+Cuts the RFC 031 ↔ RFC 040 scheduling knot per architect review. No code or proofs changed; this is
+an RFC-lifecycle/governance increment. RFC 031's synchronous production-interpreter correspondence
+(landed in substance at 0.47.0-dev) is now formally **locked**, unfreezing the real-wire band; the
+async residue that could not be exercised in the synchronous interpreter moves to the band where it
+first applies.
+
+### Changed
+- **RFC 031 §7 criterion 4 re-scoped to its synchronous line** and the RFC moved `proposed/ →
+  done/` (Status: Implemented (0.88.0-dev), synchronous correspondence locked). Criterion 4 is now
+  "synchronous crypto-result authorization" — the wrong-kind guard plus the direct §6
+  negative-bypass tests (wrong-kind result terminal; no early plaintext emit; no app accept
+  before-`connected`/after-close; wrong client Finished rejected), all already landed. A new §7.1
+  records the four lock conditions: 031 locks **synchronous** correspondence only; RFC 040 is
+  mandatory before production/stable native-secret or async-result claims; live interop may proceed
+  on the current interpreter; and 031 must not be cited for duplicate/stale/after-terminal
+  async-result behavior.
+- **Real-wire band unfrozen** (`rfcs/README.md`, `ROADMAP.md`): with 031 locked, RFC 010 (iotakt
+  socket adapter) is the active headline track → RFC 036 → RFC 037 inbound-alert residue → RFC
+  015/026 live interop; RFC 030/027/020 run in parallel as governance filler; RFC 040 is the
+  stable/v1 follow-up.
+
+### Added
+- **RFC 040 §4.4 — async crypto-result ledger (relocated from RFC 031 §5/§4).** RFC 040 now
+  explicitly owns the async negative-space: every IO effect justified by a core-authorized action or
+  terminal cleanup; every async crypto result correlated to a live op id / expected kind /
+  epoch-direction / current generation; duplicate results fatal-or-ignored per policy; stale
+  cross-generation results ignored with a metric and no state mutation; results after terminal
+  release resources and cannot emit plaintext. §10 records that RFC 040 is mandatory before any
+  production/stable native-secret or async-result claim.
+
 ## [0.87.0-dev] — traffic-secret C-arena migration decision (D-now / A-later) + RFC 040 — 2026-06-15
 
 Records the architect-reviewed decision on migrating connection-lifetime traffic secrets onto the

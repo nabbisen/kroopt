@@ -212,6 +212,17 @@ external interop (RFC 015/026) are **frozen** until these gates pass, in this or
 - **post-M38 — browser-grade crypto surface (RFC 035).** AES-GCM/P-256/ECDSA/RSA and a
   practical public-certificate story, only after the above are green.
 
+*RFC 031 lock (architect review 2026-06-15).* RFC 031 is **locked for synchronous
+production-interpreter correspondence** (0.88.0-dev → `done/`): its §7 criterion 4 is re-scoped to
+the synchronous authorization line (wrong-kind guard + direct §6 negative-bypass checks, all
+landed), and the §5 correspondence ledger plus the async §4 refinements
+(duplicate/stale-cross-generation/after-terminal) are **relocated to RFC 040 §4.4** — the IO band
+where async crypto results first occur. RFC 031 must not be cited for async-result behavior; RFC 040
+is mandatory before any production/stable native-secret or async-result claim. Approved post-lock
+order: **headline track** RFC 010 (socket adapter, active) → RFC 036 (replay + trace harness) → RFC
+037 inbound-alert residue → RFC 015/026 (live OpenSSL/curl + jemmet HTTPS E2E); **parallel
+governance** RFC 030/027/020; **stable/v1** RFC 040.
+
 *v0.3 phase kickoff — RFC 010 (ACTIVE): the verified core drives a handshake over a real OS socket.* RFC 010
 unfrozen now that the M37 band landed. `Tests/SocketDriver.lean` (`kroopt-socketdriver-test`) runs the actual
 `Kroopt.Core.step` + production interpreter over an AF_UNIX socketpair: a real ClientHello arrives from the

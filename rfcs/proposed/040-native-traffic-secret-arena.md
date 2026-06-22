@@ -99,6 +99,27 @@ A stale handle after close/release **fails closed** and must never alias newly-a
 memory (the monotonic, never-reused id discipline of `NativeSecret` extends to per-connection
 generations).
 
+### 4.4 Async crypto-result ledger (relocated from RFC 031 §5 / §4)
+
+RFC 031 locked **synchronous** correspondence; the correspondence ledger and the async crypto-op-id
+refinements were relocated here, because the IO production interpreter is the first layer where
+asynchronous crypto results — and therefore duplicate, stale-cross-generation, and after-terminal
+results — can actually occur. This RFC owns that async negative-space:
+
+```text
+Every IO effect in the production interpreter must be justified by a core-authorized action or by
+  terminal cleanup.
+Every async crypto result must correlate with a live operation id, expected kind, expected
+  epoch/direction, and current generation.
+Duplicate results are fatal or ignored according to the specified policy.
+Stale cross-generation results are ignored with a metric and no state mutation.
+Results after terminal state release resources and cannot emit plaintext.
+```
+
+The ledger records the full authorization chain so tests can assert *no unauthorized effect* — not
+just end-state equality — once effects can arrive out of band. RFC 031 must not be cited for any of
+these properties.
+
 ## 5. Correspondence tests (pure ↔ IO)
 
 The IO production interpreter is tested against the pure interpreter on scripted inputs, comparing
@@ -142,3 +163,8 @@ release-on-failure tests; no-retained-Lean-pointer tests; no-raw-secret-logging 
 Real traffic-secret zeroization is a **stable/v1 gate**: pre-stable interop and protocol work may
 continue with documented best-effort traffic-secret zeroization; a stable/v1 release requires this
 RFC (or an explicit owner-approved exception).
+
+Per the RFC 031 lock (architect review 2026-06-15), this RFC is additionally **mandatory before any
+production/stable native-secret or async-result claim**: it owns the async correspondence ledger
+relocated from RFC 031 §5/§4 (§4.4), so the duplicate / stale-cross-generation / after-terminal
+guarantees are evidenced here, never via RFC 031.

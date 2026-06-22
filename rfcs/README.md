@@ -21,9 +21,10 @@ provider capabilities + fail-closed entropy); **033** (M36, done in 0.42.0-dev) 
 (protected handshake records before `connected`, capability-bound overlap negotiation, ClientHello
 strictness, explicit CCS window, handshake-message reassembly); **032** (M36, done in 0.46.0-dev)
 made every server-flight message a typed core action with the transcript over serialized bytes and a
-CI gate against placeholder/first-byte dispatch; **031** (M36) remains open to close the proof/runtime
-correspondence gap (byte-accurate production-interpreter correspondence, including the configured
-Certificate DER); **037**
+CI gate against placeholder/first-byte dispatch; **031** (M36) is **locked for synchronous
+production-interpreter correspondence** (0.88.0-dev) — byte-accurate production-interpreter
+correspondence including the configured Certificate DER, with the async crypto-result ledger and
+stale-result refinements relocated to RFC 040; **037**
 (M37) hardens the native boundary, secret arena, and resource budgets; **036** adds the
 captured-client replay + trace harness for **038** constrained OpenSSL/curl interop; and
 **035** records the decision to defer browser-grade crypto breadth until the constrained
@@ -36,7 +37,10 @@ connection-lifetime traffic secrets move onto the C-owned zeroizing arena via a 
 (pure model + IO production) architecture, but this is **blocked on 031** and gated to **stable/v1**
 — the pre-stable line keeps documented best-effort traffic-secret zeroization (the server *private
 key* is already C-owned). iotakt binding (RFC 010) and external interop
-(RFC 015/026) are frozen until 031 (and, before live clients, 037) land; 032, 033, 034 and 039 are done.
+(RFC 015/026) were frozen until 031 locked; with **031 locked for synchronous correspondence
+(0.88.0-dev)** the real-wire band is **unfrozen** — RFC 010 (iotakt socket adapter) is active, with
+the RFC 037 inbound-alert residue and live OpenSSL/curl interop (RFC 015/026/036) the headline
+track; 031, 032, 033, 034 and 039 are done.
 
 Read order: ROADMAP first, then RFCs 001–007 (pure verified core), 008–009
 (crypto integration), 010–015 (runtime integration and acceptance), 016 (scope
@@ -56,7 +60,6 @@ control), then 017–030 (cross-cutting security, lifecycle, and release governa
 | 027 | [Public API Stability and Versioning](proposed/027-public-api-stability-and-versioning.md) | Public API stability commitment (post-v0.3 / pre-1.0) |
 | 029 | [Developer Documentation and Examples](proposed/029-developer-documentation-and-examples.md) | Tested/compile-checked API + progress-loop examples |
 | 030 | [Production Readiness and Release Runbook](proposed/030-production-readiness-and-release-runbook.md) | `docs/src/release-runbook.md` + release checklist |
-| 031 | [Production Interpreter Correspondence](proposed/031-production-interpreter-correspondence.md) | Byte-accurate handshake driven by the production interpreter from typed core-authorized actions; op-id lifecycle; correspondence ledger + tests (M36) |
 | 035 | [Browser-Grade Crypto Surface](proposed/035-browser-grade-crypto-surface.md) | Deferred — AES-GCM/P-256/ECDSA/RSA + cert-ecosystem story only after M36/M37/M38 green |
 | 036 | [Live Interop Trace Harness and Captured-Client Replay](proposed/036-live-interop-trace-harness.md) | Captured-CH replay fixtures; no-secrets trace facility; constrained-vs-browser-grade separation (M38; prep in M36) |
 | 037 | [Native FFI Safety, Secret Arena, and Resource-Budget Enforcement](proposed/037-native-safety-and-budget-enforcement.md) | FFI length contracts (all `uint32_t` params); native/classified secret arena; budget charging in the core; record-size guards; sanitizers (M37) |
@@ -71,6 +74,7 @@ milestone where the work substantively landed (see CHANGELOG/ROADMAP for detail)
 |----|-------|------------|
 | 000 | [RFC lifecycle policy](done/000-rfc-lifecycle-policy.md) | Implemented |
 | 039 | [Named-Group Policy and Selection Enforcement](done/039-named-group-policy-and-enforcement.md) | Implemented (0.81.0-dev) |
+| 031 | [Production Interpreter Correspondence](done/031-production-interpreter-correspondence.md) | Implemented (0.88.0-dev) — **synchronous** correspondence locked; async ledger + stale-result refinements relocated to RFC 040 |
 | 028 | [Security Review and Vulnerability Process](done/028-security-review-and-vulnerability-process.md) | Implemented (0.86.0-dev) |
 | 032 | [Typed Handshake/Record Assembly Contract](done/032-typed-flight-assembly-contract.md) | Implemented (0.46.0-dev) |
 | 034 | [Provider Capability Honesty and Fail-Closed Entropy](done/034-provider-capability-honesty-and-entropy.md) | 0.36.0-dev (M36-prelude) |
