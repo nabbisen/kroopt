@@ -25,7 +25,7 @@ def eqB (a b : ByteArray) : Bool := a.toList == b.toList
 
 -- Representative typed server-flight messages.
 def shMsg : HandshakeOut :=
-  .serverHello (ByteArray.mk (Array.mkArray 32 0xA1)) (ByteArray.mk (Array.mkArray 32 0xB2))
+  .serverHello (ByteArray.mk (Array.mkArray 32 0xA1)) (ByteArray.mk #[]) (ByteArray.mk (Array.mkArray 32 0xB2))
                0x1303 0x001d 0x0304
 def eeMsg : HandshakeOut := .encryptedExtensions none
 def cvMsg : HandshakeOut := .certificateVerify 0x0807 (ByteArray.mk (Array.mkArray 64 0xC3))
@@ -51,7 +51,8 @@ def hsIv  : ByteArray := Kroopt.Crypto.KeySchedule.trafficIv hsSecret
 def vch : ValidClientHello :=
   { selectedSuite := .chacha20Poly1305Sha256, selectedGroup := .x25519
     clientShare := ByteArray.mk (Array.mkArray 32 0x07), selectedSigScheme := .ed25519
-    sni := some (ByteArray.mk #[0x65, 0x78]), alpn := [ByteArray.mk #[0x68, 0x32]] }
+    sni := some (ByteArray.mk #[0x65, 0x78]), alpn := [ByteArray.mk #[0x68, 0x32]]
+    sessionId := ByteArray.empty }
 def s0core : State := State.initial ⟨0, 0⟩ ⟨0⟩ .sha256
 def chWire : ByteArray := ByteArray.mk #[1, 0, 0, 4, 0x03, 0x04, 0, 0]
 def fakeSecret : SecretKeyHandle := ⟨42, 0⟩

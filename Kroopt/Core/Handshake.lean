@@ -56,8 +56,8 @@ A single pure serializer is the one source of byte layout: the interpreter and t
 test drivers all call it, so no production path recognizes a message by its first
 byte. Slice 1 covers EncryptedExtensions (ALPN); slice 2 adds CertificateVerify. -/
 def serializeHandshakeOut : HandshakeOut → ByteArray
-  | .serverHello random share suite group version =>
-      Kroopt.Parse.Wire.serverHello random (ByteArray.mk #[]) suite group share version
+  | .serverHello random sessionId share suite group version =>
+      Kroopt.Parse.Wire.serverHello random sessionId suite group share version
   | .encryptedExtensions alpn =>
       let exts := match alpn with
         | none   => ByteArray.mk #[]
@@ -69,12 +69,16 @@ def serializeHandshakeOut : HandshakeOut → ByteArray
   | .finished verifyData =>
       Kroopt.Parse.Wire.finished verifyData
 
-/-- Serialize the server Certificate message (RFC 032 §5). The core holds only an opaque
-chain handle, not the DER; until RFC 031 threads configured DER through, both the emitted
-`writeCertificate` action and this transcript contribution serialize an empty chain, so the
-two agree by construction. -/
-def serializeServerCertificate (_chain : CertificateChainHandle) : ByteArray :=
-  Kroopt.Parse.Wire.certificate (ByteArray.mk #[]) (ByteArray.mk #[])
+/-- Serialize the server Certificate message (RFC 032 §5) from the configured public chain DER.
+The core resolves the DER once during negotiation (`selectedCertDer`) and uses this single
+serializer for both its transcript contribution and the emitted `writeCertificate` action, so the
+two agree by construction (RFC 031). With no chain configured the DER is empty and this emits an
+empty `certificate_list`, exactly the prior placeholder, so in-model handshakes are unaffected. -/
+def serializeServerCertificate (der : ByteArray) : ByteArray :=
+  let entries :=
+    if der.isEmpty then ByteArray.mk #[]
+    else Kroopt.Parse.Wire.certificateEntry der (ByteArray.mk #[])
+  Kroopt.Parse.Wire.certificate (ByteArray.mk #[]) entries
 
 /-- A validated ClientHello: the negotiated parameters the parser/policy checker
 produced (RFC 006 §5). Holding one is evidence the mandatory checks passed —
@@ -87,6 +91,10 @@ structure ValidClientHello where
   selectedSigScheme : SignatureScheme
   sni : Option ByteArray
   alpn : List ByteArray
+  /-- The client's `legacy_session_id` (RFC 8446 §4.1.2). The ServerHello MUST echo it verbatim
+  in `legacy_session_id_echo` (§4.1.3); a real client (OpenSSL middlebox-compat mode) sends a
+  32-byte id and rejects a ServerHello that fails to echo it. Empty for a minimal client. -/
+  sessionId : ByteArray
 
 /-! ## Legal phase edges (RFC 006 §4) -/
 
@@ -141,6 +149,7 @@ def onClientHello (s : State) (vch : ValidClientHello) (chWire : ByteArray) : Hs
     let alpn := ep.bind (fun e =>
       negotiateAlpn s.serverConfig.alpnMode (vch.alpn.map AlpnProtocol.mk) e.allowedAlpn)
     let cert := ep.map (·.chain)
+    let certDer := (ep.map (·.der)).getD (ByteArray.mk #[])
     let s := { s with
       negotiated := { selectedSuite := some vch.selectedSuite
                       selectedGroup := some vch.selectedGroup
@@ -150,7 +159,9 @@ def onClientHello (s : State) (vch : ValidClientHello) (chWire : ByteArray) : Hs
                       selectedCert := cert
                       serverShare := none
                       clientShare := some vch.clientShare
-                      serverRandom := none }
+                      serverRandom := none
+                      selectedCertDer := certDer
+                      clientSessionId := vch.sessionId }
       transcript := s.transcript.appendFramed .clientHello .read chWire }
     let (oid, s) := s.allocOp .randomBytes .handshake (some .write)
     .ok ({ s with handshake := .requestedServerRandom },
@@ -180,6 +191,7 @@ def onEcdheDone (s : State) (serverShare : ByteArray) (secret : SecretKeyHandle)
   if s.handshake = .requestedEcdhe then
     let shMsg : HandshakeOut :=
       .serverHello (s.negotiated.serverRandom.getD (ByteArray.mk #[]))
+                   s.negotiated.clientSessionId
                    serverShare
                    (cipherSuiteToU16 (s.negotiated.selectedSuite.getD .chacha20Poly1305Sha256))
                    (namedGroupToU16 (s.negotiated.selectedGroup.getD .x25519))
@@ -221,18 +233,18 @@ def onHsScheduleResult (s : State) (r : CryptoResult) : HsResult :=
           if ksd.phase = .handshakeKeysInstalled then
             let eeMsg : HandshakeOut :=
               .encryptedExtensions (s.negotiated.selectedAlpn.map (·.bytes))
-            let certHandle := s.negotiated.selectedCert.getD default
+            let certDer := s.negotiated.selectedCertDer
             let ts := s.transcript.appendFramed .encryptedExtensions .write
                         (serializeHandshakeOut eeMsg)
             let ts := ts.appendFramed .certificate .write
-                        (serializeServerCertificate certHandle)
+                        (serializeServerCertificate certDer)
             let (snap, ts) := ts.snapshot
             let s := { s with transcript := ts, keySched := some ksd }
             let (oid, s) := s.allocOp .signCertificateVerify .handshake (some .write)
             let scheme := s.negotiated.selectedSigScheme.getD .ed25519
             .ok ({ s with handshake := .requestedCertificateVerifySignature },
                  [ OutputAction.writeHandshake s.connId .handshake 0 eeMsg,
-                   OutputAction.writeCertificate s.connId .handshake 1 certHandle,
+                   OutputAction.writeCertificate s.connId .handshake 1 certDer,
                    OutputAction.callCrypto s.connId oid
                      (CryptoOp.signCertificateVerify scheme
                        (ts.prefixBytes snap)) ])

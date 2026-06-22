@@ -1,5 +1,6 @@
 import Kroopt.Parse.Wire
 import Kroopt.Crypto.RealProvider
+import Kroopt.Core.Config
 
 /-! # Tests.RealFixtures
 
@@ -64,6 +65,15 @@ def clientHelloMsg : ByteArray :=
 /-- Wrap a handshake message in a TLS plaintext record (outer type 22). -/
 def recordWrap (b : ByteArray) : ByteArray :=
   hx "16 03 01" ++ Wire.be16 b.size.toUInt16 ++ b
+
+/-- A validated server config presenting the fixture Ed25519 leaf certificate (RFC 012). Its public
+DER (`certDer`) goes on the wire and into the transcript; the matching private key is `certSeed`,
+which the provider signs CertificateVerify with. With no SNI routes, every ClientHello resolves to
+this default endpoint. -/
+def realServerConfig : Kroopt.Core.ValidatedServerConfig :=
+  { (default : Kroopt.Core.ValidatedServerConfig) with
+    defaultEndpoint := some
+      { (default : Kroopt.Core.EndpointConfig) with der := certDer } }
 
 /-! ## Real-handshake driver -/
 end Tests.RealFixtures

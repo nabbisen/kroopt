@@ -101,3 +101,13 @@ verify:
 3. Browser smoke testing is documented before v0.4 acceptance.
 4. Unsupported features are listed as deliberate non-goals, not accidental gaps.
 5. Interop results are reflected in the proof/trust/test matrix as TESTED.
+
+## Progress — live handshake interop landed
+
+`scripts/tls-interop.sh` runs the kroopt verified core + production interpreter as a TLS 1.3 server
+(`Tests/LiveServer.lean`, real OS entropy, fixture Ed25519 cert) on an AF_UNIX socket and completes a
+full handshake against two independent clients: **OpenSSL 3.0 `s_client`** and **Python `ssl`**, both
+negotiating `TLS_CHACHA20_POLY1305_SHA256` and reaching `connected`. Each validates kroopt's wire bytes
+end to end (ServerHello, encrypted flight, presented certificate, CertificateVerify signature, server
+Finished) and kroopt verifies the client's Finished. Scope: handshake only, over a real OS socket (not
+yet iotakt), no app-data round-trip yet; the negative/fuzz matrix and browser/curl breadth remain.

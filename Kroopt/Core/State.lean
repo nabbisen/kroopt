@@ -106,6 +106,13 @@ structure NegotiationState where
   /-- The server's 32-byte Random, drawn from the CSPRNG via a core `randomBytes` op so it
   is a core value the typed ServerHello can carry (RFC 032), not interpreter-supplied. -/
   serverRandom : Option ByteArray
+  /-- The public certificate-chain DER resolved for the selected endpoint (RFC 012). The core
+  commits this exact byte string to its transcript and emits it in `writeCertificate`, so the
+  transcript and the wire agree by construction. Empty when no chain is configured. -/
+  selectedCertDer : ByteArray := ByteArray.empty
+  /-- The client's `legacy_session_id`, echoed verbatim in the ServerHello's
+  `legacy_session_id_echo` (RFC 8446 §4.1.3). Empty for a minimal client. -/
+  clientSessionId : ByteArray := ByteArray.empty
   deriving Inhabited
 
 namespace NegotiationState
@@ -113,7 +120,8 @@ namespace NegotiationState
 def empty : NegotiationState :=
   { selectedSuite := none, selectedGroup := none, selectedSigScheme := none
     selectedSni := none, selectedAlpn := none, selectedCert := none
-    serverShare := none, clientShare := none, serverRandom := none }
+    serverShare := none, clientShare := none, serverRandom := none
+    selectedCertDer := ByteArray.mk #[], clientSessionId := ByteArray.mk #[] }
 
 end NegotiationState
 

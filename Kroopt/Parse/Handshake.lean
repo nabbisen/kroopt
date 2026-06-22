@@ -141,7 +141,7 @@ def parseClientHello (input : ByteArray) : Except ParseError (Kroopt.Core.WireBo
   -- version preference is carried only in supported_versions.
   if legacyVersion != 0x0303 then throw .valueOutOfRange
   let (_random, r) ← r.takeBytes 32
-  let (_sessionId, r) ← r.takeVectorBytes .len8 32
+  let (sessionId, r) ← r.takeVectorBytes .len8 32
   let (suitesBytes, r) ← r.takeVectorBytes .len16 (2 * maxCipherSuites)
   let (compression, r) ← r.takeVectorBytes .len8 maxVectorLen
   -- RFC 8446 §4.1.2: legacy_compression_methods MUST be exactly one byte set to zero
@@ -163,7 +163,8 @@ def parseClientHello (input : ByteArray) : Except ParseError (Kroopt.Core.WireBo
       clientShare := share
       selectedSigScheme := sigScheme
       sni := findExt exts 0
-      alpn := match findExt exts 16 with | some d => [d] | none => [] }
+      alpn := match findExt exts 16 with | some d => [d] | none => []
+      sessionId := sessionId }
   pure { value := vch, wireBytes := input }
 
 end Kroopt.Parse

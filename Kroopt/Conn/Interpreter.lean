@@ -199,11 +199,10 @@ def execAction {τ : Type} [Transport τ] (prov : CryptoProvider) (rt : RuntimeS
           let (rt', tr') := drainOutbound { rt with outbound := rt.outbound ++ wire } tr
           (rt', tr', [])
       | .error e => (terminate rt (some (.resourceLimit e)), tr, [])
-  | .writeCertificate _ epoch seq _ =>
-      -- The interpreter owns Certificate serialization from the chain handle (RFC 032 §4).
-      -- Until the configured DER is wired in, production serializes a structurally-valid empty
-      -- Certificate; it is sealed under the handshake epoch like the rest of the flight.
-      let plain := Kroopt.Parse.Wire.certificate (ByteArray.mk #[]) (ByteArray.mk #[])
+  | .writeCertificate _ epoch seq der =>
+      -- The interpreter owns Certificate framing but uses the *core's* single serializer over the
+      -- DER the core resolved (RFC 032 §4): identical bytes to the core's transcript contribution.
+      let plain := Kroopt.Core.serializeServerCertificate der
       match handshakeWire rt.arena epoch seq plain with
       | .ok wire =>
           let (rt', tr') := drainOutbound { rt with outbound := rt.outbound ++ wire } tr

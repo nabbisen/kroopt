@@ -48,6 +48,9 @@ structure EndpointConfig where
   allowedAlpn      : List AlpnProtocol
   signatureSchemes : List SignatureScheme
   cipherSuites     : List CipherSuite
+  /-- The public certificate-chain DER presented on the wire (RFC 012). Public, not secret —
+  the private key stays behind `key`'s handle. Empty until a chain is configured. -/
+  der              : ByteArray := ByteArray.empty
   deriving Inhabited
 
 structure SniRoute where

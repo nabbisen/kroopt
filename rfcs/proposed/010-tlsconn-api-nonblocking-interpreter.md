@@ -1,7 +1,7 @@
 # RFC 010 — TlsConn API and Non-Blocking iotakt Interpreter
 
 **Project.** kroopt  
-**Status.** Proposed  
+**Status.** Proposed (ACTIVE — unfrozen after the RFC 037 M37 native-hardening band landed at 0.48.0-dev; the verified core + production interpreter now drive a real handshake, so the real-socket I/O driver and live interop are in scope)  
 **Type.** Implementation RFC  
 **Target milestone.** M7  
 **Depends on.** RFC 002, RFC 004, RFC 008  
@@ -161,3 +161,13 @@ structure TlsConnInner where
 - iotakt integration requires no iotakt source changes.
 - Bounded queues and progress budgets are implemented.
 - Tests cover partial writes, wouldBlock, and stale events.
+
+## Progress
+
+- **Real-socket driver (first increment, 0.48.0-dev+).** `Tests/SocketDriver.lean` drives the verified core +
+  production interpreter over a real AF_UNIX socket: a ClientHello arrives from the wire, the core processes it
+  with the real HACL* provider, and the sealed server flight is written back to the wire (peer confirms record framing). A second socketpair
+  completes the full round-trip to `connected`: the peer puts a valid client Finished on the wire, the core
+  opens it, `verifyFinished` checks the MAC, and the handshake reaches `connected` over real kernel I/O. The interpreter stays pure — the `driveOverSocket` loop owns the
+  syscalls and flushes only core-authorised bytes (§6). Remaining: the full round-trip to `connected` (client
+  Finished from the wire), non-blocking/readiness-driven progress, and live interop (RFC 026) / jemmet E2E (RFC 015).

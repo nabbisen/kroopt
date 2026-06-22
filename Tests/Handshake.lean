@@ -28,7 +28,8 @@ def vch : ValidClientHello :=
     clientShare := bytes (List.replicate 32 0x07)
     selectedSigScheme := .ed25519
     sni := some (bytes [0x65, 0x78]) -- "ex"
-    alpn := [bytes [0x68, 0x32]] }   -- "h2"
+    alpn := [bytes [0x68, 0x32]]
+    sessionId := ByteArray.empty }   -- "h2"
 
 def s0 : State := State.initial ⟨0, 0⟩ ⟨0⟩ .sha256
 def chWire : ByteArray := bytes [1, 0, 0, 4, 0x03, 0x04, 0, 0]

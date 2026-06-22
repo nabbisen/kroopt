@@ -5,6 +5,108 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.49.0-dev] — RFC 010/012/026: live TLS 1.3 interop (OpenSSL + Python) over a real socket — 2026-06-13
+
+### RFC 010 (ACTIVE) — the verified core drives a handshake over a real OS socket
+
+The real-socket arc toward v0.3 begins: RFC 010 is unfrozen now that the M37 native-hardening band has
+landed. Where `Tests.SocketHandshake` showed the record layer survives real kernel I/O, this drives the
+actual `Kroopt.Core.step` machine + production interpreter over a real socket.
+
+- `Tests/SocketDriver.lean` (`kroopt-socketdriver-test`, 6 checks): an AF_UNIX socketpair carries a real
+  ClientHello from the wire into the verified core (with the real HACL\* provider and the deterministic
+  RFC 8448-backed fixtures), and the sealed server flight the core produces is written back to the wire.
+  The peer reads the flight off the socket and confirms it opens with a cleartext ServerHello record and
+  that every subsequent record is an encrypted record (outer `application_data` 0x17); the core reaches
+  `sentServerFinished` over real I/O. A second socketpair completes the **full round-trip to `connected`**:
+  the peer puts a valid client Finished on the wire (sealed under the client handshake-traffic key the
+  server derived, over the through-server-Finished transcript — what a real client computes itself), the
+  core opens it, `verifyFinished` checks the MAC, and the handshake reaches `connected` over real kernel I/O.
+- The interpreter stays pure: all syscalls live in a thin `driveOverSocket` loop (read wire bytes → advance
+  the core → flush only the bytes the core authorised), the shape RFC 010 §6 specifies — the core decides
+  what is legal to write, the driver only moves it. A no-op staging `Transport` keeps authorised output in
+  `RuntimeState.outbound` for the driver to flush. The socket helpers remain test-only glue; production
+  reaches the network through iotakt.
+
+### RFC 012 — the server presents its configured certificate (live-interop prerequisite)
+
+Until now the server sent (and committed to its transcript) an *empty* Certificate: self-consistent in
+the model, but a real client both rejects an empty `certificate_list` and computes its transcript over a
+real one, so no external client could ever complete the handshake. The configured public certificate DER
+now flows end to end, transcript-consistently:
+
+- The public chain DER is carried on `EndpointConfig.der` and resolved once during negotiation into
+  `NegotiationState.selectedCertDer`. It is *public* — the private key stays behind its secret handle, so
+  no secret bytes enter a Lean value, and neither `CertificateChainHandle` nor any `Repr`/`DecidableEq`
+  derivation is disturbed (the DER lives only on `Inhabited`-only structures).
+- A single serializer, `Kroopt.Core.serializeServerCertificate`, produces the Certificate bytes for *both*
+  the core's transcript contribution and the bytes the interpreter writes to the wire (the
+  `writeCertificate` action now carries the DER, not an opaque handle). The two agree by construction
+  (RFC 031 single transcript authority, RFC 032 single serializer). With no chain configured the DER is
+  empty and it emits the prior empty `certificate_list`, so every in-model test and proof is unchanged —
+  the full build, all 24 suites, fuzz, both interop scripts, and the sanitizer stay green.
+- `Tests/SocketDriver.lean` now drives the handshake with a real config (`Tests.RealFixtures.realServerConfig`,
+  the fixture Ed25519 leaf cert): the flight carries a real non-empty Certificate, that DER is confirmed in
+  the core's committed transcript, and the handshake still reaches `connected` over the real-cert transcript.
+
+### RFC 026 (de-risk) — kroopt's core parses a *real* client's ClientHello
+
+Before building the listening-socket orchestration for live interop, the biggest unknown was whether the
+verified core handles a real, non-fixture ClientHello (the in-model fixture is hand-built; a real client's
+is larger, with its own extension set, random, and key_share). That risk is now retired:
+
+- `scripts/real-ch-interop.sh` generates a genuine TLS 1.3 ClientHello with Python's `ssl` module (a real
+  independent implementation, on OpenSSL 3.0) via a memory BIO — no server needed — and feeds it to the
+  core (`Tests/RealChParse.lean`, exe `kroopt-realch-interop`) with the real HACL\* provider. The core
+  parses it, negotiates `TLS_CHACHA20_POLY1305_SHA256` / x25519, performs the ECDHE against the client's
+  real key_share, and produces a 661-byte server flight — reaching `sentServerFinished`. The ClientHello is
+  freshly random each run, so this also fuzzes the happy path against a real client's wire format.
+- The exe is `-interop`, not `-test`, so it stays out of the standalone suite sweep (it needs the script to
+  generate the ClientHello first); it joins `ed25519-interop.sh` / `record-interop.sh` as a script-driven
+  interop guard.
+
+This confirms the path to live interop is now orchestration, not parser work: a real listening socket
+(`listen`/`accept` FFI), handling the client's `change_cipher_spec` + real client Finished across multiple
+round-trips, and confirming an independent client *accepts* the flight (the one thing the in-model client,
+which does not verify CertificateVerify, cannot prove). That full round-trip is the next increment.
+
+### RFC 8446 §4.1.3 — ServerHello echoes the client's legacy_session_id
+
+A real client (OpenSSL in middlebox-compatibility mode) sends a 32-byte `legacy_session_id` and rejects
+any ServerHello whose `legacy_session_id_echo` does not match it byte-for-byte. The server now captures
+the client's session_id in the ClientHello parser, carries it as `ValidClientHello.sessionId` →
+`NegotiationState.clientSessionId`, and echoes it in the typed ServerHello action — so the core's
+transcript contribution and the bytes on the wire stay identical (RFC 031/032). A minimal client sends
+an empty session_id, so every in-model handshake, its transcript, and the proofs over it are byte-for-byte
+unchanged.
+
+### RFC 026 — live TLS 1.3 interop with independent clients (the v0.3 prize)
+
+kroopt's verified core + production interpreter now complete a full TLS 1.3 handshake against real,
+independent TLS implementations:
+
+- `Tests/LiveServer.lean` (`kroopt-live-server`) runs the core as a server on an AF_UNIX listening socket
+  (new `kroopt_sock_listen` / `kroopt_sock_accept` test glue). Real OS entropy is drawn at the IO layer
+  (RFC 034 §4 — the pure provider never draws entropy): the ephemeral X25519 key and the ServerHello
+  random come from `Hacl.randomBytes` and are injected, the ephemeral into the provider config and the
+  random as the single `randomBytes` op's answer. The fixture Ed25519 leaf certificate is presented; its
+  private key is `certSeed`, so the CertificateVerify the client checks against the cert's public key
+  verifies.
+- `scripts/tls-interop.sh` drives two independent clients against it; both complete a TLS 1.3 handshake
+  negotiating `TLS_CHACHA20_POLY1305_SHA256`:
+  - **OpenSSL 3.0 `s_client`** — `New, TLSv1.3, Cipher is TLS_CHACHA20_POLY1305_SHA256`;
+  - **Python `ssl`** — `TLSv1.3 / TLS_CHACHA20_POLY1305_SHA256`.
+  Each validates kroopt's wire bytes end to end — ServerHello, the encrypted flight, the presented
+  certificate, the CertificateVerify signature, and the server Finished — and sends its own
+  change_cipher_spec + Finished, which kroopt verifies to reach `connected`.
+
+**Honest scope.** This is handshake interop over a real OS socket — not yet over iotakt (the socket
+helpers remain test-only glue) and not yet an application-data exchange (the server reaches `connected`
+and closes; OpenSSL's `self-signed certificate` notice and post-handshake `unexpected eof` are both
+expected, not failures). Full v0.3 acceptance still wants the iotakt-driven path, an app-data round-trip,
+and the jemmet HTTPS E2E. But the protocol-structural claim is now externally validated: an independent
+client accepts everything kroopt puts on the wire.
+
 ## [0.48.0-dev] — RFC 037 (native safety + budget enforcement) M37 band — 2026-06-13
 
 ### RFC 037 slice 8 — ASan/UBSan sanitizer target (§7.5; closes RFC 009/024 sanitizer deliverable)

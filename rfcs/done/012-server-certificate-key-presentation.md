@@ -124,3 +124,17 @@ The parser must be size/depth bounded and must not evolve into full path validat
 - Private keys are never exposed through printable Lean structures.
 - Config lint is documented as lint, not validation.
 - Peer path validation remains explicitly deferred.
+
+## Amendment (RFC 010 socket arc) — configured DER now reaches the wire
+
+The original increment modelled the cert/key as opaque handles and serialized an *empty* Certificate
+(self-consistent in-model, since the in-model client computed its transcript over the same empty message).
+The real-socket arc requires a real client to accept the flight, so the public chain DER now flows end to
+end, transcript-consistently: `EndpointConfig.der` → `NegotiationState.selectedCertDer` → a single
+`serializeServerCertificate` used for *both* the core's transcript contribution and the bytes the
+interpreter writes (the `writeCertificate` action carries the DER, not the handle). The DER is public, so
+it lives only on `Inhabited`-only structures and disturbs no `Repr`/`DecidableEq` derivation; the private
+key stays behind its secret handle. Empty DER reproduces the prior empty `certificate_list`, so all in-model
+proofs and tests are unchanged. `Tests.SocketDriver` drives the handshake with the fixture Ed25519 leaf cert
+and reaches `connected` over the real-cert transcript. Multi-cert chains and client/mTLS validation remain
+out of scope here.

@@ -37,6 +37,13 @@ Wave 2 was added after the requirements document was frozen. Per the RFC lifecyc
 
 ### 3.1 Wave 1 — protocol architecture milestones
 
+> **Status (v0.3 socket arc).** The verified core + production interpreter now complete a full TLS 1.3
+> handshake against **independent clients** — OpenSSL 3.0 `s_client` and Python `ssl` both negotiate
+> `TLS_CHACHA20_POLY1305_SHA256` and reach `connected` (`scripts/tls-interop.sh`, RFC 026). The server
+> presents the fixture Ed25519 certificate (RFC 012) and draws real OS entropy. Remaining for full v0.3
+> acceptance: drive this over iotakt rather than test socket glue, exchange application data, and the
+> jemmet HTTPS E2E (RFC 015).
+
 | Milestone | Theme | Output | Main RFCs |
 |---|---|---|---|
 | M0 | Boundary, repository skeleton, pure core shape | No sockets, no real crypto, state/action skeleton compiles | RFC 001, 002 |
@@ -203,6 +210,16 @@ external interop (RFC 015/026) are **frozen** until these gates pass, in this or
   green. Documented as a **constrained** profile, not browser-grade.
 - **post-M38 — browser-grade crypto surface (RFC 035).** AES-GCM/P-256/ECDSA/RSA and a
   practical public-certificate story, only after the above are green.
+
+*v0.3 phase kickoff — RFC 010 (ACTIVE): the verified core drives a handshake over a real OS socket.* RFC 010
+unfrozen now that the M37 band landed. `Tests/SocketDriver.lean` (`kroopt-socketdriver-test`) runs the actual
+`Kroopt.Core.step` + production interpreter over an AF_UNIX socketpair: a real ClientHello arrives from the
+wire, the core (real HACL* provider, RFC 8448 fixtures) processes it, and the sealed server flight is written
+back to the wire; the peer confirms a cleartext ServerHello record followed by encrypted records (outer 0x17),
+the core reaches `sentServerFinished`, and a second socketpair completes the full round-trip to `connected` (peer puts a valid client Finished on the wire, the core verifies its MAC) — the full server handshake state machine over real kernel I/O. The server now presents its configured certificate (RFC 012): the public chain DER flows through one serializer into both the transcript and the wire, so the flight carries a real, non-empty Certificate — the prerequisite for interop with an independent client. A first interop de-risk (RFC 026) confirms the core parses a genuine TLS 1.3 ClientHello from Python's ssl module — negotiating chacha20Poly1305/x25519 and producing a flight — so the remaining work toward live interop is socket orchestration, not parser changes. The interpreter stays pure — syscalls live in a thin
+`driveOverSocket` loop (RFC 010 §6: the core decides legal writes, the driver only moves bytes). 24 suites
+(+socketdriver) + 4 gates + fuzz + interop + sanitizer green. Next: round-trip to `connected` over the socket,
+then OpenSSL/curl live interop (RFC 026) and jemmet HTTPS E2E (RFC 015).
 
 *M37 RFC 037 slice 8 — ASan/UBSan sanitizer target (§7.5, closes RFC 009/024), M37 band COMPLETE → 0.48.0-dev:*
 `scripts/sanitizer-check.sh` + `Kroopt/Native/kroopt_sanitizer_harness.c` build the real `kroopt_ffi.c` shim +

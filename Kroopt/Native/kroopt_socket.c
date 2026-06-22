@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/socket.h>
+#include <sys/un.h>
 
 /* IO: create an AF_UNIX SOCK_STREAM socketpair; pack the two fds into a UInt64
  * (fd0 high 32 bits, fd1 low 32 bits). 0xFFFF...F signals failure. */
@@ -69,4 +70,36 @@ LEAN_EXPORT lean_object *kroopt_sock_close(uint32_t fd, lean_object *w) {
   (void)w;
   close((int)fd);
   return lean_io_result_mk_ok(lean_box(0));
+}
+
+/* IO: bind+listen an AF_UNIX SOCK_STREAM socket at `path` (unlinking any stale
+ * node first). Returns the listening fd (UInt32), or 0xFFFFFFFF on failure.
+ * Test-only orchestration so a real client (OpenSSL/Python) can connect. */
+LEAN_EXPORT lean_object *kroopt_sock_listen(b_lean_obj_arg path, lean_object *w) {
+  (void)w;
+  const char *p = lean_string_cstr(path);
+  uint32_t result = 0xFFFFFFFFu;
+  int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+  if (fd >= 0) {
+    struct sockaddr_un addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    strncpy(addr.sun_path, p, sizeof(addr.sun_path) - 1);
+    unlink(p);
+    if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) == 0 && listen(fd, 1) == 0) {
+      result = (uint32_t)fd;
+    } else {
+      close(fd);
+    }
+  }
+  return lean_io_result_mk_ok(lean_box_uint32(result));
+}
+
+/* IO: accept one connection on a listening fd; returns the connection fd
+ * (UInt32), or 0xFFFFFFFF on failure. Blocks until a client connects. */
+LEAN_EXPORT lean_object *kroopt_sock_accept(uint32_t lfd, lean_object *w) {
+  (void)w;
+  int cfd = accept((int)lfd, NULL, NULL);
+  uint32_t result = (cfd >= 0) ? (uint32_t)cfd : 0xFFFFFFFFu;
+  return lean_io_result_mk_ok(lean_box_uint32(result));
 }

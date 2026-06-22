@@ -216,6 +216,19 @@ lean_exe «kroopt-socket-test» where
   moreLinkArgs := #["-Wl,--gc-sections"]
 
 @[default_target]
+lean_exe «kroopt-socketdriver-test» where
+  root := `Tests.SocketDriver
+  moreLinkArgs := #["-Wl,--gc-sections"]
+
+lean_exe «kroopt-live-server» where
+  root := `Tests.LiveServer
+  moreLinkArgs := #["-Wl,--gc-sections"]
+
+lean_exe «kroopt-realch-interop» where
+  root := `Tests.RealChParse
+  moreLinkArgs := #["-Wl,--gc-sections"]
+
+@[default_target]
 lean_exe «kroopt-capabilities-test» where
   root := `Tests.Capabilities
   moreLinkArgs := #["-Wl,--gc-sections"]
