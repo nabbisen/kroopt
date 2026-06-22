@@ -85,21 +85,34 @@ discovered:
   execute each `OutputAction` exactly as specified and to feed back only
   correctly-correlated events. Justified by the deterministic harness comparing
   interpreter behaviour against the action stream (RFC 014).
-* **Secret-memory zeroization (RFC 013 §13.4, RFC 037 §3).** The verified core
-  never names key bytes, and the interpreter's pure `SecretArena` drops every
-  secret reference on each terminal path (tested). The C-owned zeroizing arena
-  named as the fixed target now exists (`Kroopt.Crypto.NativeSecret` over the
-  native `kroopt_ffi_secret_*` store): secret bytes live in malloc'd C memory
-  addressed by a monotonic, never-reused id, and `release`/`zeroize` overwrite the
-  buffer through a volatile store before freeing it. The wipe is **observable** on
-  a live buffer (`Tests.NativeSecret`) and the store is leak/double-free/UAF-clean
-  under ASan/UBSan (`scripts/sanitizer-check.sh`). Wiring the production
-  interpreter's secret lifecycle onto it is the remaining step; until that lands,
-  the live handshake still routes secrets through the pure Lean arena, so the
-  end-to-end posture stays *best-effort, tested, and not zeroization-guaranteed*,
-  with no production zeroization guarantee — the difference now is that the
-  zeroizable home is built and proven to wipe, not merely specified. Ephemeral
-  bytes that transit Lean for a crypto op remain outside any wipe guarantee.
+* **Secret-memory zeroization (RFC 013 §13.4, RFC 037 §3) — two distinct postures, kept as
+  separate rows (they must not be blurred).** The verified core never names key bytes; the two
+  secret classes are handled differently:
+  * **Config-lifetime server private key — TESTED C-owned zeroization.** The Ed25519 signing key
+    lives only in the C-owned arena (`Kroopt.Crypto.NativeSecret` over the native
+    `kroopt_ffi_secret_*` store): its bytes sit in malloc'd C memory addressed by a monotonic,
+    never-reused id, it is signed **by handle** (never copied to the Lean heap), and
+    `release`/`zeroize` overwrite the buffer through a volatile store before freeing it. The wipe
+    is **observable** on a live buffer (`Tests.NativeSecret`) and the store is
+    leak/double-free/UAF-clean under ASan/UBSan (`scripts/sanitizer-check.sh`).
+  * **Connection-lifetime traffic secrets — BEST-EFFORT / tested logical invalidation.** The
+    ECDHE shared secret, the HKDF handshake/application traffic secrets, and the per-record AEAD
+    keys/IVs still live in the pure Lean `SecretArena`, threaded through the interpreter. On every
+    terminal path the interpreter bumps the arena generation, which drops the stored bytes from
+    the arena's reachable state and invalidates every outstanding handle (a stale handle resolves
+    to `none`, never the wrong secret) — tested. It does **not** overwrite the underlying memory:
+    dropped `ByteArray`s are reclaimed on the runtime's schedule, and copies the borrowed crypto
+    made are outside this model. **No production zeroization is claimed for traffic secrets** until
+    the native traffic-secret arena lands.
+
+  Moving the connection-lifetime secrets onto the C-owned arena requires an **IO production
+  interpreter**: the pure `CryptoProvider.submit` / `Conn.Interpreter.driveEvents` cannot hold an
+  effectful secret lifecycle without losing the determinism the proofs and the RFC 031
+  correspondence rely on. The architect-reviewed decision is to keep the best-effort posture for
+  the pre-stable line and migrate via a **two-interpreter** architecture (pure model + IO
+  production, with a pure↔IO correspondence) as a **stable/v1 gate**, sequenced **after RFC 031**
+  locks the pure correspondence. Tracked by RFC 040; see `deferred-scope.md`. Ephemeral bytes that
+  transit Lean for a crypto op remain outside any wipe guarantee.
 
 Each deferred item will get its own dated entry here when the corresponding code
 is introduced, including how the assumption is discharged or bounded.

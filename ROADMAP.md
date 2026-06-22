@@ -887,6 +887,7 @@ These decisions apply to every RFC:
 6. **No proof bypass.** Runtime code may not implement alternate state transitions outside `Kroopt.Core.step`.
 7. **No implicit trust store.** Server mode presents configured material; peer path validation is future scope.
 8. **No feature creep into v0.4.** HRR, tickets, 0-RTT, KeyUpdate, TLS 1.2, client mode, and mTLS require separate RFC approval.
+9. **Secret-memory zeroization is staged by lifetime, and the two postures stay distinct.** Config-lifetime secrets (the server private key) are C-owned and explicitly zeroized now; connection-lifetime traffic secrets stay in the pure `SecretArena` with best-effort logical invalidation (generation bump on every terminal path) until the native traffic-secret arena lands. That migration is a **stable/v1 gate**, sequenced **after RFC 031**, specified by RFC 040 as a two-interpreter (pure model + IO production) architecture — it must **not** be done by IO-ifying the single interpreter, which would collapse the proof/runtime correspondence. No production zeroization is claimed for traffic secrets until then.
 
 ---
 

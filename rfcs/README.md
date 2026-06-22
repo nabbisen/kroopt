@@ -30,7 +30,12 @@ captured-client replay + trace harness for **038** constrained OpenSSL/curl inte
 profile is proven against live clients. **038** is reserved for that constrained-interop
 RFC (not yet written); **039** (implemented at 0.81.0-dev, after the 0.76.0-dev secp256r1
 capability-gap review) made the key-exchange-group dimension load-bearing — endpoint group
-policy, capability enforcement, core-level selection, and a selection-authorization proof. iotakt binding (RFC 010) and external interop
+policy, capability enforcement, core-level selection, and a selection-authorization proof. **040**
+(added after 039) records the architect-reviewed decision on the traffic-secret C-arena migration:
+connection-lifetime traffic secrets move onto the C-owned zeroizing arena via a two-interpreter
+(pure model + IO production) architecture, but this is **blocked on 031** and gated to **stable/v1**
+— the pre-stable line keeps documented best-effort traffic-secret zeroization (the server *private
+key* is already C-owned). iotakt binding (RFC 010) and external interop
 (RFC 015/026) are frozen until 031 (and, before live clients, 037) land; 032, 033, 034 and 039 are done.
 
 Read order: ROADMAP first, then RFCs 001–007 (pure verified core), 008–009
@@ -55,6 +60,7 @@ control), then 017–030 (cross-cutting security, lifecycle, and release governa
 | 035 | [Browser-Grade Crypto Surface](proposed/035-browser-grade-crypto-surface.md) | Deferred — AES-GCM/P-256/ECDSA/RSA + cert-ecosystem story only after M36/M37/M38 green |
 | 036 | [Live Interop Trace Harness and Captured-Client Replay](proposed/036-live-interop-trace-harness.md) | Captured-CH replay fixtures; no-secrets trace facility; constrained-vs-browser-grade separation (M38; prep in M36) |
 | 037 | [Native FFI Safety, Secret Arena, and Resource-Budget Enforcement](proposed/037-native-safety-and-budget-enforcement.md) | FFI length contracts (all `uint32_t` params); native/classified secret arena; budget charging in the core; record-size guards; sanitizers (M37) |
+| 040 | [Native Traffic-Secret Arena and the IO Production Interpreter](proposed/040-native-traffic-secret-arena.md) | **Blocked on RFC 031.** Stable/v1 gate — migrate connection traffic secrets onto the C-owned zeroizing arena via a two-interpreter (pure model + IO production) architecture; records the D-now/A-later decision |
 
 ## Done
 

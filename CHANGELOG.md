@@ -5,6 +5,37 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.87.0-dev] — traffic-secret C-arena migration decision (D-now / A-later) + RFC 040 — 2026-06-15
+
+Records the architect-reviewed decision on migrating connection-lifetime traffic secrets onto the
+C-owned zeroizing arena. No code or proofs changed; this is a governance/documentation increment.
+The decision is **defer now, two-interpreter migration later** — keep traffic secrets in the pure
+`SecretArena` with documented best-effort zeroization through the pre-stable line, and migrate via a
+pure-model + IO-production architecture as a **stable/v1 gate**, sequenced **after RFC 031**.
+IO-ifying the single interpreter (which would collapse the proof/runtime correspondence) is
+rejected; a partial base-secret migration is not the default path.
+
+### Added
+- **`rfcs/proposed/040-native-traffic-secret-arena.md`** (Proposed — **blocked on RFC 031**, target
+  stable/v1): the future Option-A contract — two-interpreter architecture with pure↔IO
+  correspondence; the handle-in/handle-out production rule (secret bytes never round-trip through
+  Lean); secret classes (`ConfigSecret` / `ConnectionSecret` / `EphemeralDerivedSecret`);
+  generation-namespaced `SecretHandle` with stale-handle fail-closed; failure-path release/zeroize;
+  and sanitizer/leak test requirements. Indexed in `rfcs/README.md`.
+
+### Changed
+- **Trust matrix kept as two distinct rows (no longer blurred)** in
+  `docs/src/verification/proof-assumptions.md` and `docs/src/verification/threat-model.md`:
+  *server private key* = TESTED C-owned zeroization (already migrated); *connection traffic
+  secrets* = BEST-EFFORT / tested logical invalidation (Lean-GC byte storage). No production
+  zeroization is claimed for traffic secrets until the native arena lands.
+- **`docs/src/verification/deferred-scope.md`**: adds the native traffic-secret arena migration as a
+  stable/v1-gated deferred item (decision, sequencing after RFC 031, pre-stable vs stable/v1
+  posture).
+- **`ROADMAP.md` §7**: new cross-cutting decision — secret-memory zeroization is staged by lifetime
+  and the two postures stay distinct; the migration is a stable/v1 gate sequenced after RFC 031
+  (RFC 040), not an interpreter IO-ification.
+
 ## [0.86.0-dev] — RFC 028: security review and vulnerability process (→ `done/`) — 2026-06-15
 
 Establishes kroopt's security process as a concrete deliverable rather than an intention. No
