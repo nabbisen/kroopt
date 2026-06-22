@@ -105,6 +105,14 @@ def checks : List Check :=
     , ok := (parseSni (ByteArray.mk #[0,13,0,0,10])).isNone }
   , { name := "parseSni rejects a non-host_name name_type"
     , ok := (parseSni (ByteArray.mk #[0,13,1,0,10] ++ (String.toUTF8 "ecdsa.test"))).isNone }
+  , { name := "parseAlpn extracts one protocol name from an ALPN extension (RFC 7301)"
+    , ok := (parseAlpn (ByteArray.mk #[0,9,8] ++ (String.toUTF8 "http/1.1"))).map (·.toList)
+              == [(String.toUTF8 "http/1.1").toList] }
+  , { name := "parseAlpn extracts two protocol names in offer order"
+    , ok := (parseAlpn (ByteArray.mk #[0,12,2] ++ (String.toUTF8 "h2")
+                ++ ByteArray.mk #[8] ++ (String.toUTF8 "http/1.1"))).length == 2 }
+  , { name := "parseAlpn on a too-short body is empty (bounds-checked)"
+    , ok := (parseAlpn (ByteArray.mk #[0])).isEmpty }
   ]
 
 def main : IO UInt32 := do

@@ -66,6 +66,9 @@ def clientHelloMsg : ByteArray :=
 def recordWrap (b : ByteArray) : ByteArray :=
   hx "16 03 01" ++ Wire.be16 b.size.toUInt16 ++ b
 
+/-- The ALPN protocol `http/1.1` (RFC 7301), the identifier jemmet offers initially. -/
+def http11 : Kroopt.Core.AlpnProtocol := { bytes := String.toUTF8 "http/1.1" }
+
 /-- A validated server config presenting the fixture Ed25519 leaf certificate (RFC 012). Its public
 DER (`certDer`) goes on the wire and into the transcript; the matching private key is `certSeed`,
 which the provider signs CertificateVerify with. With no SNI routes, every ClientHello resolves to
@@ -74,7 +77,7 @@ def realServerConfig : Kroopt.Core.ValidatedServerConfig :=
   { (default : Kroopt.Core.ValidatedServerConfig) with
     defaultEndpoint := some
       { (default : Kroopt.Core.EndpointConfig) with
-        der := certDer, signatureSchemes := [.ed25519] } }
+        der := certDer, signatureSchemes := [.ed25519], allowedAlpn := [http11] } }
 
 /-! ## Real-handshake driver -/
 
@@ -101,7 +104,7 @@ def ecdsaServerConfig : Kroopt.Core.ValidatedServerConfig :=
   { (default : Kroopt.Core.ValidatedServerConfig) with
     defaultEndpoint := some
       { (default : Kroopt.Core.EndpointConfig) with
-        der := ecdsaCertDer, signatureSchemes := [.ecdsaSecp256r1Sha256] } }
+        der := ecdsaCertDer, signatureSchemes := [.ecdsaSecp256r1Sha256], allowedAlpn := [http11] } }
 
 /-- RSA-2048 leaf certificate (self-signed, CN=localhost) and its matching private key components
 `(n, e, d)`. The public modulus in `rsaCertDer` equals `rsaN`, so a CertificateVerify signed with
@@ -127,7 +130,7 @@ def rsaServerConfig : Kroopt.Core.ValidatedServerConfig :=
   { (default : Kroopt.Core.ValidatedServerConfig) with
     defaultEndpoint := some
       { (default : Kroopt.Core.EndpointConfig) with
-        der := rsaCertDer, signatureSchemes := [.rsaPssRsaeSha256] } }
+        der := rsaCertDer, signatureSchemes := [.rsaPssRsaeSha256], allowedAlpn := [http11] } }
 
 /-- A single crypto config holding all three private keys (Ed25519 seed, ECDSA-P256 scalar, RSA
 `(n,e,d)`); the provider dispatches on the negotiated signature scheme, so one config serves a
@@ -138,11 +141,11 @@ def multiCfg : RealCryptoConfig :=
     ecdsaPriv := ecdsaCertPriv, rsaN := rsaN, rsaE := rsaE, rsaD := rsaD }
 
 private def edEndpoint : Kroopt.Core.EndpointConfig :=
-  { (default : Kroopt.Core.EndpointConfig) with der := certDer, signatureSchemes := [.ed25519] }
+  { (default : Kroopt.Core.EndpointConfig) with der := certDer, signatureSchemes := [.ed25519], allowedAlpn := [http11] }
 private def ecEndpoint : Kroopt.Core.EndpointConfig :=
-  { (default : Kroopt.Core.EndpointConfig) with der := ecdsaCertDer, signatureSchemes := [.ecdsaSecp256r1Sha256] }
+  { (default : Kroopt.Core.EndpointConfig) with der := ecdsaCertDer, signatureSchemes := [.ecdsaSecp256r1Sha256], allowedAlpn := [http11] }
 private def rsaEndpoint : Kroopt.Core.EndpointConfig :=
-  { (default : Kroopt.Core.EndpointConfig) with der := rsaCertDer, signatureSchemes := [.rsaPssRsaeSha256] }
+  { (default : Kroopt.Core.EndpointConfig) with der := rsaCertDer, signatureSchemes := [.rsaPssRsaeSha256], allowedAlpn := [http11] }
 
 /-- A multi-certificate server config: SNI `ecdsa.test` → the ECDSA-P256 leaf, `rsa.test` → the
 RSA-2048 leaf, anything else (including no SNI) → the default Ed25519 leaf. Each hostname therefore

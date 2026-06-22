@@ -5,6 +5,32 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.60.0-dev] — RFC (v0.4): ALPN negotiation — LIVE — 2026-06-14
+
+ALPN protocol negotiation now works end-to-end — the same raw-framing bug class that `parseSni` fixed
+for SNI in 0.59, now fixed for ALPN. Validated live against `openssl s_client -alpn …`: offering
+`http/1.1` selects it (`ALPN protocol: http/1.1`), offering `h2,http/1.1` selects the one the endpoint
+allows (`http/1.1`), and offering only `h2` negotiates no ALPN while the handshake still completes
+(HTTP 200) — the "continue without ALPN" policy an edge server wants. ALPN composes with SNI: on the
+multi-cert listener, `ecdsa.test` and `rsa.test` each select their certificate *and* negotiate
+`http/1.1` from that endpoint's own allow-list.
+
+- **Parser (core) — latent bug fixed.** `vch.alpn` stored the *raw* ALPN extension body as a single
+  "protocol" (the `ProtocolNameList`/length framing), so it could never match a bare-name allow-list
+  and ALPN never negotiated. A new bounded `parseAlpn` (RFC 7301: `list_len(2) ‖ (name_len(1) ‖ name)+`)
+  extracts the offered protocol names in order; `parseAlpnAux` is structurally recursive on a fuel
+  bound (the buffer size) over attacker-controlled input — no `partial`, pure-zone clean. The parser
+  now stores `(findExt exts 16).map parseAlpn |>.getD []`. 3 new unit checks (one name, two names in
+  order, too-short→empty). The proofs treat `vch.alpn` opaquely, so all 94 theorems and the axiom
+  profile are unchanged.
+- **Fixtures.** Every endpoint now advertises `http/1.1` (`allowedAlpn := [http11]`), so the
+  per-endpoint allow-list drives negotiation — including each SNI route on the multi-cert config.
+- **Trust posture unchanged.** Protocol PROVEN (94 theorems), crypto ASSUMED, wire TESTED +
+  interop-validated. Full sweep 383 checks; hygiene/deps/axioms clean; fuzz 20000 clean.
+
+With SNI (0.59) and ALPN (0.60) both parsed correctly, the server now does correct per-hostname
+certificate selection and protocol negotiation — the extension handling an HTTPS edge needs.
+
 ## [0.59.0-dev] — RFC (v0.4): SNI multi-certificate selection — LIVE — 2026-06-14
 
 One kroopt server now presents a **different certificate and signature scheme per SNI hostname**

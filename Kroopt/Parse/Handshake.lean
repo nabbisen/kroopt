@@ -90,6 +90,24 @@ def parseSni (ext : ByteArray) : Option ByteArray :=
     if hlen == 0 ∨ 5 + hlen > ext.size then none
     else some (ext.extract 5 (5 + hlen))
 
+/-- Walk the protocol-name entries of a raw `application_layer_protocol_negotiation` extension body
+(RFC 7301): after the 2-byte list length, a sequence of `name_len(1) ‖ name`. `fuel` (the buffer
+size) bounds the walk over attacker-controlled input; structurally recursive on it, so no `partial`. -/
+def parseAlpnAux : ByteArray → Nat → Nat → List ByteArray → List ByteArray
+  | _,   _,   0,      acc => acc.reverse
+  | ext, pos, fuel+1, acc =>
+    if pos ≥ ext.size then acc.reverse
+    else
+      let nlen := (ext.get! pos).toNat
+      if nlen == 0 ∨ pos + 1 + nlen > ext.size then acc.reverse
+      else parseAlpnAux ext (pos + 1 + nlen) fuel (ext.extract (pos + 1) (pos + 1 + nlen) :: acc)
+
+/-- The offered ALPN protocol names (bare, in offer order) from a raw ALPN extension body; `[]` if
+absent or malformed. Like `parseSni`, this replaces storing the whole framed extension as one
+"protocol", which never matched a bare-name allow-list. Bounds-checked. -/
+def parseAlpn (ext : ByteArray) : List ByteArray :=
+  if ext.size < 2 then [] else parseAlpnAux ext 2 ext.size []
+
 /-- `supported_versions` (type 43) must offer TLS 1.3 (0x0304). The extension
 data is a u8-length-prefixed list of u16 versions. -/
 def offersTls13 (exts : List RawExtension) : Bool :=
@@ -190,7 +208,7 @@ def parseClientHello (input : ByteArray) : Except ParseError (Kroopt.Core.WireBo
       clientShare := share
       offeredSigSchemes := offeredSchemes
       sni := (findExt exts 0).bind parseSni
-      alpn := match findExt exts 16 with | some d => [d] | none => []
+      alpn := (findExt exts 16).map parseAlpn |>.getD []
       sessionId := sessionId }
   pure { value := vch, wireBytes := input }
 
