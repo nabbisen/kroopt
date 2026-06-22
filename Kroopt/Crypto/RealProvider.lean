@@ -126,7 +126,7 @@ def submit (cfg : RealCryptoConfig) (a : SecretArena) (_ : OperationId) :
       | some (kId, ivId) =>
         match a.getById kId, a.getById ivId with
         | some key, some iv =>
-            .ok (a, .aeadSealed (Hacl.chachaPolySeal key (Real.nonce iv meta.seq.value) _aad plaintext))
+            .ok (a, .aeadSealed (Real.aeadSealBySuite meta.suite key (Real.nonce iv meta.seq.value) _aad plaintext))
         | _, _ => .error .invalidHandle
   | .aeadOpen meta _aad ciphertext =>
       match a.lookupInstalled meta.direction meta.epoch with
@@ -134,7 +134,7 @@ def submit (cfg : RealCryptoConfig) (a : SecretArena) (_ : OperationId) :
       | some (kId, ivId) =>
         match a.getById kId, a.getById ivId with
         | some key, some iv =>
-            match Hacl.chachaPolyOpen key (Real.nonce iv meta.seq.value) _aad ciphertext with
+            match Real.aeadOpenBySuite meta.suite key (Real.nonce iv meta.seq.value) _aad ciphertext with
             | some pt => .ok (a, .aeadOpened pt)
             | none => .ok (a, .verifyFailed)
         | _, _ => .error .invalidHandle

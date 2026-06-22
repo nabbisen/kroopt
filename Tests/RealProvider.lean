@@ -108,6 +108,23 @@ def runChecks : Except Kroopt.CryptoError (List (String × Bool)) := do
     | some (_, iv) => match a.getById iv with | some ib => eqB ib (hexToBytes sHsIv) | none => false
     | none => false
 
+  -- AES-128-GCM record round-trip through the suite-keyed dispatch, using the RFC 8448 §3 server
+  -- handshake key/IV just installed (read, handshake). Proves the record path routes to the real
+  -- Vale AES-128-GCM — cross-checked byte-for-byte against the KAT'd primitive — not ChaCha.
+  let aesMeta : RecordCryptoMeta :=
+    { conn := ⟨0,0⟩, direction := .read, epoch := .handshake, seq := ⟨0⟩,
+      suite := .aes128GcmSha256, contentRole := .applicationData }
+  let aesAad := hexToBytes "1703030010"
+  let aesPt := hexToBytes "48656c6c6f2c20545453"
+  let (a, ras) ← p a oid (.aeadSeal aesMeta aesAad aesPt)
+  let .aeadSealed aesCt := ras | throw .providerInternal
+  let (a, rao) ← p a oid (.aeadOpen aesMeta aesAad aesCt)
+  let aesRoundTrip := match rao with | .aeadOpened opened => eqB opened aesPt | _ => false
+  let aesIsRealAes :=
+    eqB aesCt (Kroopt.Crypto.Hacl.aes128GcmSeal (hexToBytes sHsKey) (hexToBytes sHsIv) aesAad aesPt)
+  let (a, rat) ← p a oid (.aeadOpen aesMeta aesAad (aesCt.set! 0 ((aesCt.get! 0) ^^^ 1)))
+  let aesTamper := match rat with | .verifyFailed => true | _ => false
+
   -- install ChaCha20-Poly1305 keys for (write, handshake) and round-trip a record
   let (a, _) ← p a oid (.installTrafficKeys .chacha20Poly1305Sha256 .write .handshake sHsH)
   let meta : RecordCryptoMeta :=
@@ -181,6 +198,9 @@ def runChecks : Except Kroopt.CryptoError (List (String × Bool)) := do
     , ("installTrafficKeys derives RFC 8448 server handshake write_iv", aesIvOk)
     , ("AEAD seal+open round-trips through installed key", aeadRoundTrip)
     , ("AEAD open of a tampered record returns verifyFailed", aeadTamper)
+    , ("AES-128-GCM record seal+open round-trips through the suite dispatch", aesRoundTrip)
+    , ("AES-128-GCM record path routes to the real Vale primitive (byte-exact vs KAT'd seal)", aesIsRealAes)
+    , ("AES-128-GCM record open of a tampered record returns verifyFailed", aesTamper)
     , ("CertificateVerify Ed25519 signature verifies", signOk)
     , ("CertificateVerify ECDSA-P256 produces a DER Ecdsa-Sig-Value", ecdsaSigOk)
     , ("CertificateVerify RSA-PSS signature verifies (round-trip)", rsaSigOk)

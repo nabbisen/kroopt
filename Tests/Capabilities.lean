@@ -45,7 +45,7 @@ def main : IO Unit := do
     | .ok () => true | _ => false
   let realIsOsCsprng :=
     match realCapabilities.randomSource with | .osCsprng => true | _ => false
-  -- the real *provider* (not just the constant) advertises the constrained profile
+  -- the real *provider* (not just the constant) advertises the constrained end-to-end profile
   let realProv := mkRealProvider testCfg
   let provRejectsAes :=
     match validateServerConfigCapabilities realProv.capabilities aesConfig with
@@ -59,7 +59,7 @@ def main : IO Unit := do
   let entropyTypedOk := match ent with | .bytes b => b.size == 32 | .error _ => false
 
   let checks : List (String × Bool) :=
-    [ ("real profile rejects an AES-GCM suite at config validation", realRejectsAes)
+    [ ("real profile rejects an AES-GCM suite at config validation (seal path not suite-aware yet)", realRejectsAes)
     , ("real profile rejects an ECDSA signature scheme at config validation", realRejectsEcdsa)
     , ("real profile accepts the constrained ChaCha/Ed25519 config", realAcceptsGood)
     , ("the fake/test profile still accepts AES (the two profiles differ)", fakeAcceptsAes)

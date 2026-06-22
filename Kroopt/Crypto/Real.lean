@@ -71,6 +71,22 @@ def install (a : SecretArena) (ks : KeyStore) (dir : Direction) (epoch : Epoch)
 def find? (ks : KeyStore) (dir : Direction) (epoch : Epoch) : Option TrafficKeyEntry :=
   ks.entries.find? (fun e => decide (e.dir = dir) && decide (e.epoch = epoch))
 
+/-- AEAD seal dispatched by cipher suite: AES-128/256-GCM via the HACL*/EverCrypt Vale path,
+ChaCha20-Poly1305 directly. The FFI wrappers fail closed on a wrong-size key, so a suite/key
+mismatch can never emit ciphertext under the wrong primitive. -/
+def aeadSealBySuite (suite : CipherSuite) (key nonce aad pt : ByteArray) : ByteArray :=
+  match suite with
+  | .aes128GcmSha256        => Hacl.aes128GcmSeal key nonce aad pt
+  | .aes256GcmSha384        => Hacl.aes256GcmSeal key nonce aad pt
+  | .chacha20Poly1305Sha256 => Hacl.chachaPolySeal key nonce aad pt
+
+/-- AEAD open dispatched by cipher suite. `none` on authentication failure — no plaintext escapes. -/
+def aeadOpenBySuite (suite : CipherSuite) (key nonce aad ctTag : ByteArray) : Option ByteArray :=
+  match suite with
+  | .aes128GcmSha256        => Hacl.aes128GcmOpen key nonce aad ctTag
+  | .aes256GcmSha384        => Hacl.aes256GcmOpen key nonce aad ctTag
+  | .chacha20Poly1305Sha256 => Hacl.chachaPolyOpen key nonce aad ctTag
+
 /-- Seal a record: look up the key/IV for the record's direction and epoch in the
 arena, derive the nonce from the sequence number, and AEAD-encrypt. Returns
 ciphertext++tag. -/
@@ -80,7 +96,7 @@ def sealRecord (a : SecretArena) (ks : KeyStore) (meta : RecordCryptoMeta)
   | none => .error .invalidHandle
   | some e =>
     match a.get e.keyHandle, a.get e.ivHandle with
-    | some key, some iv => .ok (Hacl.chachaPolySeal key (nonce iv meta.seq.value) aad plaintext)
+    | some key, some iv => .ok (aeadSealBySuite meta.suite key (nonce iv meta.seq.value) aad plaintext)
     | _, _ => .error .invalidHandle
 
 /-- Open a record: look up the key/IV, derive the nonce, AEAD-decrypt. Returns
@@ -92,7 +108,7 @@ def openRecord (a : SecretArena) (ks : KeyStore) (meta : RecordCryptoMeta)
   | some e =>
     match a.get e.keyHandle, a.get e.ivHandle with
     | some key, some iv =>
-      match Hacl.chachaPolyOpen key (nonce iv meta.seq.value) aad ciphertextAndTag with
+      match aeadOpenBySuite meta.suite key (nonce iv meta.seq.value) aad ciphertextAndTag with
       | some pt => .ok pt
       | none => .error .authFailed
     | _, _ => .error .invalidHandle

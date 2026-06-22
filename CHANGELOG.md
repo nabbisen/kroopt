@@ -5,6 +5,49 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.67.0-dev] — Suite-keyed AEAD provider dispatch (AES-128-GCM exercised end-to-end at the provider) — 2026-06-14
+
+Builds on 0.66.0-dev (AES-GCM bound + KAT'd). The AEAD **provider** is now suite-aware: a record's
+`RecordCryptoMeta.suite` selects AES-128-GCM, AES-256-GCM, or ChaCha20-Poly1305 at seal/open. An
+AES-128-GCM record now round-trips through the real provider path and is cross-checked byte-for-byte
+against the KAT'd Vale primitive.
+
+This increment deliberately stops short of **negotiating** AES suites, because the investigation
+surfaced a real gap: the interpreter's record/handshake-seal path
+(`Conn.Interpreter.sealHandshakeRecord`) still hardcodes ChaCha20-Poly1305 for both key derivation
+and sealing. Until that path is suite-aware, the server could select AES-128 but would then seal its
+handshake flight with ChaCha — so AES-GCM stays out of the negotiable/advertised set. Making the
+seal path suite-aware is the next increment; negotiation + fixture migration follows it.
+
+### This increment — provider AEAD dispatch (TESTED)
+- `Kroopt/Crypto/Real.lean`: `aeadSealBySuite` / `aeadOpenBySuite` dispatch a `CipherSuite` to the
+  matching HACL primitive (AES-128/256-GCM via the Vale path, ChaCha20-Poly1305 direct).
+  `sealRecord` / `openRecord` now dispatch on `meta.suite` instead of hardcoding ChaCha. The FFI
+  wrappers fail closed on a wrong-size key, so a suite/key mismatch can never emit ciphertext under
+  the wrong primitive.
+- `Kroopt/Crypto/RealProvider.lean`: the provider's `.aeadSeal` / `.aeadOpen` handlers dispatch on
+  `meta.suite` through the same helpers.
+
+### Tests
+- `kroopt-realprovider-test` (+3 checks, **29** total): using the RFC 8448 §3 server handshake
+  key/IV, an AES-128-GCM record seals + opens through the suite dispatch, the sealed bytes match a
+  direct `Hacl.aes128GcmSeal` exactly (proving the record path routes to the real Vale AES, not
+  ChaCha), and a tampered record is rejected (`verifyFailed`).
+
+### Trust posture
+- No protocol proof affected; 94 public theorems unchanged. The dispatch is a pure function over the
+  ASSUMED-verified primitives.
+
+### Still gating AES-GCM negotiation (next increments, in order)
+1. Make the interpreter seal path (`sealHandshakeRecord`, app-record seal, `Conn.Record13.sealRecord`)
+   suite-aware — thread the negotiated suite through so the server seals the suite it selected.
+2. Enable negotiation: recognize `0x1301` in `Parse.Handshake.suiteOfU16`, advertise
+   `TLS_AES_128_GCM_SHA256` in `realCapabilities`, and migrate the correspondence/socketdriver peer
+   harness to AES-128 (the shared `clientHelloMsg` already offers AES-128 first, like a browser).
+3. `TLS_AES_256_GCM_SHA384`: the SHA-384 key schedule + transcript.
+4. Live `openssl -ciphersuites TLS_AES_128_GCM_SHA256` interop.
+
+
 ## [0.66.0-dev] — AES-GCM bound + KAT'd via HACL* Vale verified assembly — 2026-06-14
 
 **Corrects a standing error.** Earlier releases (through 0.65.0-dev) described AES-128/256-GCM as

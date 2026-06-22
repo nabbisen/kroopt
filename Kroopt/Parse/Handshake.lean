@@ -36,6 +36,11 @@ even if the client lists it first. -/
 def suiteOfU16 : UInt16 → Option CipherSuite
   | 0x1303 => some .chacha20Poly1305Sha256
   | _      => none
+  -- AES-GCM (0x1301/0x1302) is intentionally not yet negotiable. The AEAD *provider* dispatch is
+  -- suite-aware as of 0.67.0-dev, but the interpreter's record/handshake-seal path
+  -- (`Conn.Interpreter.sealHandshakeRecord`) still hardcodes ChaCha20-Poly1305, so the server
+  -- cannot yet seal an AES-GCM flight end-to-end. Recognizing these here before the seal path is
+  -- suite-aware would let the core negotiate a suite it cannot actually serve.
 
 /-- Parse a length-prefixed list of `UInt16` values from a byte slice, reusing
 the bounds-safe fuel combinator. -/
