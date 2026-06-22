@@ -27,7 +27,8 @@ def keyShareEntry : List UInt8 := [0x00, 0x1d, 0, 32] ++ List.replicate 32 0x07 
 def extKeyShare : List UInt8 := [0, 51, 0, 38, 0, 36] ++ keyShareEntry
 def extSigAlgs : List UInt8 := [0, 0x0d, 0, 4, 0, 2, 0x08, 0x07]  -- signature_algorithms: ed25519
 def extSupVer : List UInt8 := [0, 43, 0, 3, 2, 0x03, 0x04]
-def extsBody : List UInt8 := extSupVer ++ extKeyShare ++ extSigAlgs
+def extGroups : List UInt8 := [0, 10, 0, 4, 0, 2, 0x00, 0x1d]  -- supported_groups: x25519 (RFC 8446 §4.2.7)
+def extsBody : List UInt8 := extSupVer ++ extGroups ++ extKeyShare ++ extSigAlgs
 def chBody : List UInt8 :=
   [0x03, 0x03] ++ (List.replicate 32 0xAA) ++ [0] ++
   [0, 2, 0x13, 0x03] ++ [1, 0] ++ (u16be extsBody.length ++ extsBody)

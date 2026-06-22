@@ -33,7 +33,10 @@ def keyShareEntry : List UInt8 := [0x00, 0x1d, 0, 32] ++ List.replicate 32 0x07 
 def extKeyShare : List UInt8 := [0, 51, 0, 38, 0, 36] ++ keyShareEntry
 def extSigAlgs : List UInt8 := [0, 0x0d, 0, 4, 0, 2, 0x08, 0x07]  -- signature_algorithms: ed25519
 def extSupVer : List UInt8 := [0, 43, 0, 3, 2, 0x03, 0x04]
-def extsBody : List UInt8 := extSupVer ++ extKeyShare ++ extSigAlgs
+def extGroups : List UInt8 := [0, 10, 0, 4, 0, 2, 0x00, 0x1d]          -- supported_groups: x25519
+def extGroupsP256 : List UInt8 := [0, 10, 0, 4, 0, 2, 0x00, 0x17]      -- supported_groups: secp256r1
+def extGroupsBoth : List UInt8 := [0, 10, 0, 6, 0, 4, 0x00, 0x1d, 0x00, 0x17]  -- x25519, secp256r1
+def extsBody : List UInt8 := extSupVer ++ extGroups ++ extKeyShare ++ extSigAlgs
 
 def u16be (n : Nat) : List UInt8 := [(n / 256).toUInt8, (n % 256).toUInt8]
 
@@ -57,7 +60,7 @@ key_share is P-256 — exercising the secp256r1 negotiation path end-to-end. -/
 
 def keyShareEntryP256 : List UInt8 := [0x00, 0x17, 0, 65] ++ ([0x04] ++ List.replicate 64 0x07)
 def extKeyShareP256 : List UInt8 := [0, 51, 0, 71, 0, 69] ++ keyShareEntryP256
-def extsBodyP256 : List UInt8 := extSupVer ++ extKeyShareP256 ++ extSigAlgs
+def extsBodyP256 : List UInt8 := extSupVer ++ extGroupsP256 ++ extKeyShareP256 ++ extSigAlgs
 def chBodyP256 : List UInt8 :=
   [0x03, 0x03] ++ (List.replicate 32 0xAA) ++ [0] ++
   [0, 2, 0x13, 0x03] ++ [1, 0] ++ (u16be extsBodyP256.length ++ extsBodyP256)
@@ -73,7 +76,7 @@ duplicate group id is a malformed ClientHello. -/
 def keyShareEntryBoth : List UInt8 := keyShareEntry ++ keyShareEntryP256
 def extKeyShareBoth : List UInt8 :=
   [0, 51] ++ u16be (keyShareEntryBoth.length + 2) ++ u16be keyShareEntryBoth.length ++ keyShareEntryBoth
-def extsBodyBoth : List UInt8 := extSupVer ++ extKeyShareBoth ++ extSigAlgs
+def extsBodyBoth : List UInt8 := extSupVer ++ extGroupsBoth ++ extKeyShareBoth ++ extSigAlgs
 def chBodyBoth : List UInt8 :=
   [0x03, 0x03] ++ (List.replicate 32 0xAA) ++ [0] ++
   [0, 2, 0x13, 0x03] ++ [1, 0] ++ (u16be extsBodyBoth.length ++ extsBodyBoth)
@@ -84,7 +87,7 @@ def chRecordBoth : ByteArray := record chMsgBoth
 def keyShareEntryDup : List UInt8 := keyShareEntry ++ keyShareEntry
 def extKeyShareDup : List UInt8 :=
   [0, 51] ++ u16be (keyShareEntryDup.length + 2) ++ u16be keyShareEntryDup.length ++ keyShareEntryDup
-def extsBodyDup : List UInt8 := extSupVer ++ extKeyShareDup ++ extSigAlgs
+def extsBodyDup : List UInt8 := extSupVer ++ extGroups ++ extKeyShareDup ++ extSigAlgs
 def chBodyDup : List UInt8 :=
   [0x03, 0x03] ++ (List.replicate 32 0xAA) ++ [0] ++
   [0, 2, 0x13, 0x03] ++ [1, 0] ++ (u16be extsBodyDup.length ++ extsBodyDup)
@@ -99,7 +102,8 @@ def keyShareEntryUnknown : List UInt8 := [0x01, 0x00, 0, 4] ++ [1, 2, 3, 4]  -- 
 def keyShareEntryUnkP256 : List UInt8 := keyShareEntryUnknown ++ keyShareEntryP256
 def extKeyShareUnkP256 : List UInt8 :=
   [0, 51] ++ u16be (keyShareEntryUnkP256.length + 2) ++ u16be keyShareEntryUnkP256.length ++ keyShareEntryUnkP256
-def extsBodyUnkP256 : List UInt8 := extSupVer ++ extKeyShareUnkP256 ++ extSigAlgs
+def extGroupsUnkP256 : List UInt8 := [0, 10, 0, 6, 0, 4, 0x01, 0x00, 0x00, 0x17]  -- supported_groups: 0x0100 (unknown), secp256r1
+def extsBodyUnkP256 : List UInt8 := extSupVer ++ extGroupsUnkP256 ++ extKeyShareUnkP256 ++ extSigAlgs
 def chBodyUnkP256 : List UInt8 :=
   [0x03, 0x03] ++ (List.replicate 32 0xAA) ++ [0] ++
   [0, 2, 0x13, 0x03] ++ [1, 0] ++ (u16be extsBodyUnkP256.length ++ extsBodyUnkP256)
@@ -110,7 +114,7 @@ def chRecordUnkP256 : ByteArray := record chMsgUnkP256
 def keyShareEntryDupP256 : List UInt8 := keyShareEntryP256 ++ keyShareEntryP256
 def extKeyShareDupP256 : List UInt8 :=
   [0, 51] ++ u16be (keyShareEntryDupP256.length + 2) ++ u16be keyShareEntryDupP256.length ++ keyShareEntryDupP256
-def extsBodyDupP256 : List UInt8 := extSupVer ++ extKeyShareDupP256 ++ extSigAlgs
+def extsBodyDupP256 : List UInt8 := extSupVer ++ extGroupsP256 ++ extKeyShareDupP256 ++ extSigAlgs
 def chBodyDupP256 : List UInt8 :=
   [0x03, 0x03] ++ (List.replicate 32 0xAA) ++ [0] ++
   [0, 2, 0x13, 0x03] ++ [1, 0] ++ (u16be extsBodyDupP256.length ++ extsBodyDupP256)
@@ -151,7 +155,7 @@ key_share and is rejected (illegal_parameter). -/
 def keyShareEntryP256BadPrefix : List UInt8 := [0x00, 0x17, 0, 65] ++ ([0x05] ++ List.replicate 64 0x07)
 def extKeyShareP256BadPrefix : List UInt8 :=
   [0, 51] ++ u16be (keyShareEntryP256BadPrefix.length + 2) ++ u16be keyShareEntryP256BadPrefix.length ++ keyShareEntryP256BadPrefix
-def extsBodyP256BadPrefix : List UInt8 := extSupVer ++ extKeyShareP256BadPrefix ++ extSigAlgs
+def extsBodyP256BadPrefix : List UInt8 := extSupVer ++ extGroupsP256 ++ extKeyShareP256BadPrefix ++ extSigAlgs
 def chBodyP256BadPrefix : List UInt8 :=
   [0x03, 0x03] ++ (List.replicate 32 0xAA) ++ [0] ++
   [0, 2, 0x13, 0x03] ++ [1, 0] ++ (u16be extsBodyP256BadPrefix.length ++ extsBodyP256BadPrefix)
@@ -162,7 +166,7 @@ def chRecordP256BadPrefix : ByteArray := record chMsgP256BadPrefix
 def keyShareEntryP256BadLen : List UInt8 := [0x00, 0x17, 0, 64] ++ List.replicate 64 0x07
 def extKeyShareP256BadLen : List UInt8 :=
   [0, 51] ++ u16be (keyShareEntryP256BadLen.length + 2) ++ u16be keyShareEntryP256BadLen.length ++ keyShareEntryP256BadLen
-def extsBodyP256BadLen : List UInt8 := extSupVer ++ extKeyShareP256BadLen ++ extSigAlgs
+def extsBodyP256BadLen : List UInt8 := extSupVer ++ extGroupsP256 ++ extKeyShareP256BadLen ++ extSigAlgs
 def chBodyP256BadLen : List UInt8 :=
   [0x03, 0x03] ++ (List.replicate 32 0xAA) ++ [0] ++
   [0, 2, 0x13, 0x03] ++ [1, 0] ++ (u16be extsBodyP256BadLen.length ++ extsBodyP256BadLen)

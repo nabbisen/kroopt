@@ -147,7 +147,10 @@ validated here so a malformed share is rejected before negotiation (RFC 8446 §4
 Consistency with `supported_groups` (RFC 039 §4.6 / RFC 8446 §4.2.8): if `supported_groups`
 is present, **every** offered `key_share` group id must appear in it — a `key_share` for an
 omitted group is a contradiction and the ClientHello is rejected. If `supported_groups` is
-absent, `key_share` alone is authoritative (the constrained no-HRR profile). A group listed in
+**absent**, the ClientHello is **rejected** (strict constrained-profile policy, review HIGH-3):
+RFC 8446 §4.2.8 requires each `KeyShareEntry` to correspond to a `supported_groups` entry, so a
+`key_share` with no `supported_groups` is non-conformant; the constrained no-HRR profile fails
+closed rather than treating the `key_share` as authoritative. A group listed in
 `supported_groups` with no `key_share` is simply not selectable (no HRR); that surfaces as a
 clean selection failure downstream, not here.
 
@@ -164,12 +167,15 @@ def findOfferedKeyShares (exts : List RawExtension) : Option (List (NamedGroup �
           match (Reader.ofBytes entriesBytes).takeCountedItems maxKeyShares parseKeyShareEntry with
           | .error _ => none
           | .ok (entries, _) =>
-              let inconsistentWithSupportedGroups : Bool :=
+              let supportedGroupsViolation : Bool :=
                 match supportedGroupIds exts with
-                | none    => false
+                | none    => true  -- strict (review HIGH-3): a key_share with supported_groups
+                                   -- absent is rejected, not treated as authoritative (RFC 8446
+                                   -- §4.2.8: a KeyShareEntry must correspond to a supported_groups
+                                   -- entry). Constrained no-HRR profile: fail closed.
                 | some sg => entries.any (fun e => !(sg.contains e.fst))
               if hasDupGroupIds entries then none
-              else if inconsistentWithSupportedGroups then none
+              else if supportedGroupsViolation then none
               else
                 let recognized : List (NamedGroup × ByteArray) :=
                   entries.filterMap (fun e =>

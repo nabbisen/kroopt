@@ -47,3 +47,26 @@ and is specified by **RFC 040** as a two-interpreter architecture — the pure i
 the executable model; an IO production interpreter backed by the native arena is shown to
 correspond to it. Only once that lands may the trust matrix promote traffic-secret zeroization
 from best-effort to tested native zeroization.
+
+## RFC 040 stale-result checklist (standing requirement)
+
+The synchronous model has no concurrency window — a crypto result re-enters `step` in the same
+sequence it was requested, and the operation-id guard (`stale_crypto_result_rejected`) already covers
+duplicates and results after terminal. An asynchronous IO production interpreter reopens that window, so
+the following requirements are recorded **now** so they are not lost when RFC 040 is implemented. Each
+must be discharged (proved or tested) before any async result path ships:
+
+- a **duplicate** crypto result is a no-op;
+- a **stale cross-generation** result (connection generation advanced) is dropped;
+- a result **after terminal** state is dropped, never producing plaintext or actions;
+- a provider **success after a local timeout** is dropped;
+- a provider **failure after close** is dropped;
+- **connection-generation reuse** cannot alias a new connection to an old result;
+- **secret-handle generation reuse** cannot resolve a stale handle to a live secret;
+- **operation-id wrap/reuse** cannot match a stale result to a new pending op;
+- pending-op and secret state is **cleaned up on every terminal path**;
+- **no plaintext** can ever derive from a stale result.
+
+This list is the async counterpart to the synchronous guarantees already in the
+[trust matrix](trust-matrix.md); it is a checklist for RFC 040, not a claim of current coverage. (Review
+MEDIUM-6.)

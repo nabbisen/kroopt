@@ -103,6 +103,8 @@ def mfSuites      : ByteArray := hx "13 01 13 03"
 def noKeyShareCH  : ByteArray := recordWrap (buildExts mfSuites (extTls13 ++ grpX25519 ++ sigEd25519))
 def dupExtCH      : ByteArray := recordWrap (buildExts mfSuites (extTls13 ++ extTls13 ++ grpX25519 ++ sigEd25519 ++ ksX25519))
 def unknownGrpCH  : ByteArray := recordWrap (buildExts mfSuites (extTls13 ++ grpUnknown ++ sigEd25519 ++ ksX25519))
+-- key_share present but supported_groups absent → strict reject (RFC 8446 §4.2.8; review HIGH-3)
+def noSgCH        : ByteArray := recordWrap (buildExts mfSuites (extTls13 ++ sigEd25519 ++ ksX25519))
 
 -- ── committed GREASE-tolerance captures (RFC 036 §4): unknown/reserved values alongside valid ones
 -- must be *ignored* (RFC 8701), not fatal — a browser-grade prerequisite, verified here. ──
@@ -228,6 +230,8 @@ def checks : List Check :=
     , ok := let r := replay [dupExtCH]; failedIllegal r.1 && r.2 == 0 }
   , { name := "edge: ClientHello offering only an unsupported group → deterministic reject (illegal_parameter)"
     , ok := let r := replay [unknownGrpCH]; failedIllegal r.1 && r.2 == 0 }
+  , { name := "strict (HIGH-3): key_share present, supported_groups absent → deterministic reject (illegal_parameter, no flight)"
+    , ok := let r := replay [noSgCH]; failedIllegal r.1 && r.2 == 0 }
 
     -- ── GREASE tolerance (RFC 036 §4 / RFC 8701): unknown values alongside valid ones are ignored ──
   , { name := "GREASE: unknown named group (0x0a0a) alongside x25519 → ignored, x25519 selected, full flight"

@@ -13,6 +13,16 @@ handshake fails cleanly; there is no HRR round trip. This is
 deliberate: HRR changes the transcript rules and multiplies proof and interop
 surface, so the first release line ships a strict, small, server-side path.
 
+This is a **constrained TLS 1.3 server profile, not full browser-grade TLS 1.3.** It does not
+implement HelloRetryRequest, requires a usable initial `key_share` for an allowed group, and **fails
+closed rather than retrying** when no usable share exists. One conformance consequence is made strict
+on purpose: a ClientHello that carries a `key_share` but **omits `supported_groups`** is **rejected**,
+not treated as authoritative — RFC 8446 §4.2.8 requires each `KeyShareEntry` to correspond to a
+`supported_groups` entry, and every real client sends `supported_groups`, so the strict reading costs
+nothing in interop while removing an ambiguity (review HIGH-3). A group listed in `supported_groups`
+with no matching `key_share` is simply not selectable here (no HRR) and surfaces as a clean selection
+failure.
+
 ## Phases and legal edges
 
 `HandshakeState` carries the full TLS 1.3 server vocabulary (`start`,

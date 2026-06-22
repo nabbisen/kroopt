@@ -5,6 +5,46 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.104.0-dev] — security-review remediation D + sign-off: strict no-SG reject (HIGH-3), constrained-profile wording, cert lint, RFC 040 checklist — 2026-06-15
+
+Final increment of the v0.100.0 docs security review remediation, and the security sign-off point for
+it. Contains the one **code** change of the remediation (HIGH-3 strict reject) plus the remaining
+doc items (MEDIUM-3/4/6 and the constrained-profile wording).
+
+### Changed (code — HIGH-3 strict reject)
+- **`Kroopt/Parse/Handshake.lean`** — `findOfferedKeyShares` now **rejects** a ClientHello that carries
+  a `key_share` while **omitting `supported_groups`**, rather than treating the `key_share` as
+  authoritative (RFC 8446 §4.2.8). The constrained no-HRR profile fails closed. Real clients always send
+  `supported_groups`, so live interop is unaffected.
+- **Tests** — added a negative replay capture (`noSgCH`: key_share present, supported_groups absent →
+  deterministic `illegal_parameter` reject, no flight). Corrected the model/e2e/hardening fixtures that
+  built non-conformant ClientHellos without `supported_groups` (`Conn`, `E2EHttps`, `EndToEnd`,
+  `Hardening`) to include it, as real clients do; the `key_share`-alone and TLS-1.2 negatives are left
+  untouched.
+
+### Changed (docs)
+- **`architecture/handshake.md`** — added the explicit "constrained TLS 1.3 server profile, not full
+  browser-grade" framing and the strict absent-`supported_groups` reject behavior.
+- **`architecture/cert-presentation.md`** — added an **operational certificate-lint** section (MEDIUM-3:
+  leaf↔key match, scheme compatibility, chain order, chain-size bound, expiry window, SAN/CN warnings) —
+  operator aids, explicitly not peer validation; also corrected a stale "handshake gated behind the
+  interpreter (RFC 010)" Scope claim to live-and-tested.
+- **`verification/deferred-scope.md`** — added the **RFC 040 stale-result checklist** (MEDIUM-6): the
+  ten async stale/duplicate/post-terminal requirements an IO production interpreter must discharge.
+- MEDIUM-4 (keep GREASE wording narrow) verified — the existing wording is already narrow; no change.
+
+### Security sign-off
+- Remediation A–D complete (HIGH-1…4, MEDIUM-1…6, LOW-1…2 addressed; LOW-2 historical indexing folded
+  into the keystone + banners).
+- **Audit:** the only code change strictly *tightens* an existing handshake validation (rejects a
+  previously-accepted non-conformant shape); it introduces no new data flow, external integration, or
+  auth logic, so it reduces — not expands — the accept surface. Existing controls remain valid; the
+  threat model (updated in increment C) is current. Docs match the changed behavior.
+
+Gate (full, code change): build green; **27/27 suites**; axioms 102, no `sorryAx`; deps 37 pure-zone;
+hygiene clean; fuzz 20000; sanitizer (ASan/UBSan) clean; live OpenSSL/Python/curl interop green
+(blocking + non-blocking). All internal doc links resolve.
+
 ## [0.103.0-dev] — security-review remediation C: threat-model hardening (HIGH-2/HIGH-4/MEDIUM-5/LOW-1) — 2026-06-15
 
 Third increment of the v0.100.0 docs security review remediation: the threat-model additions gated on

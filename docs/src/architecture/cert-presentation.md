@@ -40,10 +40,29 @@ So a client that extracts the key from kroopt's Certificate message would accept
 kroopt's CertificateVerify. The earlier steps validate the HACL ↔ OpenSSL signing
 path in both directions and tamper rejection.
 
+## Operational certificate lint
+
+Certificate **path validation** (anchors, revocation, peer name) is a client-role / mTLS concern and is
+out of scope for the server profile — a TLS server *presents* a chain, it does not validate one. But a
+misconfigured chain can still make clients fail even when the CertificateVerify signature is
+cryptographically correct, so kroopt offers an **operator safety lint** at config validation: warnings,
+not WebPKI validation. The lint surface (deterministic, local, no network):
+
+- **leaf key ↔ private key match** — the leaf public key equals kroopt's signing key (enforced today; a
+  mismatch is a hard config error, not a warning);
+- **signature-scheme compatibility** — the leaf key type supports an advertised, presentable scheme;
+- **chain order** — leaf first, then intermediates in issuing order;
+- **chain size bound** — the presented chain stays within `maxCertChainBytes`;
+- **expiry window** — `notBefore`/`notAfter` warnings when a caller supplies a time (no hidden clock);
+- **SAN/CN** — a warning when configured hostnames do not appear in the leaf's SAN.
+
+These are operator aids to catch deployment mistakes early; none of them is, or is described as,
+certificate *validation*. (Review MEDIUM-3.)
+
 ## Scope
 
-This provisions and validates the certificate kroopt presents; it is not yet a full
-`openssl s_client` / `curl` handshake against a running kroopt server, which is gated
-behind productionizing the interpreter and the iotakt socket transport (RFC 010).
-Certificate path *validation* (the client role / mTLS) remains out of scope per the
-requirements: a TLS server presents a chain, it does not validate one.
+This provisions and validates the certificate kroopt presents. A full `openssl s_client` / `curl`
+handshake against a running kroopt server is **live and tested** (see
+[current security state](../verification/current-security-state.md)). Certificate path *validation*
+(the client role / mTLS) remains out of scope per the requirements: a TLS server presents a chain, it
+does not validate one.

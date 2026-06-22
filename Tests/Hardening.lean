@@ -34,6 +34,7 @@ def extSigAlgsOther : List UInt8 := [0, 0x0d, 0, 4, 0, 2, 0x08, 0x09]  -- rsa_ps
 def extSigAlgsEcdsa : List UInt8 := [0, 0x0d, 0, 4, 0, 2, 0x04, 0x03]  -- ecdsa_secp256r1_sha256 only (now presentable)
 def extSigAlgsRsa : List UInt8 := [0, 0x0d, 0, 4, 0, 2, 0x08, 0x04]  -- rsa_pss_rsae_sha256 only (now presentable)
 def extSupVer13 : List UInt8 := [0, 43, 0, 3, 2, 0x03, 0x04]   -- offers TLS 1.3
+def extGroups : List UInt8 := [0, 10, 0, 4, 0, 2, 0x00, 0x1d]   -- supported_groups: x25519 (RFC 8446 §4.2.7)
 def extSupVer12 : List UInt8 := [0, 43, 0, 3, 2, 0x03, 0x03]   -- offers only TLS 1.2
 def chWithSuites (suiteBytes exts : List UInt8) : ByteArray :=
   let body := [0x03, 0x03] ++ (List.replicate 32 0xAA) ++ [0] ++
@@ -97,7 +98,7 @@ def checks : List Check :=
              | .error .pendingCiphertext => true | _ => false) }
     -- deferred-feature scope control (RFC 016)
   , { name := "ClientHello offering TLS 1.3 with X25519 parses"
-    , ok := parseOk (extSupVer13 ++ extKeyShare ++ extSigAlgs) }
+    , ok := parseOk (extSupVer13 ++ extGroups ++ extKeyShare ++ extSigAlgs) }
   , { name := "ClientHello with no supported_versions is refused (no TLS 1.2 downgrade)"
     , ok := !parseOk extKeyShare }
   , { name := "ClientHello offering only TLS 1.2 is refused"
@@ -105,29 +106,29 @@ def checks : List Check :=
   , { name := "ClientHello with no key_share is refused (no HRR)"
     , ok := !parseOk extSupVer13 }
   , { name := "ClientHello offering only rsa_pss_pss_sha256 is refused (not presentable, RFC 033)"
-    , ok := !parseOk (extSupVer13 ++ extKeyShare ++ extSigAlgsOther) }
+    , ok := !parseOk (extSupVer13 ++ extGroups ++ extKeyShare ++ extSigAlgsOther) }
   , { name := "ClientHello offering ECDSA-P256 signature_algorithms parses (now presentable, v0.4)"
-    , ok := parseOk (extSupVer13 ++ extKeyShare ++ extSigAlgsEcdsa) }
+    , ok := parseOk (extSupVer13 ++ extGroups ++ extKeyShare ++ extSigAlgsEcdsa) }
   , { name := "ClientHello offering RSA-PSS (rsa_pss_rsae_sha256) parses (now presentable, v0.4)"
-    , ok := parseOk (extSupVer13 ++ extKeyShare ++ extSigAlgsRsa) }
+    , ok := parseOk (extSupVer13 ++ extGroups ++ extKeyShare ++ extSigAlgsRsa) }
   , { name := "ClientHello with no signature_algorithms is refused (cert-authenticating server, RFC 8446 §4.2.3)"
-    , ok := !parseOk (extSupVer13 ++ extKeyShare) }
+    , ok := !parseOk (extSupVer13 ++ extGroups ++ extKeyShare) }
   , { name := "ClientHello offering only AES-128-GCM now negotiates AES-128-GCM (suite-aware seal path, 0.68)"
-    , ok := (negotiatedSuite [0x13, 0x01] (extSupVer13 ++ extKeyShare ++ extSigAlgs))
+    , ok := (negotiatedSuite [0x13, 0x01] (extSupVer13 ++ extGroups ++ extKeyShare ++ extSigAlgs))
               == some .aes128GcmSha256 }
   , { name := "ClientHello listing AES-128-GCM before ChaCha20 negotiates AES-128 (first client-offered the server supports)"
-    , ok := (negotiatedSuite [0x13, 0x01, 0x13, 0x03] (extSupVer13 ++ extKeyShare ++ extSigAlgs)
+    , ok := (negotiatedSuite [0x13, 0x01, 0x13, 0x03] (extSupVer13 ++ extGroups ++ extKeyShare ++ extSigAlgs)
               == some .aes128GcmSha256) }
   , { name := "ClientHello offering only ChaCha20-Poly1305 still negotiates ChaCha20 (both suites servable)"
-    , ok := (negotiatedSuite [0x13, 0x03] (extSupVer13 ++ extKeyShare ++ extSigAlgs))
+    , ok := (negotiatedSuite [0x13, 0x03] (extSupVer13 ++ extGroups ++ extKeyShare ++ extSigAlgs))
               == some .chacha20Poly1305Sha256 }
   , { name := "ClientHello listing ChaCha20 before AES-128 negotiates ChaCha20 (client preference honoured)"
-    , ok := (negotiatedSuite [0x13, 0x03, 0x13, 0x01] (extSupVer13 ++ extKeyShare ++ extSigAlgs))
+    , ok := (negotiatedSuite [0x13, 0x03, 0x13, 0x01] (extSupVer13 ++ extGroups ++ extKeyShare ++ extSigAlgs))
               == some .chacha20Poly1305Sha256 }
   , { name := "ClientHello with legacy_version ≠ 0x0303 is refused (RFC 8446 §4.1.2)"
-    , ok := rejects (chBadVersion (extSupVer13 ++ extKeyShare ++ extSigAlgs)) }
+    , ok := rejects (chBadVersion (extSupVer13 ++ extGroups ++ extKeyShare ++ extSigAlgs)) }
   , { name := "ClientHello offering non-null compression is refused (TLS 1.3 forbids compression, RFC 8446 §4.1.2)"
-    , ok := rejects (chBadCompression (extSupVer13 ++ extKeyShare ++ extSigAlgs)) }
+    , ok := rejects (chBadCompression (extSupVer13 ++ extGroups ++ extKeyShare ++ extSigAlgs)) }
   ]
 
 def main : IO UInt32 := do
