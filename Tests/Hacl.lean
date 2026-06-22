@@ -129,6 +129,30 @@ def main : IO UInt32 := do
   let p256BadPeer := p256Shared (hexToBytes p256_d) (rep 65 0x05)   -- first byte ≠ 0x04
   let p256PubBad  := p256Public (rep 31 0x01)
 
+  -- ECDSA P-256 / SHA-256 — NIST CAVP 186-4 ECDSA SigGen, P-256/SHA-256, first vector
+  -- (fixed nonce k, so the signature is a known answer).
+  let ec_msg := hexToBytes ("5905238877c77421f73e43ee3da6f2d9e2ccad5fc942dcec0cbd25482935faaf" ++
+    "416983fe165b1a045ee2bcd2e6dca3bdf46c4310a7461f9a37960ca672d3feb5" ++
+    "473e253605fb1ddfd28065b53cb5858a8ad28175bf9bd386a5e471ea7a65c17c" ++
+    "c934a9d791e91491eb3754d03799790fe2d308d16146d5c9b0d0debd97d79ce8")
+  let ec_d  := "519b423d715f8b581f4fa8ee59f4771a5b44c8130b4e3eacca54a56dda72b464"
+  let ec_qx := "1ccbe91c075fc7f4f033bfa248db8fccd3565de94bbfb12f3c59ff46c271bf83"
+  let ec_qy := "ce4014c68811f9a21a1fdb2c0e6113e06db7ca93b7404e78dc7ccd5ca89a4ca9"
+  let ec_k  := "94a1bbb14b906a61a280f245f9e93c7f3b4a6247824f5d33b9670787642a68de"
+  let ec_r  := "f3ac8061b514795b8843e3d6629527ed2afd6b1f6a555a7acabb5e6f79c8c2ac"
+  let ec_s  := "8bf77819ca05a6b2786c76262bf7371cef97b218e96f175a3ccdda2acc058903"
+  let ec_pub  := (hexToBytes "04") ++ hexToBytes ec_qx ++ hexToBytes ec_qy
+  let ec_sigRaw := ecdsaP256SignRaw ec_msg (hexToBytes ec_d) (hexToBytes ec_k)
+  let ec_expRaw := hexToBytes ec_r ++ hexToBytes ec_s
+  let ec_der  := ecdsaP256SignDer ec_msg (hexToBytes ec_d) (hexToBytes ec_k)
+  let ec_verifyOk := ecdsaP256Verify ec_msg ec_pub ec_expRaw
+  let ec_verifyTampered := ecdsaP256Verify (ec_msg.push 0x00) ec_pub ec_expRaw
+  let ec_signBadK := ecdsaP256SignRaw ec_msg (hexToBytes ec_d) (rep 31 0x01)
+  -- DER well-formedness: SEQUENCE of two INTEGERs.
+  let ec_derOk := match ec_der with
+    | some d => d.size ≥ 8 ∧ d.get! 0 == 0x30 ∧ d.get! 2 == 0x02
+    | none   => false
+
   let checks : List Check :=
     [ { name := "SHA-256(\"abc\") matches FIPS 180-4 vector"
       , ok := bytesEq (sha256 "abc".toUTF8) (hexToBytes sha256_abc) }
@@ -154,6 +178,16 @@ def main : IO UInt32 := do
       , ok := p256BadPeer.isNone }
     , { name := "P-256 public derivation rejects a wrong-size scalar (RFC 037 §2)"
       , ok := p256PubBad.size == 0 }
+    , { name := "ECDSA P-256/SHA-256 sign matches NIST CAVP 186-4 SigGen vector (fixed k)"
+      , ok := ec_sigRaw.size == 65 ∧ ec_sigRaw.get! 0 == 0 ∧ bytesEq (ec_sigRaw.extract 1 65) ec_expRaw }
+    , { name := "ECDSA P-256/SHA-256 verify accepts the NIST signature"
+      , ok := ec_verifyOk }
+    , { name := "ECDSA P-256/SHA-256 verify rejects a tampered message"
+      , ok := !ec_verifyTampered }
+    , { name := "ECDSA signature DER-encodes as SEQUENCE of two INTEGERs (RFC 8446 §4.4.3)"
+      , ok := ec_derOk }
+    , { name := "ECDSA P-256 sign rejects a wrong-size nonce, fails closed (RFC 037 §2)"
+      , ok := ec_signBadK.size == 65 ∧ ec_signBadK.get! 0 == 1 }
     , { name := "ChaCha20-Poly1305 seal/open round-trips"
       , ok := (match opened with | some p => bytesEq p pt | none => false) }
     , { name := "ChaCha20-Poly1305 rejects a tampered ciphertext"

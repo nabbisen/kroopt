@@ -227,3 +227,34 @@ LEAN_EXPORT lean_object *kroopt_ffi_p256_shared(b_lean_obj_arg priv, b_lean_obj_
   if (ok) memcpy(q + 1, shared, 32); else memset(q + 1, 0, 32);
   return r;
 }
+
+
+/* ── ECDSA P-256 over SHA-256 — RFC 8446 ecdsa_secp256r1_sha256 (v0.4 server auth) ──
+   sign: hashes m with SHA-256 internally, signs with privKey using nonce k. Returns 65 bytes
+   status(1) || raw(64 = r‖s); the caller DER-encodes raw for the CertificateVerify wire. Fails
+   closed (status 1) on wrong-size key/nonce. verify: pub is the 65-byte uncompressed point. */
+LEAN_EXPORT lean_object *kroopt_ffi_ecdsa_p256_sign(b_lean_obj_arg m, b_lean_obj_arg priv,
+                                                    b_lean_obj_arg k) {
+  lean_object *r = mk_ba(65);
+  uint8_t *q = lean_sarray_cptr(r);
+  if (ba_len(priv) != 32 || ba_len(k) != 32 || ba_len(m) > UINT32_MAX) {
+    q[0] = 1; memset(q + 1, 0, 64); return r;
+  }
+  bool ok = Hacl_P256_ecdsa_sign_p256_sha2(q + 1, (uint32_t)ba_len(m), ba_ptr(m),
+                                           ba_ptr(priv), ba_ptr(k));
+  q[0] = ok ? 0 : 1;
+  if (!ok) memset(q + 1, 0, 64);
+  return r;
+}
+
+LEAN_EXPORT lean_object *kroopt_ffi_ecdsa_p256_verify(b_lean_obj_arg m, b_lean_obj_arg pub,
+                                                      b_lean_obj_arg sigraw) {
+  lean_object *r = mk_ba(1);
+  if (ba_len(pub) != 65 || ba_ptr(pub)[0] != 0x04 || ba_len(sigraw) != 64 || ba_len(m) > UINT32_MAX) {
+    lean_sarray_cptr(r)[0] = 0; return r;
+  }
+  bool ok = Hacl_P256_ecdsa_verif_p256_sha2((uint32_t)ba_len(m), ba_ptr(m), ba_ptr(pub) + 1,
+                                            ba_ptr(sigraw), ba_ptr(sigraw) + 32);
+  lean_sarray_cptr(r)[0] = ok ? 1 : 0;
+  return r;
+}

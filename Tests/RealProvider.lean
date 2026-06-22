@@ -126,6 +126,20 @@ def runChecks : Except Kroopt.CryptoError (List (String × Bool)) := do
   let signOk := match rsig with
     | .signature sig => Kroopt.Crypto.Hacl.ed25519Verify certPub msg sig | _ => false
 
+  -- real ECDSA P-256 CertificateVerify: the provider dispatches to ecdsaP256SignDer and returns a
+  -- DER-encoded Ecdsa-Sig-Value (RFC 8446 §4.4.3). Crypto correctness is KAT-proven in Tests.Hacl;
+  -- here we confirm the provider wiring and the on-the-wire DER shape.
+  let ecdsaCfg : RealCryptoConfig :=
+    { ephemeralPrivate := hexToBytes serverPriv
+      certPrivate := hexToBytes "519b423d715f8b581f4fa8ee59f4771a5b44c8130b4e3eacca54a56dda72b464"
+      certPublic := ByteArray.empty
+      signNonce := hexToBytes "94a1bbb14b906a61a280f245f9e93c7f3b4a6247824f5d33b9670787642a68de" }
+  let (_, recdsa) ← (RealProvider.submit ecdsaCfg) a oid (.signCertificateVerify .ecdsaSecp256r1Sha256 msg)
+  let ecdsaSigOk := match recdsa with
+    | .signature der =>
+        der.size ≥ 8 ∧ der.get! 0 == 0x30 ∧ der.size == (der.get! 1).toNat + 2 ∧ der.get! 2 == 0x02
+    | _ => false
+
   -- Finished: provider derives finished_key from the handshake base secret
   let finKey := KeySchedule.finishedKey (hexToBytes sHs)
   let goodMac := Kroopt.Crypto.Hacl.hmac256 finKey (hexToBytes th2)
@@ -153,6 +167,7 @@ def runChecks : Except Kroopt.CryptoError (List (String × Bool)) := do
     , ("AEAD seal+open round-trips through installed key", aeadRoundTrip)
     , ("AEAD open of a tampered record returns verifyFailed", aeadTamper)
     , ("CertificateVerify Ed25519 signature verifies", signOk)
+    , ("CertificateVerify ECDSA-P256 produces a DER Ecdsa-Sig-Value", ecdsaSigOk)
     , ("verifyFinished accepts the correct Finished MAC", finishedOk)
     , ("verifyFinished rejects a wrong Finished MAC", finishedRejects)
     ]

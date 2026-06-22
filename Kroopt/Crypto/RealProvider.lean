@@ -47,6 +47,10 @@ structure RealCryptoConfig where
   ephemeralPrivate : ByteArray
   certPrivate      : ByteArray
   certPublic       : ByteArray
+  /-- Per-connection ECDSA signing nonce `k` (32 bytes), drawn fresh from the CSPRNG at the IO
+  layer when the certificate key is ECDSA-P256. Unused for Ed25519 (deterministic). Must never be
+  reused across signatures; the server signs CertificateVerify once per handshake. -/
+  signNonce        : ByteArray := ByteArray.empty
   deriving Inhabited
 
 namespace RealProvider
@@ -127,6 +131,13 @@ def submit (cfg : RealCryptoConfig) (a : SecretArena) (_ : OperationId) :
   | .signCertificateVerify scheme input =>
       match scheme with
       | .ed25519 => .ok (a, .signature (Hacl.ed25519Sign cfg.certPrivate input))
+      | .ecdsaSecp256r1Sha256 =>
+          -- ECDSA P-256 / SHA-256 (RFC 8446 §4.4.3): hash the signing input with SHA-256 and
+          -- sign with the cert key and the fresh per-connection nonce, returning the DER-encoded
+          -- Ecdsa-Sig-Value for the wire.
+          match Hacl.ecdsaP256SignDer input cfg.certPrivate cfg.signNonce with
+          | some der => .ok (a, .signature der)
+          | none     => .error .providerInternal
       | _ => .error .unsupportedOperation
   | .computeServerFinished _ transcriptHash =>
       -- The server Finished verify_data = HMAC(server_finished_key, H) over the transcript

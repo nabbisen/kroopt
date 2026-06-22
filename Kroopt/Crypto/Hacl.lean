@@ -43,6 +43,16 @@ opaque p256Public (priv : ByteArray) : ByteArray
 @[extern "kroopt_ffi_p256_shared"]
 opaque p256SharedRaw (priv peer : ByteArray) : ByteArray
 
+/-- ECDSA P-256 / SHA-256 sign. `m` is hashed with SHA-256 internally; `k` is the per-signature
+nonce (must be fresh and in `[1, n-1]`). Returns 65 bytes `status(1) || raw(64 = r‖s)`. -/
+@[extern "kroopt_ffi_ecdsa_p256_sign"]
+opaque ecdsaP256SignRaw (m priv k : ByteArray) : ByteArray
+
+/-- ECDSA P-256 / SHA-256 verify against the 65-byte uncompressed public point and a raw 64-byte
+`r‖s`. Returns a 1-byte `0/1` result. -/
+@[extern "kroopt_ffi_ecdsa_p256_verify"]
+opaque ecdsaP256VerifyRaw (m pub sigraw : ByteArray) : ByteArray
+
 @[extern "kroopt_ffi_aead_seal"]
 opaque chachaPolySeal (key nonce aad pt : ByteArray) : ByteArray
 
@@ -103,6 +113,34 @@ infinity); otherwise the 32-byte shared secret (the X-coordinate, per RFC 8446 �
 def p256Shared (priv peer : ByteArray) : Option ByteArray :=
   let r := p256SharedRaw priv peer
   if r.size == 33 ∧ r.get! 0 == 0 then some (r.extract 1 33) else none
+
+/-- DER-encode one 32-byte big-endian unsigned integer as an ASN.1 `INTEGER` (`0x02 len value`),
+minimally (strip leading zero bytes; prepend `0x00` when the high bit is set so the value stays
+positive). Each P-256 component is ≤ 33 content bytes, so the length is always short-form. -/
+private def derInteger (bytes : ByteArray) : ByteArray :=
+  let stripped := bytes.toList.dropWhile (· == 0)
+  let stripped := if stripped.isEmpty then [0] else stripped
+  let content := if stripped.head! &&& 0x80 != 0 then (0 : UInt8) :: stripped else stripped
+  ByteArray.mk (#[0x02, content.length.toUInt8] ++ content.toArray)
+
+/-- DER-encode a raw ECDSA signature `r‖s` (each 32 bytes) as `Ecdsa-Sig-Value ::= SEQUENCE { r
+INTEGER, s INTEGER }`, the form TLS 1.3 carries in CertificateVerify (RFC 8446 §4.4.3, RFC 3279
+§2.2.3). `none` if `raw` is not 64 bytes. -/
+def derEncodeEcdsaSig (raw : ByteArray) : Option ByteArray :=
+  if raw.size != 64 then none else
+    let body := derInteger (raw.extract 0 32) ++ derInteger (raw.extract 32 64)
+    some (ByteArray.mk (#[0x30, body.size.toUInt8] ++ body.data))
+
+/-- ECDSA P-256 / SHA-256 sign, returning the DER-encoded signature ready for the wire, or `none`
+on failure (wrong-size key/nonce, or HACL rejection). -/
+def ecdsaP256SignDer (m priv k : ByteArray) : Option ByteArray :=
+  let r := ecdsaP256SignRaw m priv k
+  if r.size == 65 ∧ r.get! 0 == 0 then derEncodeEcdsaSig (r.extract 1 65) else none
+
+/-- ECDSA P-256 / SHA-256 verify over the raw 64-byte `r‖s`. -/
+def ecdsaP256Verify (m pub sigraw : ByteArray) : Bool :=
+  let r := ecdsaP256VerifyRaw m pub sigraw
+  r.size == 1 ∧ r.get! 0 == 1
 
 /-- ChaCha20-Poly1305 open. `none` on authentication failure (no plaintext is
 returned on failure). -/

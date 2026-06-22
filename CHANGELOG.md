@@ -5,6 +5,37 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.54.0-dev] — RFC (v0.4 breadth): ECDSA-P256 server-auth signing — crypto + provider path — 2026-06-14
+
+Second v0.4 algorithm-breadth step: kroopt can now **produce ECDSA-P256 / SHA-256 CertificateVerify
+signatures** (RFC 8446 ecdsa_secp256r1_sha256), the second required server-auth scheme alongside
+Ed25519. This increment lands the crypto primitive, wire encoding, and provider signing path — all
+additive, with no change to the proven negotiation surface (94 theorems, axiom profile unchanged). The
+cert-aware *negotiation selection* and a live ECDSA-certificate interop are the explicit next step (they
+touch the proven `onClientHello` edge/discipline lemmas and so warrant a focused, proof-careful turn).
+
+- **Vendored crypto (assumed, not hand-rolled).** Reuses the `Hacl_P256.c` curve C vendored for P-256
+  ECDHE. Two FFI entry points (`kroopt_ffi_ecdsa_p256_sign`, `_verify`) bridge to
+  `Hacl_P256_ecdsa_sign_p256_sha2`/`_verif_p256_sha2`; sign hashes the input with SHA-256 internally
+  and takes an explicit per-signature nonce `k`. Both fail closed on wrong-size key/nonce (RFC 037 §2).
+- **DER wire encoding.** `Hacl.derEncodeEcdsaSig` encodes the raw `r‖s` as ASN.1
+  `Ecdsa-Sig-Value ::= SEQUENCE { r INTEGER, s INTEGER }` (RFC 8446 §4.4.3, RFC 3279 §2.2.3) with
+  minimal, positive INTEGER encoding; `ecdsaP256SignDer` chains sign + encode.
+- **KAT (`Tests/Hacl.lean`, now 37 checks).** A NIST CAVP 186-4 ECDSA SigGen P-256/SHA-256 vector with a
+  fixed nonce (known-answer `r‖s`), verify accept/reject, DER well-formedness, and a fail-closed nonce
+  check.
+- **Provider signing path.** `RealProvider.submit` handles `signCertificateVerify .ecdsaSecp256r1Sha256`
+  via `ecdsaP256SignDer`, returning the DER signature; `RealCryptoConfig` gains a defaulted `signNonce`
+  (drawn fresh per connection at the IO layer when the cert key is ECDSA — never reused, as the server
+  signs CertificateVerify once per handshake). The fake provider is already scheme-agnostic. The
+  realprovider suite (18 checks) confirms the dispatch produces a well-formed DER Ecdsa-Sig-Value.
+- **Validation.** All 24 suites green (370 checks); parser fuzz clean; all gates green.
+
+Crypto remains ASSUMED (vendored HACL\*), protocol PROVEN, wire TESTED. The key-exchange dimension now
+spans x25519 + secp256r1 (0.53.0-dev); the server-auth dimension has the ECDSA-P256 *signing machinery*
+in place behind Ed25519, pending the negotiation/cert wiring to select and present it on a live
+connection.
+
 ## [0.53.0-dev] — RFC (v0.4 breadth): secp256r1 (P-256) ECDHE as a second key-exchange group — 2026-06-14
 
 First algorithm-breadth increment of the v0.4 line: kroopt now negotiates **P-256 (secp256r1) ECDHE**
