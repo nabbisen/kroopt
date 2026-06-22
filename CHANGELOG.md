@@ -5,6 +5,40 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.52.0-dev] — RFC 015/013: HTTPS termination end-to-end (curl + Python) + graceful close_notify — 2026-06-13
+
+The v0.3 vision realised end to end: a Lean edge server **terminates TLS 1.3 itself and answers an HTTP
+request**, validated by two independent HTTP clients, with a clean TLS shutdown.
+
+- `Tests/LiveServerNb.lean` gains an `http` mode (`kroopt-live-server-nb <sock> http`): after the
+  handshake it receives the client's HTTP request over the TLS channel, serves a fixed HTTP/1.1 `200 OK`
+  page, then closes gracefully. The fixed handler stands in for jemmet, which owns HTTP semantics in
+  production (RFC 015) — kroopt's job is the verified plaintext channel, and this proves that channel
+  carries real HTTP that an off-the-shelf HTTP client accepts.
+- **Graceful close (RFC 8446 §6.1 / RFC 013).** The server drives `InputEvent.appClose .graceful`, which
+  the core turns into a sealed, encrypted `close_notify` (alert level warning, description close_notify)
+  under the application write epoch — the same AEAD-seal path as application data — then closes the
+  transport. This removes the cosmetic post-close `unexpected eof` clients logged before.
+- `scripts/https-e2e.sh` drives two independent clients:
+  - **curl 8.5 (OpenSSL)** over the unix socket — receives `HTTP/1.1 200 OK` and the HTML body, exit 0;
+  - **Python `ssl` + a raw HTTP GET** — receives `200 OK` with the body **and asserts the close is
+    graceful**: `recv` returns a clean empty read (`PY_CLEAN_CLOSE True`) rather than raising a TLS
+    truncation error, confirming the `close_notify` is well-formed and authenticated.
+  All four checks pass, stable across repeated runs.
+
+This runs over the non-blocking readiness reactor (0.51.0-dev), so the full path exercised is:
+real socket → non-blocking `Transport` → verified core (handshake, records, app data, close) →
+HTTP handler → real HTTP client. The verified core and the four repo gates are unchanged (handler +
+close-drive + script only): full build, all 4 gates (36 pure-zone files, 94 theorems), all 24 suites,
+parser fuzz (40000), the HACL\*↔OpenSSL and Record13↔Python crypto-interop scripts, the ASan/UBSan
+sanitizer harness, the raw TLS interop (both drivers, both clients), and the HTTPS e2e all stay green.
+
+Honest scope: the HTTP handler is a fixed stand-in, not jemmet itself (jemmet is a sibling project, not
+vendored here) — the genuine jemmet integration remains RFC 015's target. The transport is still the
+test socket glue / `SocketReactor` stand-in, not the real iotakt adapter (the deferred binding). What is
+now demonstrated: kroopt terminates a real TLS 1.3 connection from an independent client and serves it
+real HTTP over the verified channel, opening and closing cleanly.
+
 ## [0.51.0-dev] — RFC 010 §6: non-blocking readiness-driven reactor (production I/O shape) — 2026-06-13
 
 The live server now also runs over a **non-blocking, readiness-driven reactor** — the production I/O

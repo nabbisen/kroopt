@@ -132,3 +132,11 @@ Public errors expose:
 - Close states are explicit.
 - EOF/truncation is distinguished from graceful close.
 - Terminal behavior is proven and tested.
+
+## Live exercise — graceful close_notify on the wire (0.52.0-dev)
+
+The graceful close path is now exercised against real clients: `InputEvent.appClose .graceful` from
+`connected` seals an encrypted `close_notify` under the application write epoch and closes the
+transport (`scripts/https-e2e.sh`). A strict Python `ssl` client confirms the shutdown is clean — a
+final `recv` returns an empty read rather than raising a TLS truncation error — so the sealed alert is
+well-formed and authenticated, matching the model the close-test suite proves.

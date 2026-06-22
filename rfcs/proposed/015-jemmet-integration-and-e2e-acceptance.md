@@ -106,3 +106,14 @@ Diagnostics must be non-secret and bounded.
 - OpenSSL and curl interop pass.
 - Negative TLS input never reaches HTTP parsing.
 - Operational errors are redacted and typed.
+
+## Progress — HTTPS end-to-end demonstration (0.52.0-dev)
+
+`scripts/https-e2e.sh` shows the acceptance shape end to end: `Tests/LiveServerNb.lean` in `http` mode
+terminates a real TLS 1.3 connection and serves a fixed HTTP/1.1 `200 OK` over the verified channel,
+closing gracefully with a sealed `close_notify`. **curl** (OpenSSL) and **Python `ssl`** both complete
+the HTTPS request; Python additionally asserts the close is graceful (clean EOF, not a truncation).
+The fixed handler stands in for jemmet — the genuine jemmet wiring (its connection abstraction over
+`TlsConn`, ALPN-selected handler, real routing) is still this RFC's target — and the transport is the
+`SocketReactor` stand-in, not the real iotakt adapter. But TLS-termination-to-HTTP is now demonstrated
+with independent HTTP clients.

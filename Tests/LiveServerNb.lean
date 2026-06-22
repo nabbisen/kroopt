@@ -161,8 +161,42 @@ def reactorAppExchange (fd : UInt32) (prov : CryptoProvider)
   let _ ← flushOutbound fd tr
   IO.println "APP_SENT response sealed to client"
 
+/-- A minimal HTTP/1.1 response served over the TLS channel — the v0.3 HTTPS-termination shape (a Lean
+edge server terminating TLS and answering an HTTP request). A real HTTP handler (jemmet, RFC 015) would
+own this; here a fixed page stands in for it, proving the plaintext channel kroopt presents carries real
+HTTP that an independent HTTP client (curl) accepts. -/
+def httpResponse : ByteArray :=
+  let body := String.toUTF8
+    "<!doctype html><html><body><h1>kroopt</h1><p>TLS 1.3 terminated in Lean 4. Hello over HTTPS.</p></body></html>\n"
+  let header := String.toUTF8 (
+    "HTTP/1.1 200 OK\r\nServer: kroopt\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: "
+      ++ toString body.size ++ "\r\nConnection: close\r\n\r\n")
+  header ++ body
+
+/-- HTTPS request/response: read the client's HTTP request over the TLS channel, send a fixed HTTP/1.1
+response, then close the connection gracefully (sealed `close_notify`, RFC 8446 §6.1) so the client sees
+a clean TLS shutdown rather than a truncated read. -/
+def reactorHttp (fd : UInt32) (prov : CryptoProvider)
+    (core : State) (rt : RuntimeState) (tr : SocketReactor) : IO Unit := do
+  let (core, rt, tr) ← reactorRecvApp fd prov core rt tr 16
+  match rt.plaintextOut with
+  | some b => IO.println s!"HTTP_REQ {b.size} bytes received over TLS"
+  | none   => IO.println "HTTP_REQ no request delivered"
+  let (core, rt, tr) :=
+    driveEvents prov 2048 core { rt with plaintextOut := none } tr [InputEvent.appSend conn0 httpResponse]
+  let tr ← flushOutbound fd tr
+  let tr ← flushOutbound fd tr
+  IO.println "HTTP_RESP 200 sent over TLS"
+  -- Graceful close: seal and flush an encrypted close_notify, then close the transport.
+  let (_core, _rt, tr) :=
+    driveEvents prov 2048 core rt tr [InputEvent.appClose conn0 .graceful]
+  let tr ← flushOutbound fd tr
+  let _ ← flushOutbound fd tr
+  IO.println "CLOSE_NOTIFY sent (graceful)"
+
 def serve (args : List String) : IO Unit := do
   let path := args.headD "/tmp/kroopt-tls-nb.sock"
+  let mode := (args.drop 1).headD "echo"
   let ephR ← Hacl.randomBytes 32
   let srR  ← Hacl.randomBytes 32
   match ephR, srR with
@@ -178,7 +212,7 @@ def serve (args : List String) : IO Unit := do
       { State.initial conn0 ⟨0⟩ .sha256 with serverConfig := realServerConfig }
     let lfd ← sockListen path
     if lfd == 0xFFFFFFFF then IO.println "LISTEN FAILED"; return
-    IO.println s!"kroopt TLS server (non-blocking reactor) listening on {path}"
+    IO.println s!"kroopt TLS server (non-blocking reactor, mode={mode}) listening on {path}"
     let cfd ← sockAccept lfd
     if cfd == 0xFFFFFFFF then IO.println "ACCEPT FAILED"; sockClose lfd; return
     sockSetNonblocking cfd
@@ -187,7 +221,8 @@ def serve (args : List String) : IO Unit := do
     match core.handshake with
     | .connected =>
         IO.println "HANDSHAKE_OK reached connected"
-        reactorAppExchange cfd prov core rt tr
+        if mode == "http" then reactorHttp cfd prov core rt tr
+        else reactorAppExchange cfd prov core rt tr
     | _ => IO.println "HANDSHAKE_INCOMPLETE"
     sockClose cfd
     sockClose lfd

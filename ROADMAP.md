@@ -43,7 +43,7 @@ Wave 2 was added after the requirements document was frozen. Per the RFC lifecyc
 > presents the fixture Ed25519 certificate (RFC 012) and draws real OS entropy. Remaining for full v0.3
 > acceptance: drive this over iotakt rather than test socket glue, exchange application data, and the
 > a non-blocking readiness-driven reactor (`kroopt-live-server-nb`, the production I/O shape an
-> iotakt adapter takes) and jemmet HTTPS E2E (RFC 015).
+> iotakt adapter takes) and jemmet HTTPS E2E (RFC 015). An HTTPS end-to-end demonstration now works: curl and Python complete a real HTTPS request against kroopt (TLS 1.3 termination + an HTTP/1.1 200 response + graceful `close_notify`, `scripts/https-e2e.sh`), with a fixed in-tree handler standing in for jemmet — the genuine jemmet integration remains RFC 015's target.
 
 | Milestone | Theme | Output | Main RFCs |
 |---|---|---|---|
