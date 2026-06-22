@@ -171,3 +171,10 @@ structure TlsConnInner where
   opens it, `verifyFinished` checks the MAC, and the handshake reaches `connected` over real kernel I/O. The interpreter stays pure — the `driveOverSocket` loop owns the
   syscalls and flushes only core-authorised bytes (§6). Remaining: the full round-trip to `connected` (client
   Finished from the wire), non-blocking/readiness-driven progress, and live interop (RFC 026) / jemmet E2E (RFC 015).
+
+- **Non-blocking readiness reactor reached (0.51.0-dev).** `Tests/LiveServerNb.lean` drives the
+  core through a real IO-backed `Transport` instance (`SocketReactor`) with a `poll`/non-blocking
+  `recv`/`send` loop: readiness is a hint, partial writes retry on writable, and chunked reads that
+  bundle records are drained record-by-record. OpenSSL and Python complete the handshake + an app-data
+  round-trip over it. This is the §6 progress-loop shape; the real iotakt adapter remains the deferred
+  binding, with `SocketReactor` as its production-shaped stand-in.

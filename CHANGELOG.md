@@ -5,6 +5,41 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.51.0-dev] — RFC 010 §6: non-blocking readiness-driven reactor (production I/O shape) — 2026-06-13
+
+The live server now also runs over a **non-blocking, readiness-driven reactor** — the production I/O
+shape RFC 010 §6 specifies and the form a real `iotakt` adapter takes (Requirements §2.3, §21 v0.3) —
+in addition to the blocking driver from 0.49/0.50. Both complete the full handshake **and** an
+application-data round-trip with OpenSSL `s_client` and Python `ssl`.
+
+- `Tests/LiveServerNb.lean` (`kroopt-live-server-nb`) drives the verified core + production interpreter
+  through a real, IO-backed `Transport` instance, `SocketReactor`. The interpreter is already generic
+  over the `Transport` typeclass; the reactor is simply another instance — no core or interpreter change.
+  A `poll`/non-blocking-`recv`/non-blocking-`send` loop fills the reactor's inbound buffer and drains its
+  outbound buffer in IO, while the *pure* interpreter pulls bytes via `Transport.recv` (turning the
+  core's `readTransport` actions into `transportBytes`) and pushes its flight via `Transport.send`.
+- Honors the non-blocking contract: readiness is a hint (a `recv` may still report `wouldBlock`), partial
+  writes are retried on the next writable poll (`flushOutbound`), and `transportEof` is surfaced on a
+  clean close. Because a non-blocking `recv` returns chunks that can bundle several records (unlike a
+  one-record blocking read), `drainBuffered` re-drives the core with empty `transportBytes` to consume
+  every complete record the chunk delivered, stopping at a partial record — so a client whose Finished
+  and first application record arrive in one chunk is handled correctly.
+- New test-only FFI in `Kroopt/Native/kroopt_socket.c`: `kroopt_sock_set_nonblocking` (O_NONBLOCK),
+  `kroopt_sock_recv_nb` (status-prefixed: data / wouldBlock / eof / error), `kroopt_sock_send_nb`
+  (partial-accept / wouldBlock / error), and `kroopt_sock_poll` (readable/writable bitmask).
+- `scripts/tls-interop.sh` now exercises **both** drivers against **both** clients — 8 checks:
+  {OpenSSL, Python} × {blocking, reactor} × {handshake, app-data} — all green and stable across repeated
+  runs despite non-deterministic TCP segmentation.
+
+The verified core and the four repo gates are untouched (this is interop-harness + transport-adapter
+work): the full build, all 4 gates (36 pure-zone files, 94 theorems), all 24 suites, parser fuzz
+(40000), the HACL\*↔OpenSSL and Record13↔Python crypto-interop scripts, and the ASan/UBSan sanitizer
+harness all stay green.
+
+Next in the arc: graceful `close_notify` on the live path (clients currently log a cosmetic post-close
+eof), then the `iotakt`-backed `Transport` instance proper (when iotakt is vendored — `SocketReactor` is
+the production-shaped stand-in today), and jemmet HTTPS E2E (RFC 015), the v0.3 acceptance target.
+
 ## [0.50.0-dev] — RFC 026/004: live application-data round-trip with OpenSSL + Python — 2026-06-13
 
 Building on the 0.49.0-dev handshake interop, the live server now exercises the **post-handshake

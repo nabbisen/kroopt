@@ -224,6 +224,10 @@ lean_exe «kroopt-live-server» where
   root := `Tests.LiveServer
   moreLinkArgs := #["-Wl,--gc-sections"]
 
+lean_exe «kroopt-live-server-nb» where
+  root := `Tests.LiveServerNb
+  moreLinkArgs := #["-Wl,--gc-sections"]
+
 lean_exe «kroopt-realch-interop» where
   root := `Tests.RealChParse
   moreLinkArgs := #["-Wl,--gc-sections"]

@@ -42,7 +42,8 @@ Wave 2 was added after the requirements document was frozen. Per the RFC lifecyc
 > `TLS_CHACHA20_POLY1305_SHA256` and reach `connected` (`scripts/tls-interop.sh`, RFC 026). The server
 > presents the fixture Ed25519 certificate (RFC 012) and draws real OS entropy. Remaining for full v0.3
 > acceptance: drive this over iotakt rather than test socket glue, exchange application data, and the
-> jemmet HTTPS E2E (RFC 015).
+> a non-blocking readiness-driven reactor (`kroopt-live-server-nb`, the production I/O shape an
+> iotakt adapter takes) and jemmet HTTPS E2E (RFC 015).
 
 | Milestone | Theme | Output | Main RFCs |
 |---|---|---|---|

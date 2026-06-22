@@ -103,3 +103,72 @@ LEAN_EXPORT lean_object *kroopt_sock_accept(uint32_t lfd, lean_object *w) {
   uint32_t result = (cfd >= 0) ? (uint32_t)cfd : 0xFFFFFFFFu;
   return lean_io_result_mk_ok(lean_box_uint32(result));
 }
+
+/* ---- Non-blocking variants for the readiness-driven reactor (RFC 010 §6) ---- */
+#include <fcntl.h>
+#include <errno.h>
+#include <poll.h>
+
+/* IO: set O_NONBLOCK on an fd. */
+LEAN_EXPORT lean_object *kroopt_sock_set_nonblocking(uint32_t fd, lean_object *w) {
+  (void)w;
+  int flags = fcntl((int)fd, F_GETFL, 0);
+  if (flags >= 0) fcntl((int)fd, F_SETFL, flags | O_NONBLOCK);
+  return lean_io_result_mk_ok(lean_box(0));
+}
+
+/* IO: one non-blocking recv() call. Returns a status-prefixed ByteArray:
+ *   byte 0 = status: 0 = data follows, 1 = wouldBlock, 2 = eof, 3 = error
+ *   bytes 1.. = the data read (only for status 0).
+ * A single read() — partial records are reassembled by the core, not here. */
+LEAN_EXPORT lean_object *kroopt_sock_recv_nb(uint32_t fd, uint32_t n, lean_object *w) {
+  (void)w;
+  size_t cap = n ? n : 1;
+  uint8_t *tmp = (uint8_t *)malloc(cap + 1);
+  ssize_t k = read((int)fd, tmp + 1, cap);
+  uint8_t status;
+  size_t outlen;
+  if (k > 0)        { status = 0; outlen = (size_t)k; }
+  else if (k == 0)  { status = 2; outlen = 0; }
+  else if (errno == EAGAIN || errno == EWOULDBLOCK) { status = 1; outlen = 0; }
+  else              { status = 3; outlen = 0; }
+  tmp[0] = status;
+  lean_object *r = lean_alloc_sarray(1, outlen + 1, outlen + 1);
+  memcpy(lean_sarray_cptr(r), tmp, outlen + 1);
+  free(tmp);
+  return lean_io_result_mk_ok(r);
+}
+
+/* IO: one non-blocking send() call. Returns bytes accepted (UInt64); a non-empty
+ * buffer returning 0 means wouldBlock; 0xFFFF...F signals a fatal error. */
+LEAN_EXPORT lean_object *kroopt_sock_send_nb(uint32_t fd, b_lean_obj_arg buf, lean_object *w) {
+  (void)w;
+  size_t len = lean_sarray_size(buf);
+  uint8_t *p = lean_sarray_cptr(buf);
+  uint64_t result;
+  if (len == 0) { result = 0; }
+  else {
+    ssize_t k = write((int)fd, p, len);
+    if (k >= 0) result = (uint64_t)k;
+    else if (errno == EAGAIN || errno == EWOULDBLOCK) result = 0;
+    else result = 0xFFFFFFFFFFFFFFFFULL;
+  }
+  return lean_io_result_mk_ok(lean_box_uint64(result));
+}
+
+/* IO: poll an fd. Always waits for readable; also waits for writable when
+ * wantWrite != 0. Returns a bitmask: 1 = readable, 2 = writable, 0 = timeout. */
+LEAN_EXPORT lean_object *kroopt_sock_poll(uint32_t fd, uint8_t wantWrite, uint32_t timeoutMs, lean_object *w) {
+  (void)w;
+  struct pollfd pfd;
+  pfd.fd = (int)fd;
+  pfd.events = POLLIN | (wantWrite ? POLLOUT : 0);
+  pfd.revents = 0;
+  int rc = poll(&pfd, 1, (int)timeoutMs);
+  uint32_t mask = 0;
+  if (rc > 0) {
+    if (pfd.revents & (POLLIN | POLLHUP | POLLERR)) mask |= 1;
+    if (pfd.revents & POLLOUT) mask |= 2;
+  }
+  return lean_io_result_mk_ok(lean_box_uint32(mask));
+}

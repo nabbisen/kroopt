@@ -1,14 +1,16 @@
 #!/bin/sh
-# tls-interop.sh — live TLS 1.3 handshake interop: kroopt server <-> independent clients.
+# tls-interop.sh — live TLS 1.3 interop: kroopt server <-> independent clients (OpenSSL + Python).
 #
-# Starts the verified kroopt core + production interpreter as a TLS 1.3 server on an AF_UNIX
-# socket (Tests/LiveServer.lean, real OS entropy, fixture Ed25519 cert) and drives a full
-# handshake against OpenSSL s_client and Python's ssl module. This is the v0.3 interop target
-# (RFC 026): an *independent* implementation validates kroopt's wire bytes end to end — the
-# ServerHello, the encrypted flight, the presented certificate, the CertificateVerify signature,
-# and the server Finished — and kroopt verifies the client's Finished to reach `connected`.
+# Runs the verified kroopt core + production interpreter as a TLS 1.3 server on an AF_UNIX socket and
+# completes a full handshake AND an application-data round-trip against OpenSSL s_client and Python's
+# ssl module. Two server I/O drivers are exercised (RFC 010):
+#   * kroopt-live-server    — blocking, one-record-at-a-time push driver;
+#   * kroopt-live-server-nb — non-blocking, poll/readiness-driven reactor over a real socket Transport
+#                             (the production I/O shape an iotakt adapter takes; Requirements §2.3/§21).
 #
-# kroopt's production path reaches the network only through iotakt; the socket helpers are
+# An independent implementation validates kroopt's wire bytes end to end, kroopt verifies the client's
+# Finished to reach `connected`, and both directions exchange application data under the TLS 1.3 traffic
+# keys. kroopt's production path reaches the network only through iotakt; the socket helpers are
 # test-only glue exercised here.
 set -e
 export PATH="$HOME/.elan/bin:$PATH"
@@ -18,93 +20,78 @@ SOCK="${TMPDIR:-/tmp}/kroopt-tls-interop.sock"
 SRVOUT="${TMPDIR:-/tmp}/kroopt-tls-interop.srv"
 fail=0
 
-echo "Building kroopt live server..."
-lake build kroopt-live-server 2>&1 | tail -1
+echo "Building kroopt live servers..."
+lake build kroopt-live-server kroopt-live-server-nb 2>&1 | tail -1
 
-start_server() {
+start_server() {  # $1 = exe
   rm -f "$SOCK"
-  ( timeout 30 lake exe kroopt-live-server "$SOCK" > "$SRVOUT" 2>&1 ) &
+  ( timeout 30 lake exe "$1" "$SOCK" > "$SRVOUT" 2>&1 ) &
   SRVPID=$!
   i=0
   while [ ! -S "$SOCK" ] && [ $i -lt 100 ]; do sleep 0.1; i=$((i+1)); done
 }
 
-server_reached_connected() {
-  wait "$SRVPID" 2>/dev/null || true
-  grep -q "HANDSHAKE_OK reached connected" "$SRVOUT"
+await_server() { wait "$SRVPID" 2>/dev/null || true; }
+
+check() {  # $1 = label, $2 = condition result (0=ok)
+  if [ "$2" -eq 0 ]; then echo "  $1: ok"; else echo "  $1: FAILED"; fail=$((fail+1)); fi
 }
 
-echo
-echo "=== Client 1: OpenSSL s_client ==="
-start_server
-OUT=$(printf 'ping from openssl\n' | timeout 15 openssl s_client -unix "$SOCK" -tls1_3 \
-        -ciphersuites TLS_CHACHA20_POLY1305_SHA256 -groups x25519 \
-        2>&1 || true)
-if echo "$OUT" | grep -q "New, TLSv1.3, Cipher is TLS_CHACHA20_POLY1305_SHA256" \
-   && server_reached_connected; then
-  echo "  OpenSSL completed a TLS 1.3 handshake (ChaCha20-Poly1305): ok"
-else
-  echo "  OpenSSL handshake FAILED"
-  echo "$OUT" | grep -iE 'error|alert' | head -3
-  echo "  --- server output ---"; cat "$SRVOUT"
-  fail=$((fail+1))
-fi
-if echo "$OUT" | grep -q "kroopt: hello over TLS 1.3" \
-   && grep -q "APP_RECV .* decrypted from client" "$SRVOUT" \
-   && grep -q "APP_SENT" "$SRVOUT"; then
-  echo "  OpenSSL app-data round-trip (client record decrypted, server response read): ok"
-else
-  echo "  OpenSSL app-data round-trip FAILED"
-  echo "  --- server output ---"; cat "$SRVOUT"
-  fail=$((fail+1))
-fi
+test_openssl() {  # $1 = exe, $2 = label
+  start_server "$1"
+  OUT=$( (printf 'ping from openssl\n'; sleep 1) | timeout 15 openssl s_client -unix "$SOCK" -tls1_3 \
+           -ciphersuites TLS_CHACHA20_POLY1305_SHA256 -groups x25519 2>&1 || true)
+  await_server
+  echo "$OUT" | grep -q "New, TLSv1.3, Cipher is TLS_CHACHA20_POLY1305_SHA256" \
+    && grep -q "HANDSHAKE_OK reached connected" "$SRVOUT"; hs=$?
+  grep -q "APP_RECV .* decrypted from client" "$SRVOUT" && grep -q "APP_SENT" "$SRVOUT"; app=$?
+  check "OpenSSL [$2] TLS 1.3 handshake (ChaCha20-Poly1305)" "$hs"
+  check "OpenSSL [$2] app-data received + response sealed" "$app"
+  if [ "$hs" -ne 0 ] || [ "$app" -ne 0 ]; then echo "    --- server ---"; cat "$SRVOUT"; fi
+}
 
-echo
-echo "=== Client 2: Python ssl ==="
-start_server
-PYOUT=$(timeout 15 python3 - "$SOCK" << 'PY' 2>&1 || true
+test_python() {  # $1 = exe, $2 = label
+  start_server "$1"
+  PYOUT=$(timeout 15 python3 - "$SOCK" << 'PY' 2>&1 || true
 import socket, ssl, sys
-sock_path = sys.argv[1]
 ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-ctx.check_hostname = False
-ctx.verify_mode = ssl.CERT_NONE
-ctx.minimum_version = ssl.TLSVersion.TLSv1_3
-ctx.maximum_version = ssl.TLSVersion.TLSv1_3
-s = socket.socket(socket.AF_UNIX)
-s.connect(sock_path)
+ctx.check_hostname = False; ctx.verify_mode = ssl.CERT_NONE
+ctx.minimum_version = ssl.TLSVersion.TLSv1_3; ctx.maximum_version = ssl.TLSVersion.TLSv1_3
+s = socket.socket(socket.AF_UNIX); s.connect(sys.argv[1])
 try:
     ss = ctx.wrap_socket(s, server_hostname="example.com")
     print("PYTHON_OK", ss.version(), ss.cipher()[0])
     ss.sendall(b"ping from python\n")
-    data = ss.recv(1024)
-    sys.stdout.write("PYTHON_APP " + repr(data) + "\n")
+    print("PYTHON_APP", repr(ss.recv(1024)))
     ss.close()
 except Exception as e:
     print("PYTHON_FAIL", repr(e))
 PY
 )
-echo "  $(echo "$PYOUT" | grep -E 'PYTHON_OK|PYTHON_APP|PYTHON_FAIL' | head -2 | tr '\n' ' ')"
-if echo "$PYOUT" | grep -q "PYTHON_OK TLSv1.3" && server_reached_connected; then
-  echo "  Python ssl completed a TLS 1.3 handshake: ok"
-else
-  echo "  Python ssl handshake FAILED"
-  echo "  --- server output ---"; cat "$SRVOUT"
-  fail=$((fail+1))
-fi
-if echo "$PYOUT" | grep -q "kroopt: hello over TLS 1.3" \
-   && grep -q "APP_RECV .* decrypted from client" "$SRVOUT" \
-   && grep -q "APP_SENT" "$SRVOUT"; then
-  echo "  Python app-data round-trip (client record decrypted, server response read): ok"
-else
-  echo "  Python app-data round-trip FAILED"
-  echo "  --- server output ---"; cat "$SRVOUT"
-  fail=$((fail+1))
-fi
+  await_server
+  echo "$PYOUT" | grep -q "PYTHON_OK TLSv1.3" \
+    && grep -q "HANDSHAKE_OK reached connected" "$SRVOUT"; hs=$?
+  echo "$PYOUT" | grep -q "kroopt: hello over TLS 1.3" \
+    && grep -q "APP_RECV .* decrypted from client" "$SRVOUT"; app=$?
+  check "Python [$2] TLS 1.3 handshake" "$hs"
+  check "Python [$2] app-data round-trip" "$app"
+  if [ "$hs" -ne 0 ] || [ "$app" -ne 0 ]; then echo "    $PYOUT" | head -2; echo "    --- server ---"; cat "$SRVOUT"; fi
+}
+
+echo
+echo "=== Driver: blocking push (kroopt-live-server) ==="
+test_openssl kroopt-live-server "blocking"
+test_python  kroopt-live-server "blocking"
+
+echo
+echo "=== Driver: non-blocking readiness reactor (kroopt-live-server-nb) ==="
+test_openssl kroopt-live-server-nb "reactor"
+test_python  kroopt-live-server-nb "reactor"
 
 rm -f "$SOCK"
 echo
 if [ "$fail" -eq 0 ]; then
-  echo "ALL live TLS 1.3 interop checks passed (kroopt server <-> OpenSSL + Python)."
+  echo "ALL live TLS 1.3 interop checks passed (OpenSSL + Python; blocking + non-blocking reactor; handshake + app data)."
 else
   echo "$fail live interop check(s) FAILED."
   exit 1
