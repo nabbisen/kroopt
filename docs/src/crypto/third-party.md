@@ -63,15 +63,16 @@ servable).
 |---|---|---|
 | HACL\* generated C (`Hacl_*.c/.h`, `EverCrypt_*.c/.h`, `Lib_Memzero0.c`, `internal/*.h`) | MIT | (c) 2016-2020 INRIA, CMU and Microsoft Corporation |
 | KaRaMeL/kremlin headers (`include/kremlin/**`, `minimal/*.h`) | Apache-2.0 | (c) INRIA and Microsoft Corporation |
-| Vale verified assembly (`aesgcm-x86_64-linux.S`, `cpuid-x86_64-linux.S`) | Project Everest — **to confirm** (see note) | INRIA / Microsoft Corporation |
+| Vale verified assembly (`aesgcm-x86_64-linux.S`, `cpuid-x86_64-linux.S`) | Apache-2.0 | (c) INRIA and Microsoft Corporation (Project Everest) |
 
-The MIT row now includes the `EverCrypt_*` dispatch sources (verified per-file MIT header, identical to
-the other generated C). The Vale `.S` assembly files, however, ship **without per-file license headers**,
-and the vendored `Kroopt/Native/hacl/LICENSE` note currently under-declares the tree — it still states
-"No vale assembly and no EverCrypt dispatch layer are included," which is stale now that both are
-present. Their upstream license (Project Everest / Vale) should be confirmed and the vendored `LICENSE`
-note refreshed before a stable release; this is tracked as a follow-up and does not block constrained
-pre-stable testing, but it is a real NOTICE-accuracy gap.
+The MIT row includes the `EverCrypt_*` dispatch sources (verified per-file MIT header, identical to the
+other generated C). The Vale `.S` assembly files carry **no per-file header**: per the
+[HACL\* README](https://github.com/hacl-star/hacl-star), the whole repository is released under
+Apache-2.0 and the *generated C* is additionally available under MIT, so the MIT carve-out does not
+reach the Vale assembly (it is not generated C) — it is taken under the repository-default **Apache-2.0**,
+the same license as kroopt. The vendored `Kroopt/Native/hacl/LICENSE`, the repository-root `NOTICE`, and
+`THIRD-PARTY-NOTICES.md` have been refreshed to record EverCrypt (MIT) and the Vale assembly (Apache-2.0)
+and to drop the earlier stale "no vale/EverCrypt" note.
 
 Both are permissive and compatible with kroopt's Apache-2.0. The files are
 redistributed **verbatim** with their per-file license headers retained; kroopt

@@ -32,8 +32,11 @@ needs, with X25519 key exchange and Ed25519 server authentication:
 | Ed25519 sign / verify | `Hacl_Ed25519_sign` / `_verify` | `ed25519Sign` / `ed25519Verify` |
 | OS CSPRNG | `getrandom(2)` | `randomBytes : IO` |
 
-No vale assembly is vendored — the AES-GCM paths are omitted, so the build is
-pure portable C and reproducible on any platform with a C11 compiler. Section
+The AES-GCM path is the **EverCrypt AEAD dispatch over the Vale verified x86_64 assembly**
+(`aesgcm-x86_64-linux.S`, AES-NI + PCLMULQDQ) — so that path is x86_64-specific; ChaCha20-Poly1305 and
+all the remaining primitives are portable C and build on any platform with a C11 compiler. (See
+[current security state](../verification/current-security-state.md) and
+[third-party crypto](third-party.md) for the full vendored inventory and licensing.) Section
 GC (`-ffunction-sections` + `-Wl,--gc-sections`) drops the agile-HMAC hash
 variants (SHA-1, Blake2) that the suite never calls but that the HMAC
 translation unit references.

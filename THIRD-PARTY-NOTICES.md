@@ -16,7 +16,7 @@ cryptographic backend for the v0.3 binding (see
 |------|---------|-------|
 | HACL\* generated C primitives | **MIT** — Copyright (c) 2016-2020 INRIA, CMU and Microsoft Corporation | `Hacl_*.c`, `Hacl_*.h`, `Lib_Memzero0.c`, `internal/*.h` |
 | EverCrypt AEAD dispatch + CPU autoconfig | **MIT** — Copyright (c) 2016-2020 INRIA, CMU and Microsoft Corporation | `EverCrypt_AEAD.c`, `EverCrypt_AutoConfig2.c`, `EverCrypt_*.h` |
-| Vale verified x86_64 assembly (AES-GCM, CPUID) | **MIT** — Copyright (c) 2016-2020 INRIA, CMU and Microsoft Corporation | `aesgcm-x86_64-linux.S`, `cpuid-x86_64-linux.S` |
+| Vale verified x86_64 assembly (AES-GCM, CPUID) | **Apache-2.0** — Copyright (c) INRIA and Microsoft Corporation (Project Everest) | `aesgcm-x86_64-linux.S`, `cpuid-x86_64-linux.S` |
 | KaRaMeL / kremlin runtime headers | **Apache-2.0** — Copyright (c) INRIA and Microsoft Corporation | `include/kremlin/**`, `minimal/*.h` |
 
 * **Scope.** The primitives `TLS_CHACHA20_POLY1305_SHA256` needs with X25519 and
@@ -39,6 +39,11 @@ cryptographic backend for the v0.3 binding (see
   1's public key — not a HACL\* defect; see [`docs/src/crypto/provisioning.md`](docs/src/crypto/provisioning.md).)
 * **Compatibility.** MIT and Apache-2.0 are both permissive and compatible with
   kroopt's Apache-2.0 license.
+* **License basis.** Per the HACL\* README, the whole repository is released under
+  Apache-2.0, and the *generated C* code is additionally available under MIT. The
+  generated C primitives and EverCrypt dispatch sources carry per-file MIT headers
+  and are taken under MIT; the **Vale `.S` assembly is not generated C**, carries no
+  per-file header, and is therefore taken under the repository-default **Apache-2.0**.
 * **kroopt's own glue.** `Kroopt/Native/kroopt_ffi.c` is kroopt's own code
   (Apache-2.0), not part of HACL\*; it only marshals byte buffers across the FFI.
 

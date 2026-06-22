@@ -21,10 +21,14 @@ the exact subset, and the no-modifications statement) is in the repository-root
 `THIRD-PARTY-NOTICES.md`.
 
 Upstream: https://github.com/hacl-star/hacl-star (obtained via the `hacl-star`
-OCaml package, v0.4.5). The vendored subset covers exactly the primitives the
-`TLS_CHACHA20_POLY1305_SHA256` cipher suite needs with X25519 and Ed25519:
-SHA-256/384, X25519, ChaCha20-Poly1305, HKDF/HMAC-SHA256, and Ed25519. No vale
-assembly and no EverCrypt dispatch layer are included. kroopt's own glue
+OCaml package, v0.4.5). The vendored subset covers the primitives the constrained
+TLS 1.3 profile needs end-to-end: SHA-256/384, X25519, P-256 (ECDH + ECDSA),
+ChaCha20-Poly1305, HKDF/HMAC, Ed25519, and RSA-PSS, plus the EverCrypt AEAD
+dispatch layer and the Vale verified x86_64 assembly for AES-128/256-GCM. The
+HACL\* generated C and EverCrypt sources are taken under MIT (per-file headers);
+the Vale `.S` assembly is taken under Apache-2.0 (the HACL\* repository default —
+it is not generated C and carries no per-file header). Per-component licenses and
+copyrights are in the repository-root `THIRD-PARTY-NOTICES.md`. kroopt's own glue
 (`Kroopt/Native/kroopt_ffi.c`, Apache-2.0) and Lean wrappers only marshal byte
 buffers across the FFI and add no cryptographic logic.
 

@@ -5,6 +5,33 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.105.0-dev] — close out the Vale/EverCrypt licensing follow-up (NOTICE accuracy) — 2026-06-15
+
+Resolves the one open follow-up surfaced during the security-review remediation (increment B,
+MEDIUM-2): the Vale `.S` assembly license and the stale vendored notices.
+
+### Determined
+- Confirmed against the HACL\* README: the whole repository is **Apache-2.0**, and the *generated C* is
+  additionally available under **MIT**. The Vale `.S` assembly is **not** generated C (and carries no
+  per-file header), so the MIT carve-out does not reach it — it is taken under the repository-default
+  **Apache-2.0** (the same license as kroopt). EverCrypt dispatch sources are generated C → MIT.
+
+### Fixed (license/notice artifacts, now mutually consistent)
+- **`THIRD-PARTY-NOTICES.md`** — corrected the Vale assembly row from MIT to **Apache-2.0** and added a
+  license-basis note (repo Apache-2.0 + generated-C MIT carve-out; Vale ≠ generated C).
+- **`Kroopt/Native/hacl/LICENSE`** — added `EverCrypt_*` to the MIT section, added a Vale **Apache-2.0**
+  section, and corrected the stale provenance (dropped "No vale assembly and no EverCrypt dispatch layer
+  are included"; updated the subset to the real end-to-end inventory).
+- **`NOTICE`** — same stale subset/no-vale claim corrected; records EverCrypt (MIT) + Vale (Apache-2.0).
+- **`docs/src/crypto/third-party.md`** — Vale row confirmed **Apache-2.0**; the "to confirm" flag note
+  replaced with the resolved finding and its basis.
+- **`docs/src/crypto/native-crypto.md`** — corrected "no vale assembly is vendored … pure portable C on
+  any platform": the AES-GCM path is the EverCrypt/Vale x86_64 assembly (x86_64-specific); ChaCha20 and
+  the rest remain portable C.
+
+Gate: build green; all internal doc links resolve. No Lean source, proofs, or pure-zone code touched;
+license/notice and docs only. This closes the security-review remediation's last open thread.
+
 ## [0.104.0-dev] — security-review remediation D + sign-off: strict no-SG reject (HIGH-3), constrained-profile wording, cert lint, RFC 040 checklist — 2026-06-15
 
 Final increment of the v0.100.0 docs security review remediation, and the security sign-off point for

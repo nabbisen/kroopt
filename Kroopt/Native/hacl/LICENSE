@@ -5,8 +5,8 @@ These files are NOT part of kroopt; they are redistributed from HACL* / Project
 Everest. kroopt's own license is Apache-2.0 (see the repository LICENSE file).
 
 ================================================================================
-1. HACL* generated C  (Hacl_*.c, Hacl_*.h, Lib_Memzero0.c, and the matching
-   internal/ headers)
+1. HACL* generated C  (Hacl_*.c, Hacl_*.h, EverCrypt_*.c, EverCrypt_*.h,
+   Lib_Memzero0.c, and the matching internal/ headers)
 ================================================================================
 
 These carry the following per-file header and are used under the MIT License:
@@ -47,15 +47,32 @@ The full Apache-2.0 text is the same license under which kroopt itself is
 released; see the repository-root LICENSE file.
 
 ================================================================================
+3. Vale verified x86_64 assembly  (aesgcm-x86_64-linux.S, cpuid-x86_64-linux.S)
+================================================================================
+
+These files carry no per-file header. Per the HACL* README, the whole repository
+is released under Apache-2.0, and the *generated C* code is additionally available
+under MIT. The Vale assembly is verified assembly from the Vale / ValeCrypt project
+(Project Everest), not generated C, so the MIT grant does not extend to it; it is
+used under the repository-default Apache License, Version 2.0:
+
+  Copyright (c) INRIA and Microsoft Corporation (Project Everest). All rights reserved.
+  Licensed under the Apache 2.0 License.
+
+The full Apache-2.0 text is the same license under which kroopt itself is released;
+see the repository-root LICENSE file.
+
+================================================================================
 Provenance
 ================================================================================
 
 Upstream:  HACL* / Project Everest — https://github.com/hacl-star/hacl-star
            (obtained via the `hacl-star` OCaml package, version 0.4.5).
-Subset:    only the portable-C primitives needed for TLS_CHACHA20_POLY1305_SHA256
-           with X25519 and Ed25519 (SHA-256/384, X25519, ChaCha20-Poly1305,
-           HKDF/HMAC-SHA256, Ed25519) plus the kremlin headers they include.
-           No vale assembly and no EverCrypt dispatch layer are included.
+Subset:    the primitives the constrained TLS 1.3 profile needs end-to-end:
+           SHA-256/384, X25519, P-256 (ECDH + ECDSA), ChaCha20-Poly1305,
+           HKDF/HMAC, Ed25519, and RSA-PSS, plus the EverCrypt AEAD dispatch
+           layer and the Vale verified x86_64 assembly for AES-128/256-GCM, and
+           the kremlin headers these include.
 Changes:   none. The files are redistributed verbatim; their license headers are
            retained unmodified. kroopt's only added C is Kroopt/Native/kroopt_ffi.c
            (kroopt's own Apache-2.0 FFI glue), which is not part of HACL*.
