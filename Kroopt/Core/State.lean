@@ -197,7 +197,10 @@ def initial (conn : ConnId) (cfg : ConfigGeneration) (alg : HashAlgorithm) : Sta
     pendingClientFinished := none
     transcript := TranscriptState.fresh alg
     negotiated := NegotiationState.empty
-    serverConfig := default
+    -- A placeholder config advertising the baseline server-auth schemes. `TlsConn.server` overrides
+    -- `serverConfig` with the caller's validated config before any ClientHello is processed
+    -- (RFC 011 §6), so this default is only ever observed by core-level tests driving `step`.
+    serverConfig := ValidatedServerConfig.baseline
     closeState := .open
     budgets := BudgetState.empty }
 

@@ -82,6 +82,17 @@ structure ValidatedServerConfig where
   alpnMode        : AlpnSelectionMode
   deriving Inhabited
 
+/-- A placeholder validated config whose single default endpoint advertises the baseline server-auth
+signature schemes kroopt's bundled providers support. Used as the default when no config is supplied
+(`State.initial`, `TlsConn.server`); production always supplies its own validated config, so this is
+only negotiated against by core-level tests. The endpoint presents no certificate DER (the real
+config fills that in). -/
+def ValidatedServerConfig.baseline : ValidatedServerConfig :=
+  { (default : ValidatedServerConfig) with
+    defaultEndpoint := some
+      { (default : EndpointConfig) with
+        signatureSchemes := [.ed25519, .ecdsaSecp256r1Sha256, .rsaPssRsaeSha256] } }
+
 /-! ## SNI matching -/
 
 /-- Index of the first `0x2e` ('.') in a byte list, if any. -/

@@ -43,6 +43,7 @@ inductive ProtocolError where
   | unsupportedVersion
   | unsupportedCipherSuite
   | unsupportedGroup
+  | unsupportedSignatureScheme
   | missingRequiredExtension
   | duplicateExtension
   | illegalMessageForState

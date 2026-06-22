@@ -331,8 +331,11 @@ theorem onClientHello_pp
   · split at h
     · simp only [Except.ok.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, -⟩ := h; right; rfl
-    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h; left; rfl
+    · split at h
+      · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+        obtain ⟨rfl, -⟩ := h; right; rfl
+      · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+        obtain ⟨rfl, -⟩ := h; left; rfl
   · simp only [Except.ok.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h; right; rfl
 

@@ -147,15 +147,16 @@ def onClientHello (s : State) (vch : ValidClientHello) (chWire : ByteArray) : Hs
     match chargeClientHelloBytes ResourceLimits.standard s.budgets chWire.size with
     | .error e => hsFail s (alertForResourceLimit e) (.resourceLimit e)
     | .ok b' =>
+    -- RFC 8446 §4.4.2.2 / §4.2.3: present a signature scheme the *selected certificate* can produce
+    -- and that the client offered, preferring the endpoint's (server's) order. With no overlap the
+    -- server has no scheme it can both sign with and have the client accept, so fail cleanly with
+    -- handshake_failure rather than signing with an incompatible key (RFC 8446 §9.2).
+    match (((selectEndpoint s.serverConfig vch.sni).map (·.signatureSchemes)).getD []).find?
+            (fun sc => vch.offeredSigSchemes.contains sc) with
+    | none => hsFail s .handshakeFailure (.protocol .unsupportedSignatureScheme)
+    | some sigScheme =>
     let s := { s with budgets := b' }
     let ep := selectEndpoint s.serverConfig vch.sni
-    -- RFC 8446 §4.4.2.2 / §4.2.3: present a signature scheme the *selected certificate* can produce
-    -- and that the client offered, preferring the endpoint's (server's) order. Total: with no
-    -- overlap, fall back to the certificate's primary scheme (the peer then rejects a scheme it did
-    -- not offer — fail-safe — rather than the server signing with an incompatible key).
-    let epSchemes := (ep.map (·.signatureSchemes)).getD []
-    let sigScheme := (epSchemes.find? (fun sc => vch.offeredSigSchemes.contains sc)).getD
-      (epSchemes.headD (vch.offeredSigSchemes.headD .ed25519))
     let alpn := ep.bind (fun e =>
       negotiateAlpn s.serverConfig.alpnMode (vch.alpn.map AlpnProtocol.mk) e.allowedAlpn)
     let cert := ep.map (·.chain)

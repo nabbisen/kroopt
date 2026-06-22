@@ -35,6 +35,7 @@ def alertForProtocolError : ProtocolError → AlertDescription
   | .unsupportedVersion            => .protocolVersion
   | .unsupportedCipherSuite        => .handshakeFailure
   | .unsupportedGroup              => .handshakeFailure
+  | .unsupportedSignatureScheme    => .handshakeFailure
   | .missingRequiredExtension      => .missingExtension
   | .duplicateExtension            => .illegalParameter
   | .illegalMessageForState        => .unexpectedMessage

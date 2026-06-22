@@ -76,10 +76,30 @@ def reportsComplete (acts : List OutputAction) : Bool :=
     | .reportHandshakeComplete _ _ => true
     | _ => false)
 
+def s0Ed : State :=
+  { State.initial ⟨0, 0⟩ ⟨0⟩ .sha256 with
+    serverConfig :=
+      { (default : Kroopt.Core.ValidatedServerConfig) with
+        defaultEndpoint := some
+          { (default : Kroopt.Core.EndpointConfig) with signatureSchemes := [.ed25519] } } }
+
+/-- A ClientHello offering only RSA-PSS — recognized and well-formed, but with no overlap against an
+endpoint that can only sign Ed25519. -/
+def vchRsaOnly : ValidClientHello := { vch with offeredSigSchemes := [.rsaPssRsaeSha256] }
+
 def checks : List Check :=
   [ { name := "full synthetic handshake reaches connected"
     , ok := (match runHandshake with
              | .ok (s, _, _) => s.handshake == .connected
+             | .error _ => false) }
+  , { name := "onClientHello with no signature-scheme overlap fails with handshake_failure (RFC 8446 §9.2)"
+    , ok := (match onClientHello s0Ed vchRsaOnly chWire with
+             | .ok ({ handshake := .failed .handshakeFailure, .. }, _) => true
+             | _ => false) }
+  , { name := "onClientHello with a matching scheme advances past start (no spurious failure)"
+    , ok := (match onClientHello s0Ed vch chWire with
+             | .ok ({ handshake := .failed _, .. }, _) => false
+             | .ok _ => true
              | .error _ => false) }
     -- RFC 037 §4: a ClientHello whose wire bytes exceed the ClientHello budget (16384) is
     -- rejected in the core by the proven `chargeClientHelloBytes`, failing the handshake

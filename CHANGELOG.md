@@ -5,6 +5,38 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.61.0-dev] — RFC (v0.4): no-overlap handshake_failure — PROVEN + LIVE — 2026-06-14
+
+When a client's offered signature_algorithms don't intersect the schemes the selected certificate can
+produce, the server now sends a clean `handshake_failure` instead of degrading to a total fallback
+(which fails safe — the peer rejects a scheme it never offered — but is not the RFC-correct response).
+This is the one deferred item that touches the **proven** `onClientHello` surface; it lands with the
+axiom profile and all 94 public theorems intact.
+
+- **Core (`onClientHello`).** The signature-scheme selection changed from a total `.getD`-fallback to
+  a `match … | none => hsFail | some sigScheme => …` placed first in the budget-`ok` arm: with no
+  overlap there is no scheme the server can both sign with and have the client accept, so it fails
+  cleanly (RFC 8446 §9.2) rather than signing with an incompatible key.
+- **Error/alert.** New `ProtocolError.unsupportedSignatureScheme` (analogous to `unsupportedGroup`),
+  mapped to `handshake_failure` in `alertForProtocolError`; `Step`/`Uniform` match it under their
+  existing `.protocol _` wildcards, and `alertForProtocolError_fatal_unless_close` stays total since
+  `handshake_failure` is fatal.
+- **Proofs (5, extended one split each).** `onClientHello_legal`, `hs_no_emit_onClientHello`,
+  `hs_no_accept_generic_onClientHello`, `hs_no_aeadOpen_onClientHello` (Handshake) and
+  `onClientHello_pp` (RecordPath) each gain one case for the new `hsFail` arm — handled identically to
+  the existing budget-error `hsFail` arm. **94 theorems, axioms unchanged.**
+- **Config placeholder.** A shared `ValidatedServerConfig.baseline` (a default endpoint advertising
+  the baseline server-auth schemes) now backs the defaults of `State.initial` and `TlsConn.server`.
+  The old total fallback had masked that core-level test states carried no endpoint at all; production
+  always supplies its own validated config, so the placeholder is only ever negotiated against by
+  direct-`step` tests. 2 new handshake unit checks (no-overlap → `handshake_failure`; matching scheme
+  → no spurious failure).
+- **Live-validated.** Ed25519-only server + `openssl -sigalgs ecdsa_secp256r1_sha256` → server-sent
+  `handshake_failure` (`HANDSHAKE_FAILED` server-side, no peer certificate client-side); `-sigalgs
+  ed25519` still completes (`Peer signature type: Ed25519`, HTTP 200).
+- **Trust posture unchanged.** Protocol PROVEN (94 theorems), crypto ASSUMED, wire TESTED +
+  interop-validated. Full sweep 385 checks; hygiene/deps/axioms clean; fuzz 20000 clean.
+
 ## [0.60.0-dev] — RFC (v0.4): ALPN negotiation — LIVE — 2026-06-14
 
 ALPN protocol negotiation now works end-to-end — the same raw-framing bug class that `parseSni` fixed

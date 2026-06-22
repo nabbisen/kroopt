@@ -46,9 +46,11 @@ theorem onClientHello_legal
   · rename_i hcond
     split at h
     · exact hsFail_legal _ _ _ _ _ h hnt
-    · simp only [State.allocOp, Except.ok.injEq, Prod.mk.injEq] at h
-      obtain ⟨hs, -⟩ := h
-      rw [← hs, hcond]; rfl
+    · split at h
+      · exact hsFail_legal _ _ _ _ _ h hnt
+      · simp only [State.allocOp, Except.ok.injEq, Prod.mk.injEq] at h
+        obtain ⟨hs, -⟩ := h
+        rw [← hs, hcond]; rfl
   · exact hsFail_legal _ _ _ _ _ h hnt
 
 /-- `onEcdheDone` moves along a legal edge. -/
@@ -233,7 +235,7 @@ private theorem hs_no_emit_onClientHello
     OutputAction.emitPlaintext c bb ∉ acts := by
   intro hmem
   unfold onClientHello hsFail at h
-  split at h <;> (try split at h) <;>
+  split at h <;> (try split at h) <;> (try split at h) <;>
     (simp only [State.allocOp, Except.ok.injEq, Prod.mk.injEq] at h
      obtain ⟨-, rfl⟩ := h
      simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
@@ -393,7 +395,7 @@ private theorem hs_no_accept_generic_onClientHello
     OutputAction.acceptPlaintextBytes c n ∉ acts := by
   intro hmem
   unfold onClientHello hsFail at h
-  split at h <;> (try split at h) <;>
+  split at h <;> (try split at h) <;> (try split at h) <;>
     (simp only [State.allocOp, Except.ok.injEq, Prod.mk.injEq] at h
      obtain ⟨-, rfl⟩ := h
      simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
@@ -550,7 +552,7 @@ private theorem hs_no_aeadOpen_onClientHello
     OutputAction.callCrypto c oid (CryptoOp.aeadOpen meta aad ct) ∉ acts := by
   intro hmem
   unfold onClientHello hsFail at h
-  split at h <;> (try split at h) <;>
+  split at h <;> (try split at h) <;> (try split at h) <;>
     (simp only [State.allocOp, Except.ok.injEq, Prod.mk.injEq] at h
      obtain ⟨-, rfl⟩ := h
      simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,

@@ -69,7 +69,7 @@ with a validated configuration (RFC 011) that drives SNI/ALPN/cert selection.
 The initial state is `start`; no application bytes may flow yet. -/
 def server (fd : FdKey) (conn : ConnId) (cfg : ConfigGeneration)
     (alg : HashAlgorithm) (prov : CryptoProvider)
-    (config : ValidatedServerConfig := default) : TlsConn :=
+    (config : ValidatedServerConfig := ValidatedServerConfig.baseline) : TlsConn :=
   { core := { State.initial conn cfg alg with serverConfig := config }
     rt   := {}
     tr   := { fd := fd, inbound := [] }
