@@ -89,6 +89,25 @@ _Note: RFC 016 is a standing scope-control policy (deferral decision in effect a
 enforced by tests); the deferred TLS features themselves land later via descendant
 RFCs, as RFC 016 requires._
 
+## Current state — constrained-profile edge band (post-0.48.0-dev)
+
+After the M37 native-hardening band (0.48.0-dev), work proceeded under RFC 010 (ACTIVE) and the
+constrained crypto profile to make the server feature-complete for HTTPS edge serving and validate it
+against live clients (OpenSSL/curl). Landed and live-validated through **0.65.0-dev**:
+
+- P-256 ECDHE and the ECDSA-P256 / RSA-PSS server-auth schemes alongside Ed25519 (RFC 012);
+- SNI multi-certificate selection — exact and wildcard routes — and per-endpoint ALPN negotiation
+  (RFC 011), each fixed from a latent raw-extension-framing parser bug;
+- a clean `handshake_failure` on no signature-scheme overlap (PROVEN);
+- a cert / private-key compatibility lint across Ed25519, EC P-256, and RSA leaves (RFC 011 §11.2),
+  plus config-validation rejection of malformed ALPN identifiers and ambiguous SNI routes;
+- HTTP/1.1 keep-alive over the kroopt + iotakt edge.
+
+No RFC moved to `done/` in this band: each candidate has a logged deferral by its own acceptance —
+RFC 010 (real iotakt adapter), RFC 031 (async-crypto runtime ledger), RFC 037 (C zeroizing arena).
+The AES-GCM / SHA-384 crypto breadth (RFC 035) and browser interop (RFC 026) remain blocked on the
+available HACL\* source and the test host respectively, and gate a non-dev v0.4.0.
+
 ## Archive
 
 _None yet. RFCs move here when withdrawn or superseded._

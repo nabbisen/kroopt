@@ -42,6 +42,13 @@ def goodConfig : ServerConfig :=
   { defaultEndpoint := some epDefault, sniRoutes := [routeExact, routeWild]
     alpnMode := .serverPreference }
 
+def alpnEmpty : AlpnProtocol := ⟨ByteArray.empty⟩
+def alpnHuge  : AlpnProtocol := ⟨ByteArray.mk (Array.mkArray 256 0x61)⟩  -- 256 bytes, over the 255 max
+def cfgEmptyAlpn : ServerConfig :=
+  { goodConfig with defaultEndpoint := some { epEd with allowedAlpn := [alpnEmpty] }, sniRoutes := [] }
+def cfgHugeAlpn : ServerConfig :=
+  { goodConfig with defaultEndpoint := some { epEd with allowedAlpn := [alpnHuge] }, sniRoutes := [] }
+
 def validated (gen : Nat) : Option ValidatedServerConfig :=
   match validateServerConfig goodConfig ⟨gen.toUInt64⟩ with
   | .ok v => some v | .error _ => none
@@ -55,6 +62,12 @@ def checks : List Check :=
     , ok := (let cfg := { goodConfig with sniRoutes := [routeExact, routeExact] }
              match validateServerConfig cfg ⟨0⟩ with
              | .error .ambiguousSni => true | _ => false) }
+  , { name := "an empty ALPN identifier is rejected at config validation (RFC 7301)"
+    , ok := (match validateServerConfig cfgEmptyAlpn ⟨0⟩ with
+             | .error .invalidAlpn => true | _ => false) }
+  , { name := "an over-long (>255 byte) ALPN identifier is rejected"
+    , ok := (match validateServerConfig cfgHugeAlpn ⟨0⟩ with
+             | .error .invalidAlpn => true | _ => false) }
     -- SNI selection (RFC 011 §4)
   , { name := "absent SNI selects the default endpoint"
     , ok := (match validated 0 with

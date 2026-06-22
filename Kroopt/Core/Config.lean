@@ -133,14 +133,18 @@ def hasAmbiguousRoutes (routes : List SniRoute) : Bool :=
     | r :: rest => rest.any (fun r2 => patternsConflict r.pattern r2.pattern) || go rest
   go routes
 
-/-- Validate one endpoint's cert/key compatibility and that it has a suite. -/
+/-- Validate one endpoint: it must offer a cipher suite, carry only well-formed ALPN identifiers
+(RFC 7301 — each 1..255 bytes), and have a compatible cert/key pair. -/
 def validateEndpoint (e : EndpointConfig) : Except ConfigError Unit :=
   match e.cipherSuites with
   | [] => .error .noCipherSuite
   | _ =>
-      match validateEndpointCertKey e.chain e.key e.signatureSchemes with
-      | .error err => .error err
-      | .ok _ => .ok ()
+      if e.allowedAlpn.any (fun a => a.bytes.size == 0 || decide (a.bytes.size > 255)) then
+        .error .invalidAlpn
+      else
+        match validateEndpointCertKey e.chain e.key e.signatureSchemes with
+        | .error err => .error err
+        | .ok _ => .ok ()
 
 /-- Validate the whole configuration deterministically (RFC 011 §7). Rejects
 ambiguous SNI routes and any endpoint whose cert/key/suites fail the lint. On

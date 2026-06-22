@@ -5,6 +5,45 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.65.0-dev] — Consolidation: config-validation hardening + edge-feature checkpoint — 2026-06-14
+
+A consolidation checkpoint for the constrained-profile edge feature band (0.53–0.64) plus a
+config-validation hardening item. This is a logical breaking point — the negotiation and
+configuration surface an HTTPS edge needs is feature-complete and live-validated — but the release
+stays `-dev`: it is **not** a stability commitment (RFC 027 unstarted), and a true v0.4.0 still
+requires the environment-blocked crypto breadth and browser interop below.
+
+### This increment — ALPN identifier validation (TESTED)
+- `validateEndpoint` now rejects malformed ALPN identifiers (RFC 7301 — each protocol name must be
+  1..255 bytes), wiring in the previously-dead `ConfigError.invalidAlpn`. Empty and over-long
+  (>255-byte) identifiers fail config validation. 2 new config checks; the validation proofs
+  (`validateServerConfig_rejects_ambiguous`, `_preserves_generation`) are unaffected — they reason
+  over `validateEndpoint`'s result opaquely — so all 94 theorems and the axiom profile hold.
+- Config validation now covers: ambiguous/overlapping SNI routes (`ambiguousSni`, pre-existing),
+  empty/no cipher suite (`noCipherSuite`), cert/key kind mismatch (`certKeyMismatch`), and malformed
+  ALPN identifiers (`invalidAlpn`, new).
+
+### Feature surface consolidated since the M37 band (0.48.0-dev)
+All in the constrained TLS 1.3 server profile (X25519/P-256 ECDHE, ChaCha20-Poly1305, Ed25519 /
+ECDSA-P256 / RSA-PSS server auth), each live-validated against OpenSSL/curl:
+- P-256 ECDHE; ECDSA-P256 and RSA-PSS CertificateVerify (server-auth triad).
+- SNI multi-certificate selection (exact and wildcard routes) and per-endpoint ALPN negotiation —
+  both fixed from latent raw-extension-framing parser bugs and confirmed on the wire.
+- Clean `handshake_failure` on no signature-scheme overlap (PROVEN; the one proof-touching item).
+- Cert / private-key compatibility lint across all three key types (Ed25519, EC P-256, RSA), wired
+  into the driver's startup (`CONFIG_LINT_OK`).
+- HTTP/1.1 keep-alive over the kroopt+iotakt edge.
+
+### Honest state for a non-dev / v0.4.0 release (NOT yet met)
+- **Environment-blocked here:** AES-128/256-GCM and SHA-384 cannot be vendored (the available HACL*
+  tree ships only the `EverCrypt_AEAD.c` dispatcher, no AES backend C); browser interop has no
+  browser in this sandbox. Both gate a true v0.4.0 and need a HACL* source update / different host.
+- **Deferred by their own RFC acceptance:** the real iotakt adapter (RFC 010), the async-crypto
+  runtime ledger (RFC 031), the C zeroizing arena (RFC 037), API stability (RFC 027), and the
+  release runbook (RFC 030).
+- Trust posture unchanged: protocol PROVEN (94 theorems), crypto ASSUMED, wire TESTED + interop.
+  Full sweep 394; hygiene/deps/axioms clean; fuzz 20000 clean.
+
 ## [0.64.0-dev] — RFC (v0.4): wildcard SNI — LIVE — 2026-06-14
 
 The `ServerNamePattern.wildcard` route — implemented and proven since the SNI config model, but never
