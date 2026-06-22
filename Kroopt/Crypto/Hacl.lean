@@ -112,6 +112,15 @@ opaque ed25519Public (priv : ByteArray) : ByteArray
 @[extern "kroopt_ffi_ed25519_sign"]
 opaque ed25519Sign (priv msg : ByteArray) : ByteArray
 
+/-- Ed25519 sign with a private key resident in the C-owned secret arena
+(`Kroopt.Crypto.NativeSecret`), addressed by its handle id. The key bytes are read
+inside C and never enter the Lean heap; an absent/released handle (or a non-32-byte
+stored key) yields an empty result, so a wiped key cannot sign. Referentially
+transparent in practice — config-lifetime keys are loaded once and released only at
+shutdown — hence `opaque`; the Crypto-zone trust note documents the arena-read. -/
+@[extern "kroopt_ffi_ed25519_sign_h"]
+opaque ed25519SignH (keyId : UInt64) (msg : ByteArray) : ByteArray
+
 @[extern "kroopt_ffi_ed25519_verify"]
 opaque ed25519VerifyRaw (pub msg sig : ByteArray) : ByteArray
 

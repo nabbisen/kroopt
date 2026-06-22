@@ -5,6 +5,49 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.74.0-dev] — Server private key resident in the C zeroizing arena (sign-by-handle) — 2026-06-14
+
+The integration half of RFC 037 §3's secret-arena work: the highest-value durable secret — the
+server's Ed25519 certificate private key — now lives **only** in the C-owned zeroizing arena and is
+signed *by handle*, so the key never enters the Lean heap after load and is wiped on shutdown. This
+is the design's specified model (§9.10: "config-lifetime private keys are owned by the secret arena
+and referenced by kroopt"), validated end-to-end against real clients.
+
+### Sign-by-handle
+- `Kroopt/Native/kroopt_ffi.c`: `kroopt_ffi_ed25519_sign_h(keyId, msg)` reads the key from the arena
+  slot inside C, signs with HACL, and returns the signature — the key bytes never cross into Lean.
+  Fails closed (empty result) if the handle is absent/released or the stored key is not 32 bytes, so
+  a wiped key cannot sign.
+- `Kroopt/Crypto/Hacl.lean`: `ed25519SignH (keyId) (msg)`. `opaque` because a config-lifetime key is
+  loaded once and released only at shutdown, so the arena read is referentially transparent in
+  practice; the trust note documents it.
+
+### Lifecycle wiring
+- `Kroopt/Crypto/RealProvider.lean`: `RealCryptoConfig.certKeyHandle` (default `0`). When non-zero
+  the provider signs CertificateVerify by handle; `0` falls back to `certPrivate` bytes (the
+  deterministic test path), so existing fixtures are unchanged.
+- `Kroopt/Crypto/Provision.lean`: `provisionRealConfig` loads the Ed25519 key into the arena and
+  leaves `certPrivate` empty — the durable config holds a handle, not key bytes.
+- `Tests/LiveServer.lean`: the live server loads its key into the arena, signs by handle, and
+  releases (wipes) it on shutdown.
+
+### Validation
+- `kroopt-nativesecret-test` (+2, **9**): an Ed25519 key resident only in C signs by handle and the
+  signature verifies against the public key; after `release`, the same handle can no longer produce
+  a verifying signature (the durable key is gone).
+- `scripts/tls-interop.sh`: the full OpenSSL + Python matrix (all three suites, both drivers) passes
+  with the key C-resident — the clients verify the CertificateVerify against the cert's public key,
+  so sign-by-handle produces correct signatures real clients accept.
+- `Tests/Provision.lean`: updated to assert the key now lives in the arena (config key empty, handle
+  set, arena read-back equals the seed).
+
+### Trust posture
+- The server private key's durable home is now zeroizable C memory, wiped on shutdown — the
+  end-to-end posture for this secret is no longer "best-effort Lean ByteArray that is never wiped."
+  Connection-lifetime traffic secrets still route through the pure Lean arena (the production-claim
+  gate's remaining secret-memory item), as do ECDSA/RSA key handles. 94 theorems unchanged; all 25
+  suites green; arena clean under ASan/UBSan.
+
 ## [0.73.0-dev] — C-owned zeroizing secret arena (native primitive) — 2026-06-14
 
 The first half of the one item gating an honest "production-ready" claim (RFC 037 §3): a real

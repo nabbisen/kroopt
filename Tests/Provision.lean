@@ -1,3 +1,4 @@
+import Kroopt.Crypto.NativeSecret
 import Kroopt.Crypto.Provision
 import Kroopt.Crypto.Hacl
 import Tests.Vectors.Ed25519Rfc8032
@@ -97,13 +98,21 @@ def main : IO UInt32 := do
          , eqB (Hacl.x25519Public e1priv) e1pub ⟩ : Bool × Bool × Bool × Bool)
     | _, _ => (⟨false, false, false, false⟩ : Bool × Bool × Bool × Bool)
 
-  -- provisionRealConfig: derives the cert public, keeps the seed, draws a fresh ephemeral
+  -- provisionRealConfig: derives the cert public, moves the seed into the C arena (not the Lean
+  -- config), draws a fresh ephemeral
   let pr1 ← provisionRealConfig goodProvision
   let pr2 ← provisionRealConfig goodProvision
-  let provOk := match pr1 with
-    | .ok cfg => eqB cfg.certPublic derived && eqB cfg.certPrivate seed
+  let keyInArena ← match pr1 with
+    | .ok cfg =>
+        if cfg.certKeyHandle != 0 then do
+          let k ← Kroopt.Crypto.NativeSecret.read cfg.certKeyHandle
+          pure (eqB k seed)
+        else pure false
+    | .error _ => pure false
+  let provOk := (match pr1 with
+    | .ok cfg => eqB cfg.certPublic derived && cfg.certPrivate.size == 0 && cfg.certKeyHandle != 0
                  && cfg.ephemeralPrivate.size == 32 && !eqB cfg.ephemeralPrivate seed
-    | .error _ => false
+    | .error _ => false) && keyInArena
   let provFreshEphemeral := match pr1, pr2 with
     | .ok c1, .ok c2 => !eqB c1.ephemeralPrivate c2.ephemeralPrivate
     | _, _ => false
@@ -134,7 +143,7 @@ def main : IO UInt32 := do
     , ("independent ephemeral private draws differ (entropy live)", ephDistinctPriv)
     , ("independent ephemeral public draws differ", ephDistinctPub)
     , ("X25519 public derivation is deterministic", ephDeterministic)
-    , ("provisionRealConfig derives cert public, keeps seed, fresh ephemeral", provOk)
+    , ("provisionRealConfig derives cert public, moves seed into the C arena, fresh ephemeral", provOk)
     , ("each provisioning draws an independent ephemeral secret", provFreshEphemeral)
     , ("provisioning fails closed on unsupported scheme", provFailsClosed)
     , ("provisioned cert key signs and verifies against derived public", signRoundTrips)

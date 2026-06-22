@@ -3,6 +3,7 @@ import Kroopt.Crypto.Arena
 import Kroopt.Crypto.KeySchedule
 import Kroopt.Crypto.Real
 import Kroopt.Crypto.Hacl
+import Kroopt.Crypto.NativeSecret
 import Kroopt.Core.Crypto
 import Kroopt.Core.Record
 
@@ -47,6 +48,12 @@ structure RealCryptoConfig where
   ephemeralPrivate : ByteArray
   certPrivate      : ByteArray
   certPublic       : ByteArray
+  /-- Handle into the C-owned zeroizing secret arena (`Kroopt.Crypto.NativeSecret`) for the Ed25519
+  certificate private key. When non-zero the provider signs CertificateVerify *by handle*, so the
+  key bytes stay in zeroizable C memory and never enter the Lean heap (`certPrivate` is then empty);
+  `0` means no handle and the provider falls back to `certPrivate` bytes (the deterministic test
+  path). Set by `provisionRealConfig` (RFC 037 §3, design §9.10). -/
+  certKeyHandle    : Kroopt.Crypto.NativeSecret.SecretId := 0
   /-- Per-connection ECDSA signing nonce `k` (32 bytes), drawn fresh from the CSPRNG at the IO
   layer when the certificate key is ECDSA-P256. Unused for Ed25519 (deterministic). Must never be
   reused across signatures; the server signs CertificateVerify once per handshake. For RSA-PSS it
@@ -139,7 +146,11 @@ def submit (cfg : RealCryptoConfig) (a : SecretArena) (_ : OperationId) :
         | _, _ => .error .invalidHandle
   | .signCertificateVerify scheme input =>
       match scheme with
-      | .ed25519 => .ok (a, .signature (Hacl.ed25519Sign cfg.certPrivate input))
+      | .ed25519 =>
+          -- Sign by arena handle when the key is C-resident (production), else by bytes (tests).
+          let sig := if cfg.certKeyHandle != 0 then Hacl.ed25519SignH cfg.certKeyHandle input
+                     else Hacl.ed25519Sign cfg.certPrivate input
+          .ok (a, .signature sig)
       | .ecdsaSecp256r1Sha256 =>
           -- ECDSA P-256 / SHA-256 (RFC 8446 §4.4.3): hash the signing input with SHA-256 and
           -- sign with the cert key and the fresh per-connection nonce, returning the DER-encoded

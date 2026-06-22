@@ -449,3 +449,16 @@ LEAN_EXPORT lean_object *kroopt_ffi_secret_live_count(lean_object *w) {
   for (int i = 0; i < KROOPT_SECRET_SLOTS; i++) if (kroopt_secret_table[i].ptr) live++;
   return lean_io_result_mk_ok(lean_box_uint64(live));
 }
+
+/* Ed25519 sign with a private key resident in the C-owned secret arena (RFC 037 §3, design §9.10:
+ * "config-lifetime private keys are owned by the secret arena and referenced by kroopt"). The key
+ * bytes never enter the Lean heap — they are read from the arena slot here, used for the HACL sign,
+ * and the 64-byte signature is returned. Fails closed (empty result) if the handle is absent (e.g.
+ * released) or the stored key is not 32 bytes, so a wiped key can no longer produce a signature. */
+LEAN_EXPORT lean_object *kroopt_ffi_ed25519_sign_h(uint64_t keyId, b_lean_obj_arg msg) {
+  kroopt_secret_slot *s = kroopt_secret_find(keyId);
+  if (!s || s->len != 32 || !len_u32_ok(msg)) return mk_ba(0);
+  lean_object *r = mk_ba(64);
+  Hacl_Ed25519_sign(lean_sarray_cptr(r), s->ptr, (uint32_t)ba_len(msg), ba_ptr(msg));
+  return r;
+}

@@ -1,4 +1,5 @@
 import Kroopt.Crypto.NativeSecret
+import Kroopt.Crypto.Hacl
 
 /-!
 Tests for the C-owned zeroizing secret arena (RFC 037 §3). The decisive check is that
@@ -52,6 +53,19 @@ def main : IO UInt32 := do
   let afterRelease ← liveCount
   let leakClean := afterAlloc == base + 1 && afterRelease == base
 
+  -- (7) the headline integration: an Ed25519 private key resident *only* in the C arena signs by
+  -- handle (key never enters Lean), the signature verifies, and after release the handle can no
+  -- longer produce a valid signature — the durable key is gone.
+  let seed := rep 32 0x42
+  let keyId ← alloc seed
+  let pub := Kroopt.Crypto.Hacl.ed25519Public seed
+  let msg := ByteArray.mk #[0xCA, 0xFE, 0xBA, 0xBE, 0xDE, 0xAD]
+  let sigH := Kroopt.Crypto.Hacl.ed25519SignH keyId msg
+  let signByHandleVerifies := sigH.size == 64 && Kroopt.Crypto.Hacl.ed25519Verify pub msg sigH
+  release keyId
+  let sigAfter := Kroopt.Crypto.Hacl.ed25519SignH keyId msg
+  let releasedCannotSign := sigAfter.size != 64 && ! Kroopt.Crypto.Hacl.ed25519Verify pub msg sigAfter
+
   let checks : List (String × Bool) :=
     [ ("alloc + read round-trips the secret bytes through C-owned memory", roundTrip)
     , ("zeroize overwrites the live buffer with zeros (the wipe is real)", wiped)
@@ -59,7 +73,9 @@ def main : IO UInt32 := do
     , ("double release is a safe no-op", doubleReleaseSafe)
     , ("a freed id is never reused — a new alloc gets a fresh id (no ABA)", freshId)
     , ("a fresh handle reads its own bytes; the released one stays gone", newReads)
-    , ("live-count tracks alloc/release with no leak", leakClean) ]
+    , ("live-count tracks alloc/release with no leak", leakClean)
+    , ("Ed25519 sign-by-handle (key resident in C) produces a verifying signature", signByHandleVerifies)
+    , ("a released key handle can no longer sign (durable key is gone)", releasedCannotSign) ]
 
   let mut passed := 0
   for (name, ok) in checks do

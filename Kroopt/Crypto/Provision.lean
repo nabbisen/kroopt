@@ -1,3 +1,4 @@
+import Kroopt.Crypto.NativeSecret
 import Kroopt.Crypto.Hacl
 import Kroopt.Crypto.RealProvider
 import Kroopt.Error
@@ -96,8 +97,12 @@ def provisionRealConfig (p : CertProvision) :
       match ← genEphemeralX25519 with
       | .error _ => pure (.error .entropyFailure)
       | .ok (ephPriv, _ephPub) =>
+          -- Move the Ed25519 signing key into the C-owned zeroizing arena and reference it by
+          -- handle, so the durable config holds no key bytes on the Lean heap (RFC 037 §3).
+          let kid ← NativeSecret.alloc p.signingKeySeed
           pure (.ok { ephemeralPrivate := ephPriv
-                      certPrivate := p.signingKeySeed
+                      certPrivate := ByteArray.empty
+                      certKeyHandle := kid
                       certPublic := certPublic })
 
 end Kroopt.Crypto

@@ -137,7 +137,11 @@ def serve (args : List String) : IO Unit := do
   | .bytes eph, .bytes sr =>
     -- Real entropy injected at the IO layer: ephemeral into the provider config, the ServerHello
     -- random as the single `randomBytes` op's answer. The pure provider draws no entropy itself.
-    let liveCfg := { cfg with ephemeralPrivate := eph }
+    -- The Ed25519 cert key is moved into the C-owned zeroizing arena and signed by handle (RFC 037
+    -- §3): the key lives only in C, never in the Lean config, and is wiped on shutdown.
+    let kid ← Kroopt.Crypto.NativeSecret.alloc cfg.certPrivate
+    let liveCfg := { cfg with ephemeralPrivate := eph, certPrivate := ByteArray.empty,
+                              certKeyHandle := kid }
     let prov : CryptoProvider :=
       { capabilities := realCapabilities
       , submit := fun a o r =>
@@ -164,6 +168,8 @@ def serve (args : List String) : IO Unit := do
     | h          => IO.println s!"HANDSHAKE_INCOMPLETE final phase {phaseName h}"
     sockClose cfd
     sockClose lfd
+    -- Wipe the Ed25519 cert key from the C arena on shutdown (zeroize + free).
+    Kroopt.Crypto.NativeSecret.release kid
   | _, _ => IO.println "ENTROPY DRAW FAILED"
 
 end Tests.LiveServer
