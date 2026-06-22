@@ -140,9 +140,9 @@ def checks : List Check :=
              let v := redactError { connectedWithRequest with core := s } .closed
              v.sniPreviewLen == some 5) }
     -- diagnostics (RFC 015 §8)
-  , { name := "metrics count handshake completion and ALPN selection"
-    , ok := (let m := (Metrics.recordHandshakeComplete {} true)
-             m.handshakesCompleted == 1 && m.alpnSelected == 1) }
+  , { name := "the live driver counts a completed handshake (internal Metrics wired into driveEvents, RFC 015 §8)"
+    , ok := connectedWithRequest.rt.metrics.handshakesCompleted == 1
+              && connectedWithRequest.rt.metrics.handshakesFailed == 0 }
   ]
 
 def main : IO UInt32 := do

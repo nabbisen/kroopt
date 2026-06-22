@@ -1,4 +1,5 @@
 import Kroopt.Conn.TlsConn
+import Kroopt.Conn.Metrics
 
 /-!
 # Kroopt.Conn.Uniform
@@ -72,21 +73,6 @@ instance : PlainConn PlaintextConn where
 
 /-! ## Redacted error view (RFC 015 §6) -/
 
-/-- The coarse error category exposed to the consumer for logging. -/
-inductive ErrorCategory where
-  | protocol | parse | crypto | config | resource | transport | closed | internal
-  deriving DecidableEq, Repr, Inhabited
-
-def categoryOf : TlsError → ErrorCategory
-  | .protocol _              => .protocol
-  | .parse _                 => .parse
-  | .crypto _                => .crypto
-  | .config _                => .config
-  | .resourceLimit _         => .resource
-  | .transport _             => .transport
-  | .closed                  => .closed
-  | .internalInvariantFailure => .internal
-
 /-- The redacted, typed failure view a consumer may log (RFC 015 §6, §9). It carries a
 category, the alert sent/received if any, and the config generation — and **by
 construction** no secrets, no decrypted plaintext, and no raw attacker-controlled
@@ -107,30 +93,5 @@ def redactError (c : TlsConn) (e : TlsError) : TlsErrorView :=
              | _ => none
     configGen := c.core.configGen
     sniPreviewLen := c.core.negotiated.selectedSni.map (·.size) }
-
-/-! ## Bounded operational diagnostics (RFC 015 §8) -/
-
-/-- Non-secret, bounded counters for operational visibility (RFC 015 §8). -/
-structure Metrics where
-  handshakesCompleted : Nat := 0
-  handshakesFailed    : Nat := 0
-  alertsSent          : Nat := 0
-  resourceFailures    : Nat := 0
-  alpnSelected        : Nat := 0
-  deriving Repr, Inhabited
-
-namespace Metrics
-
-def recordHandshakeComplete (m : Metrics) (alpnNegotiated : Bool) : Metrics :=
-  { m with handshakesCompleted := m.handshakesCompleted + 1
-           alpnSelected := m.alpnSelected + (if alpnNegotiated then 1 else 0) }
-
-def recordFailure (m : Metrics) (cat : ErrorCategory) : Metrics :=
-  { m with handshakesFailed := m.handshakesFailed + 1
-           resourceFailures := m.resourceFailures + (if cat == .resource then 1 else 0) }
-
-def recordAlertSent (m : Metrics) : Metrics := { m with alertsSent := m.alertsSent + 1 }
-
-end Metrics
 
 end Kroopt.Conn

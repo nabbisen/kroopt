@@ -225,10 +225,13 @@ budget / config failures  → TlsErrorView category + redacted error view
 ### 10.2 Metric honesty (B2)
 
 Metrics are specified and the counter logic exists and is tested (the `Metrics` struct +
-`recordHandshakeComplete`/`recordFailure`/`recordAlertSent`, exercised in `Tests.E2EHttps`). v0.3 does
-**not** claim live driver emission, histograms, aggregation, or export — those are v0.4. (An optional
-internal follow-up may wire the existing `Metrics` into the live driver as a non-public counter update,
-provided it introduces no export format and does not block this lock.)
+`recordHandshakeComplete`/`recordFailure`/`recordAlertSent`). **The optional internal wiring landed
+(0.99.0-dev):** `Metrics` was relocated to `Kroopt/Conn/Metrics.lean` (a low module the live driver can
+import) and `driveEvents` now updates the counters per step via `observeMetrics` — handshake
+completion, failure (by coarse category), and alert-sent move during a real handshake (verified in
+`Tests.E2EHttps` for success and `Tests.Replay` for rejection). This is **internal only**: the counters
+live on `RuntimeState`, there is no public accessor and no export format. v0.3 still does **not** claim
+histograms, aggregation, or an export/backend surface — those remain v0.4 (§10.4).
 
 ### 10.3 Coarse error categories (C1)
 

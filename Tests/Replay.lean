@@ -55,6 +55,11 @@ def traceOf (enabled : Bool) (ch : ByteArray) : List String :=
                       [InputEvent.transportBytes conn0 ch]
   rt.trace
 
+/-- Internal operational counters after driving a capture (RFC 015 §8 / RFC 020 §10.2). -/
+def metricsOf (ch : ByteArray) : Metrics :=
+  let (_, rt, _) := driveEvents prov 4096 s0 ({} : RuntimeState) tr0 [InputEvent.transportBytes conn0 ch]
+  rt.metrics
+
 def hasSub (s sub : String) : Bool := (s.splitOn sub).length > 1
 
 /-- Build a ClientHello message (x25519 key_share fixed) from the offered suites and the
@@ -239,6 +244,11 @@ def checks : List Check :=
               && t.any (fun l => hasSub l "crypto-call")
               && t.any (fun l => hasSub l "handshake-out")
               && t.any (fun l => hasSub l "certificate-out") }
+
+    -- ── internal operational counters wired into the live driver (RFC 015 §8) ──
+  , { name := "live driver counts a rejected handshake: handshakesFailed + alertsSent move, completed stays 0"
+    , ok := let m := metricsOf noKeyShareCH
+            m.handshakesFailed == 1 && m.alertsSent == 1 && m.handshakesCompleted == 0 }
   ]
 
 def main : IO Unit := do

@@ -6,6 +6,7 @@ import Kroopt.Conn.Transport
 import Kroopt.Conn.Flight
 import Kroopt.Conn.Record13
 import Kroopt.Conn.Trace
+import Kroopt.Conn.Metrics
 import Kroopt.Parse.Wire
 
 /-!
@@ -50,6 +51,9 @@ structure RuntimeState where
   interpreter records a secret-free `TraceEvent` line per executed action into `trace`. -/
   traceEnabled   : Bool := false
   trace          : List String := []
+  /-- Internal, non-public operational counters (RFC 015 §8; RFC 020 §10.2). Updated by the live
+  driver; there is no public accessor and no export here — emission/histograms/export are v0.4. -/
+  metrics        : Metrics := {}
   deriving Inhabited
 
 /-- Try to push the pending ciphertext queue toward the transport, honouring
@@ -251,6 +255,16 @@ def execActions {τ : Type} [Transport τ] (prov : CryptoProvider) (rt : Runtime
       (rt', tr', acc.2.2 ++ evs))
     (rt, tr, [])
 
+/-- Fold one step's authorized actions into the internal operational counters (RFC 015 §8). Driven
+by `driveEvents`, which supplies the post-step `State` so the ALPN-selected count can read the
+negotiated protocol. Passive: it never changes the action stream or a protocol decision. -/
+def observeMetrics (m : Metrics) (core : State) (acts : List OutputAction) : Metrics :=
+  acts.foldl (fun m a => match a with
+    | .reportHandshakeComplete _ _ => m.recordHandshakeComplete core.negotiated.selectedAlpn.isSome
+    | .reportError _ e             => m.recordFailure (categoryOf e)
+    | .failWithAlert _ _           => m.recordAlertSent
+    | _                            => m) m
+
 /-- The fuel-bounded drive loop (RFC 010 §6, §10 — *never spin on wouldBlock*).
 Process events FIFO, but feed each step's follow-up events **before** the
 remaining external events, so a crypto/transport cascade completes in phase. -/
@@ -264,6 +278,7 @@ def driveEvents {τ : Type} [Transport τ] (prov : CryptoProvider) :
       | .error e => (core, { rt with lastError := some e, terminal := true }, tr)
       | .ok (core', acts) =>
           let (rt', tr', newEvs) := execActions prov rt tr acts
+          let rt' := { rt' with metrics := observeMetrics rt'.metrics core' acts }
           driveEvents prov fuel core' rt' tr' (newEvs ++ rest)
 
 /-- Default progress budget per external event (RFC 010 §7). -/

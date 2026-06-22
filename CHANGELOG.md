@@ -5,6 +5,38 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.99.0-dev] — internal Metrics wired into the live driver (RFC 020 §10.2 optional follow-up) — 2026-06-15
+
+The architect-approved optional follow-up to the RFC 020 lock: make the tested operational counters
+actually move during a real handshake — internal only, no public surface, no export.
+
+### Changed
+- **`Kroopt/Conn/Metrics.lean`** (new) — `Metrics`, `ErrorCategory`, and `categoryOf` relocated here
+  from `Conn/Uniform.lean` (which sat *above* the driver in the import graph). The module imports only
+  `Kroopt.Error`, so the live driver can use it without a cycle. `Conn/Uniform.lean` now imports it and
+  keeps the consumer-facing `TlsErrorView` / `redactError`.
+- **`Kroopt/Conn/Interpreter.lean`** — `RuntimeState` gains an internal `metrics : Metrics := {}` field;
+  `driveEvents` updates it per step via a new passive `observeMetrics` (reading the post-step `State`
+  for the ALPN-selected count). Counters move on `reportHandshakeComplete` (completed/+alpn),
+  `reportError` (failed, by coarse category), and `failWithAlert` (alert sent). The action stream and
+  core transitions are untouched (correspondence suite unaffected).
+
+### Added
+- **`Tests/E2EHttps.lean`** — the metrics check now asserts the **genuinely-driven** counters from a
+  full handshake (`connectedWithRequest.rt.metrics.handshakesCompleted == 1`), replacing the previous
+  manually-constructed value.
+- **`Tests/Replay.lean`** (now 19 checks) — a failure-path counter check: a rejected ClientHello moves
+  `handshakesFailed` and `alertsSent` while `handshakesCompleted` stays 0.
+
+### Scope
+- Internal only: the counters live on `RuntimeState` with **no public accessor and no export format**.
+  Histograms, aggregation, and an export/backend surface remain RFC 020 v0.4 work (§10.4). RFC 020 §10.2
+  updated to record the wiring.
+
+Gate: build green; **27 suites green** (incl. `correspondence`, `e2e`, `replay`, `interop`); hygiene;
+deps 37 pure-zone clean; axioms 102, no `sorryAx`; fuzz 20000; sanitizer clean; live OpenSSL/Python/curl
+interop green. The relocation + driver change is fully exercised end-to-end.
+
 ## [0.98.0-dev] — RFC 020 locked for v0.3; SecurityEvent API + metric emission relocated to v0.4 — 2026-06-15
 
 Per architect review (decision **A2 / B2 / lock yes / C1**). RFC 020 moves to `done/`.
