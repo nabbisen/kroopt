@@ -126,7 +126,9 @@ crypto op.
 `supported_groups`/`key_share` consistency (RFC 8446 §4.2.8) is enforced at parse: if the
 ClientHello carries a present `supported_groups`, every offered `key_share` group must
 appear in it (a contradiction is rejected as `illegal_parameter`); when `supported_groups`
-is absent, `key_share` is authoritative for this constrained no-HRR profile. P-256
+is **absent**, the ClientHello is **rejected** as `illegal_parameter` (strict; review HIGH-3),
+not treated as `key_share`-authoritative — RFC 8446 §4.2.8 requires each `KeyShareEntry` to
+correspond to a `supported_groups` entry. P-256
 `key_share` validation is layered: the parser checks wire shape (65 bytes, `0x04` prefix)
 and the provider performs on-curve point validation (HACL `Hacl_P256_ecp256dh_r`,
 fail-closed), with any provider rejection a fatal handshake failure and no fabricated

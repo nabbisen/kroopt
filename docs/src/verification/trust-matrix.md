@@ -33,6 +33,7 @@ within that audited set.
 |---|---|---|---|---|---|
 | Config capability validation total/deterministic | PROVEN (total fn) + TESTED | `validateServerConfigCapabilities`; `kroopt-capabilities-test`, `kroopt-config-test` | kroopt | — | met |
 | Named-group authorization (x25519-first, allow-list) | TESTED (+ structural) | `kroopt-handshake-test`; live P-256 + rejection interop | kroopt | — | met |
+| `supported_groups`/`key_share` consistency (incl. strict absent-SG reject) | TESTED | parse-time consistency check (RFC 8446 §4.2.8); `noSgCH` replay + EndToEnd consistency fixtures | kroopt | — | met (HIGH-3) |
 | ALPN offered-and-allowed | TESTED | `kroopt-handshake-test`; live interop | kroopt | — | met |
 | Certificate/key config-lint | TESTED | leaf-key compatibility lint; `kroopt-provision-test` | kroopt | broader operational lint (chain order, SAN/expiry) | v0.4 (MEDIUM-3) |
 | Alert/close terminal discipline | PROVEN | terminal theorems above; `kroopt-close-test` | kroopt core | — | met |

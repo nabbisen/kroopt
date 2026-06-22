@@ -5,6 +5,33 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.106.0-dev] — audit follow-up: propagate the HIGH-3 strict reject into docs/RFC/verification — 2026-06-15
+
+A post-release consistency audit found the HIGH-3 strict reject (shipped in 0.104.0-dev, code + test)
+was under-propagated: two docs and the governing RFC still described the superseded
+absent-`supported_groups` "authoritative" behavior, and the hardening was absent from the verification
+artifacts. This increment closes those three gaps. No code change — the behavior shipped in 0.104.
+
+### Fixed
+- **`architecture/handshake.md`** — corrected a second, lower-down description that still said "when
+  `supported_groups` is absent, `key_share` is authoritative" (the page had contradicted itself); it now
+  states the strict `illegal_parameter` reject, consistent with the top of the page and the code.
+- **`rfcs/done/039-named-group-policy-and-enforcement.md`** (Implemented) — added a dated **amendment
+  note** recording that §4.6's absent-`supported_groups` compatibility policy was superseded by the
+  security-review HIGH-3 strict reject (0.104.0-dev), plus an inline `SUPERSEDED` marker at the clause.
+  The original §4.6 text is retained as the historical record per the RFC-lifecycle policy. (§4.6 had
+  itself anticipated "a future strict-profile RFC may instead reject"; this records that it landed via
+  the security review.)
+
+### Added (verification reflects the hardening)
+- **`verification/threat-model.md`** — new row: non-conformant ClientHello (`key_share` without
+  `supported_groups`) → strict `illegal_parameter` reject; tested by `noSgCH`.
+- **`verification/trust-matrix.md`** — new negotiation row: `supported_groups`/`key_share` consistency
+  including the strict absent-SG reject (TESTED, met).
+
+Gate: build green; all internal doc links resolve; `noSgCH` strict-reject replay check green. Docs + RFC
+only; no `Kroopt/` source, proofs, or pure-zone code touched (the strict reject itself shipped in 0.104).
+
 ## [0.105.0-dev] — close out the Vale/EverCrypt licensing follow-up (NOTICE accuracy) — 2026-06-15
 
 Resolves the one open follow-up surfaced during the security-review remediation (increment B,

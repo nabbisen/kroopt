@@ -30,6 +30,7 @@ short of full host compromise — core dumps, swap, crash diagnostics — are cl
 | Event-loop spin on repeated wouldBlock | fuel-bounded progress, step budget | interpreter; `chargeProgressStep_bounded` |
 | Many concurrent *bounded* handshakes exhaust global CPU/memory | per-connection bounds + handshake/idle timeouts (kroopt); listener-wide admission, per-peer rate limits, global budgets (iotakt + jemmet) | per-conn proved/tested; **global DELEGATED** — see below |
 | ALPN selecting an unoffered protocol | intersection-only negotiation | proved: `negotiateAlpn_offered_and_allowed` |
+| Non-conformant ClientHello (`key_share` without `supported_groups`) | strict reject as `illegal_parameter` (RFC 8446 §4.2.8), not `key_share`-authoritative | tested: `noSgCH` replay (review HIGH-3) |
 | Downgrade to TLS 1.2 / 0-RTT / tickets | strict `supported_versions`, deferred features off | tested: scope control |
 | Truncation passed off as clean close | EOF-before-close_notify is fatal | proved/tested: close policy |
 | Secret leakage via logs/errors | secret handles unprintable; redacted error view | construction; `redactError` |

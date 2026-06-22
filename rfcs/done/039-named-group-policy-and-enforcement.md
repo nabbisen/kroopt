@@ -31,6 +31,16 @@ compatibility-policy note (§4.6) — and the error-taxonomy fix (endpoint-polic
 `CapabilityError`; client-side faults are TLS handshake errors, §4.5). The two prior open
 questions are resolved (§12). **Status: approved for implementation.**
 
+> **Amendment (2026-06-15, 0.104.0-dev) — §4.6 absent-`supported_groups` policy superseded.**
+> The §4.6 compatibility policy below — accepting `key_share` as authoritative when
+> `supported_groups` is absent — has been **superseded by a strict reject** under the v0.100.0 docs
+> security review (finding HIGH-3, architect-approved). A ClientHello that carries a `key_share` with
+> `supported_groups` absent is now rejected as `illegal_parameter` (RFC 8446 §4.2.8). This is exactly
+> the "future strict-profile" change §4.6 itself anticipated; it landed through the security-review
+> remediation rather than a separate RFC. The original §4.6 text is retained below as the historical
+> record. Implemented in `Kroopt/Parse/Handshake.lean` (`findOfferedKeyShares`); tested by the
+> `noSgCH` replay capture in `Tests/Replay.lean`.
+
 ---
 
 ## 1. Summary
@@ -261,6 +271,8 @@ consistent:
   `supported_groups` is absent but a syntactically valid `key_share` is present, kroopt
   accepts `key_share` as the authoritative no-HRR signal for this constrained server
   profile. A future strict-profile RFC may instead reject such ClientHellos.
+  **[SUPERSEDED 0.104.0-dev — see the Amendment note at the top: this clause now rejects with
+  `illegal_parameter` (security review HIGH-3). The text above is retained as the historical record.]**
 - A group in `supported_groups` with **no** key_share is not selectable (no HRR) — this is
   a clean handshake failure, not an error in itself.
 
