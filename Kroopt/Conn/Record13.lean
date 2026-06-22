@@ -22,7 +22,7 @@ imports none of it. No plaintext escapes a failed open.
 namespace Kroopt.Conn.Record13
 
 open Kroopt.Crypto
-open Kroopt.Core (ContentType)
+open Kroopt.Core (ContentType CipherSuite)
 open Kroopt.Parse
 
 /-- TLSInnerPlaintext (RFC 8446 §5.2): `content || content_type || zero*`. -/
@@ -42,20 +42,22 @@ than letting an oversize length silently truncate through the `UInt16` record-le
 oversize input is rejected with a typed `resourceLimit` error so no caller (now or later) can
 emit a malformed or truncated record. -/
 def sealRecord (key iv : ByteArray) (seq : UInt64) (content : ByteArray)
-    (ctype : ContentType) (pad : Nat := 0) : Except Kroopt.ResourceLimitError ByteArray :=
+    (ctype : ContentType) (pad : Nat := 0)
+    (suite : CipherSuite := .chacha20Poly1305Sha256) : Except Kroopt.ResourceLimitError ByteArray :=
   if content.size > maxRecordPlaintext then .error .recordSize
   else
     let inner := innerPlaintext content ctype pad
-    let ctLen := inner.size + 16                       -- + Poly1305 tag
-    let sealed := Hacl.chachaPolySeal key (Real.nonce iv seq) (recordAAD ctLen) inner
+    let ctLen := inner.size + 16                       -- + 16-byte AEAD tag (uniform across TLS 1.3 suites)
+    let sealed := Real.aeadSealBySuite suite key (Real.nonce iv seq) (recordAAD ctLen) inner
     .ok (ByteArray.mk #[(0x17 : UInt8), 0x03, 0x03] ++ Wire.be16 ctLen.toUInt16 ++ sealed)
 
 /-- Test/diagnostic convenience: seal a record whose content is known to be within the
 2^14 bound, returning the bytes directly. Panics on oversize, so it is only for known-small
 fixtures in tests — never the production path, which uses `sealRecord` and handles the error. -/
 def sealRecord! (key iv : ByteArray) (seq : UInt64) (content : ByteArray)
-    (ctype : ContentType) (pad : Nat := 0) : ByteArray :=
-  (sealRecord key iv seq content ctype pad).toOption.get!
+    (ctype : ContentType) (pad : Nat := 0)
+    (suite : CipherSuite := .chacha20Poly1305Sha256) : ByteArray :=
+  (sealRecord key iv seq content ctype pad suite).toOption.get!
 
 /-- Strip TLSInnerPlaintext zero padding: the last non-zero octet is the inner
 content type; everything before it is the content. -/
@@ -70,6 +72,7 @@ def stripInner (inner : ByteArray) : Option (ByteArray × ContentType) := Id.run
 ChaCha20-Poly1305-open, then strip padding to recover `(content, inner type)`.
 Returns `none` on any framing or authentication failure — no plaintext escapes. -/
 def openRecord (key iv : ByteArray) (seq : UInt64) (record : ByteArray)
+    (suite : CipherSuite := .chacha20Poly1305Sha256)
     : Option (ByteArray × ContentType) :=
   if record.size < 5 then none
   else if record.get! 0 != 0x17 then none
@@ -77,7 +80,7 @@ def openRecord (key iv : ByteArray) (seq : UInt64) (record : ByteArray)
     let ctLen := (record.get! 3).toNat * 256 + (record.get! 4).toNat
     if record.size != 5 + ctLen then none
     else
-      match Hacl.chachaPolyOpen key (Real.nonce iv seq) (record.extract 0 5) (record.extract 5 record.size) with
+      match Real.aeadOpenBySuite suite key (Real.nonce iv seq) (record.extract 0 5) (record.extract 5 record.size) with
       | none => none
       | some inner => stripInner inner
 

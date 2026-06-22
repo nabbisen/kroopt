@@ -61,6 +61,27 @@ def connectedForSend : TlsConn :=
   { core := { (State.initial ⟨0, 0⟩ ⟨0⟩ .sha256) with handshake := .connected }
     rt := {}, tr := { fd := fd0, inbound := [] }, prov := fakeProvider }
 
+/-- Seal a handshake-flight message through `sealHandshakeRecord` with `suite` recorded as the
+installed (write, handshake) suite — exercising that the interpreter dispatches the flight seal on
+the installed suite rather than a hardcoded one. -/
+def sealHsWithSuite (suite : CipherSuite) (secret plain : ByteArray) : Option ByteArray :=
+  match SecretArena.empty.store secret with
+  | .error _ => none
+  | .ok (h, a1) =>
+    let a2 := (a1.recordBaseSecret .write .handshake h.id).recordInstalledSuite .write .handshake suite
+    match sealHandshakeRecord a2 0 plain with
+    | .ok (some r) => some r
+    | _ => none
+
+def hsSecretFx : ByteArray := ByteArray.mk (Array.mkArray 32 (0x42 : UInt8))
+def hsPlainFx  : ByteArray := bytesOf [0x14, 0x00, 0x00, 0x04, 0x01, 0x02, 0x03, 0x04]
+def aesHsSealed : Option ByteArray := sealHsWithSuite .aes128GcmSha256 hsSecretFx hsPlainFx
+def chaHsSealed : Option ByteArray := sealHsWithSuite .chacha20Poly1305Sha256 hsSecretFx hsPlainFx
+def aesHsOpened : Option (ByteArray × ContentType) :=
+  aesHsSealed.bind (fun r =>
+    Record13.openRecord (KeySchedule.trafficKey .aes128GcmSha256 hsSecretFx)
+                        (KeySchedule.trafficIv hsSecretFx) 0 r .aes128GcmSha256)
+
 def checks : List Check :=
   [ -- full handshake through the public API
     { name := "handshake completes through TlsConn"
@@ -118,6 +139,13 @@ def checks : List Check :=
     , ok := (let c := connectedForRecv.progress
                (.cryptoResult ⟨0, 0⟩ ⟨0⟩ (.aeadOpened (bytesOf [0x41, 0x42, 23])))
              match (c.recv).2 with | .bytes b => b.toList == [0x41, 0x42] | _ => false) }
+  , { name := "sealHandshakeRecord seals the flight under the installed AES-128-GCM suite and opens back"
+    , ok := (match aesHsOpened with
+             | some (c, t) => c.toList == hsPlainFx.toList && (match t with | .handshake => true | _ => false)
+             | none => false) }
+  , { name := "sealHandshakeRecord follows the installed suite (AES-128 bytes differ from ChaCha bytes)"
+    , ok := (match aesHsSealed, chaHsSealed with
+             | some a, some c => a.toList != c.toList | _, _ => false) }
   ]
 
 def main : IO UInt32 := do

@@ -32,7 +32,7 @@ is never imported by the pure verified core (enforced by the dependency gate).
 namespace Kroopt.Crypto
 
 open Kroopt (CryptoError)
-open Kroopt.Core (SecretKeyHandle Direction Epoch)
+open Kroopt.Core (SecretKeyHandle Direction Epoch CipherSuite)
 
 /-- A bounded, generation-tagged store mapping handle ids to secret bytes.
 Pure value: threaded explicitly through the provider and interpreter rather than
@@ -53,6 +53,11 @@ structure SecretArena where
   the *read* (client) handshake-traffic secret and computes its own with the
   *write* (server) secret. -/
   baseSecrets : List (Direction × Epoch × UInt64) := []
+  /-- The cipher suite each (direction, epoch) key was installed under, recorded at key
+  install so the interpreter's handshake-flight seal can dispatch the right AEAD primitive and
+  derive a key of the right length. Travels with the keys (single source of truth) so the
+  interpreter never re-decides the suite. -/
+  installedSuites : List (Direction × Epoch × CipherSuite) := []
   deriving Inhabited
 
 namespace SecretArena
@@ -99,6 +104,7 @@ def release (a : SecretArena) (h : SecretKeyHandle) : SecretArena :=
 (connection reset / config reload). Previous entries are dropped. -/
 def bumpGeneration (a : SecretArena) : SecretArena :=
   { a with entries := [], released := [], installed := [], baseSecrets := [],
+           installedSuites := [],
            generation := a.generation + 1, nextId := 1 }
 
 /-- Record an installed record key and IV for a (direction, epoch). -/
@@ -111,6 +117,14 @@ def lookupInstalled (a : SecretArena) (dir : Direction) (epoch : Epoch) :
     Option (UInt64 × UInt64) :=
   (a.installed.find? (fun e => decide (e.1 = dir) && decide (e.2.1 = epoch))).map
     (fun e => (e.2.2.1, e.2.2.2))
+
+/-- Record the cipher suite a (direction, epoch) key was installed under. -/
+def recordInstalledSuite (a : SecretArena) (dir : Direction) (epoch : Epoch) (suite : CipherSuite) : SecretArena :=
+  { a with installedSuites := (dir, epoch, suite) :: a.installedSuites }
+
+/-- Look up the cipher suite installed for a (direction, epoch). -/
+def lookupInstalledSuite (a : SecretArena) (dir : Direction) (epoch : Epoch) : Option CipherSuite :=
+  (a.installedSuites.find? (fun e => decide (e.1 = dir) && decide (e.2.1 = epoch))).map (fun e => e.2.2)
 
 /-- Record the base traffic-secret entry id for a (direction, epoch), for the
 Finished key. -/

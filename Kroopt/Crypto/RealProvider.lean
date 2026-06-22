@@ -118,7 +118,7 @@ def submit (cfg : RealCryptoConfig) (a : SecretArena) (_ : OperationId) :
       let (kh, a1) ← a.store key
       let (ih, a2) ← a1.store iv
       let (bh, a3) ← a2.store secretBytes
-      let a4 := (a3.recordInstalled dir epoch kh.id ih.id).recordBaseSecret dir epoch bh.id
+      let a4 := ((a3.recordInstalled dir epoch kh.id ih.id).recordBaseSecret dir epoch bh.id).recordInstalledSuite dir epoch suite
       .ok (a4, .keysInstalled)
   | .aeadSeal meta _aad plaintext =>
       match a.lookupInstalled meta.direction meta.epoch with

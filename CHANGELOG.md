@@ -5,6 +5,52 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.68.0-dev] — Suite-aware handshake-flight seal path (last ChaCha hardcode removed) — 2026-06-14
+
+Closes the gap 0.67.0-dev surfaced. The interpreter's `Conn.Interpreter.sealHandshakeRecord` — the
+one remaining production path that hardcoded ChaCha20-Poly1305 for both key derivation and sealing —
+now seals the server's encrypted handshake flight under the suite the keys were installed with. With
+this, **every production seal/open path is suite-aware**: application records and all record opens
+already routed through the suite-dispatched provider (0.67.0-dev); the handshake flight now does too.
+The record/seal layer is no longer the blocker for AES-GCM negotiation.
+
+Behavior is unchanged at this release — ChaCha20-Poly1305 is still the only negotiable suite, so the
+installed suite is always ChaCha and the sealed bytes are identical to before. The change is the
+plumbing that lets the flight follow the negotiated suite once negotiation is enabled.
+
+### This increment (TESTED)
+- `Kroopt/Crypto/Arena.lean`: the arena now tracks `installedSuites : List (Direction × Epoch ×
+  CipherSuite)` with `recordInstalledSuite` / `lookupInstalledSuite`. The suite travels with the
+  installed keys (single source of truth), so the interpreter never re-decides it. Reset on
+  generation bump alongside the other per-connection install state.
+- `Kroopt/Crypto/RealProvider.lean`: `.installTrafficKeys` records the suite as it installs the key/IV.
+- `Kroopt/Conn/Record13.lean`: `sealRecord` / `sealRecord!` / `openRecord` take a `suite` parameter
+  (defaulting to ChaCha20-Poly1305 so existing test callers are unchanged) and dispatch through
+  `Real.aeadSealBySuite` / `aeadOpenBySuite`. The `ctLen := inner.size + 16` math is unchanged: the
+  16-byte AEAD tag is uniform across all three TLS 1.3 suites, so the record-length/AAD reasoning
+  holds for every suite.
+- `Kroopt/Conn/Interpreter.lean`: `sealHandshakeRecord` looks up the installed (write, handshake)
+  suite, derives the traffic key of the matching length, and dispatches the matching AEAD.
+
+### Tests
+- `kroopt-conn-test` (+2 checks, **15** total): `sealHandshakeRecord` seals a flight message under an
+  installed AES-128-GCM suite and the record opens back to the plaintext; and the sealed bytes differ
+  from the ChaCha sealing of the same secret — proving the flight seal follows the installed suite
+  rather than a hardcoded one.
+
+### Trust posture
+- The arena lives in the impure Crypto zone (never imported by the verified core); the dependency gate
+  confirms the pure zone is untouched. 94 public theorems unchanged.
+
+### Remaining for AES-GCM negotiation (next increments)
+1. Enable negotiation: recognize `0x1301` in `Parse.Handshake.suiteOfU16`, advertise
+   `TLS_AES_128_GCM_SHA256` in `realCapabilities`, migrate the correspondence/socketdriver peer
+   harness to AES-128 (the shared `clientHelloMsg` already offers AES-128 first). The seal path is
+   now ready to serve it.
+2. `TLS_AES_256_GCM_SHA384`: the SHA-384 key schedule + transcript.
+3. Live `openssl -ciphersuites TLS_AES_128_GCM_SHA256` interop.
+
+
 ## [0.67.0-dev] — Suite-keyed AEAD provider dispatch (AES-128-GCM exercised end-to-end at the provider) — 2026-06-14
 
 Builds on 0.66.0-dev (AES-GCM bound + KAT'd). The AEAD **provider** is now suite-aware: a record's

@@ -138,9 +138,13 @@ def sealHandshakeRecord (arena : SecretArena) (seq : UInt64) (plain : ByteArray)
     match arena.getById sid with
     | none => .ok none
     | some secret =>
-        let key := Kroopt.Crypto.KeySchedule.trafficKey .chacha20Poly1305Sha256 secret
+        -- The suite the (write, handshake) keys were installed under is the single source of truth;
+        -- derive the key of the matching length and dispatch the matching AEAD. (Defaults to
+        -- ChaCha20-Poly1305 on the transitional fake-provider path where no suite was recorded.)
+        let suite := (arena.lookupInstalledSuite .write .handshake).getD .chacha20Poly1305Sha256
+        let key := Kroopt.Crypto.KeySchedule.trafficKey suite secret
         let iv  := Kroopt.Crypto.KeySchedule.trafficIv secret
-        (Record13.sealRecord key iv seq plain .handshake 0).map some
+        (Record13.sealRecord key iv seq plain .handshake 0 suite).map some
 
 /-- Realize a flight message as the wire bytes its core-authorized epoch demands: a
 `.handshake`-epoch message becomes a sealed protected record (or, transitionally, a cleartext
