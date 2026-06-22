@@ -53,6 +53,16 @@ opaque ecdsaP256SignRaw (m priv k : ByteArray) : ByteArray
 @[extern "kroopt_ffi_ecdsa_p256_verify"]
 opaque ecdsaP256VerifyRaw (m pub sigraw : ByteArray) : ByteArray
 
+/-- RSA-PSS / SHA-256 sign (RFC 8446 rsa_pss_rsae_sha256). Loads the private key from `n`, `e`, `d`
+byte arrays and signs `msg` with `salt`. Returns `status(1) || sgnt(n.size)`. -/
+@[extern "kroopt_ffi_rsapss_sign"]
+opaque rsapssSignRaw (n e d salt msg : ByteArray) : ByteArray
+
+/-- RSA-PSS / SHA-256 verify against the public key `(n, e)` with the given salt length. Returns a
+1-byte `0/1` result. -/
+@[extern "kroopt_ffi_rsapss_verify"]
+opaque rsapssVerifyRaw (n e : ByteArray) (saltLen : UInt32) (sgnt msg : ByteArray) : ByteArray
+
 @[extern "kroopt_ffi_aead_seal"]
 opaque chachaPolySeal (key nonce aad pt : ByteArray) : ByteArray
 
@@ -140,6 +150,18 @@ def ecdsaP256SignDer (m priv k : ByteArray) : Option ByteArray :=
 /-- ECDSA P-256 / SHA-256 verify over the raw 64-byte `r‖s`. -/
 def ecdsaP256Verify (m pub sigraw : ByteArray) : Bool :=
   let r := ecdsaP256VerifyRaw m pub sigraw
+  r.size == 1 ∧ r.get! 0 == 1
+
+/-- RSA-PSS / SHA-256 sign of `msg` (the CertificateVerify signing input) with the private key
+`(n, e, d)` and a 32-byte salt (TLS 1.3 requires saltLen = hashLen = 32, RFC 8446 §4.2.3). Returns
+the raw RSA signature (`n.size` bytes), or `none` on failure. -/
+def rsapssSign (n e d salt msg : ByteArray) : Option ByteArray :=
+  let r := rsapssSignRaw n e d salt msg
+  if r.size == n.size + 1 ∧ r.get! 0 == 0 then some (r.extract 1 r.size) else none
+
+/-- RSA-PSS / SHA-256 verify of `sgnt` over `msg` against the public key `(n, e)`. -/
+def rsapssVerify (n e : ByteArray) (saltLen : UInt32) (sgnt msg : ByteArray) : Bool :=
+  let r := rsapssVerifyRaw n e saltLen sgnt msg
   r.size == 1 ∧ r.get! 0 == 1
 
 /-- ChaCha20-Poly1305 open. `none` on authentication failure (no plaintext is

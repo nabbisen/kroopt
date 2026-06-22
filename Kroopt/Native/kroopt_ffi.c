@@ -18,6 +18,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <stddef.h>
+#include <stdlib.h>
 #include <sys/random.h>
 
 #include "Hacl_Hash_SHA2.h"
@@ -27,6 +28,7 @@
 #include "Hacl_HMAC.h"
 #include "Hacl_Ed25519.h"
 #include "Hacl_P256.h"
+#include "Hacl_RSAPSS.h"
 
 static inline uint8_t *ba_ptr(b_lean_obj_arg a) { return lean_sarray_cptr(a); }
 static inline size_t   ba_len(b_lean_obj_arg a) { return lean_sarray_size(a); }
@@ -255,6 +257,56 @@ LEAN_EXPORT lean_object *kroopt_ffi_ecdsa_p256_verify(b_lean_obj_arg m, b_lean_o
   }
   bool ok = Hacl_P256_ecdsa_verif_p256_sha2((uint32_t)ba_len(m), ba_ptr(m), ba_ptr(pub) + 1,
                                             ba_ptr(sigraw), ba_ptr(sigraw) + 32);
+  lean_sarray_cptr(r)[0] = ok ? 1 : 0;
+  return r;
+}
+
+
+/* ── RSA-PSS over SHA-256 — RFC 8446 rsa_pss_rsae_sha256 (v0.4 server auth) ──
+   sign: loads the private key from (n‖e‖d) byte arrays, signs `msg` (already the CertificateVerify
+   signing input) with the given salt, returns `status(1) || sgnt(modBytes)`. TLS 1.3 requires
+   saltLen = hashLen = 32. Bit lengths are byte-aligned (size*8); HACL tolerates leading-zero key
+   limbs. Fails closed on empty key material or HACL rejection. modBytes = n.size. */
+LEAN_EXPORT lean_object *kroopt_ffi_rsapss_sign(b_lean_obj_arg nb, b_lean_obj_arg eb,
+                                                b_lean_obj_arg db, b_lean_obj_arg salt,
+                                                b_lean_obj_arg msg) {
+  size_t modBytes = ba_len(nb);
+  lean_object *r = mk_ba(1 + modBytes);
+  uint8_t *q = lean_sarray_cptr(r);
+  memset(q, 0, 1 + modBytes);
+  if (modBytes == 0 || ba_len(eb) == 0 || ba_len(db) == 0 || ba_len(msg) > UINT32_MAX) {
+    q[0] = 1; return r;
+  }
+  uint32_t modBits = (uint32_t)(modBytes * 8);
+  uint32_t eBits   = (uint32_t)(ba_len(eb) * 8);
+  uint32_t dBits   = (uint32_t)(ba_len(db) * 8);
+  uint64_t *skey = Hacl_RSAPSS_new_rsapss_load_skey(modBits, eBits, dBits,
+                                                    ba_ptr(nb), ba_ptr(eb), ba_ptr(db));
+  if (skey == NULL) { q[0] = 1; return r; }
+  bool ok = Hacl_RSAPSS_rsapss_sign(Spec_Hash_Definitions_SHA2_256, modBits, eBits, dBits, skey,
+                                    (uint32_t)ba_len(salt), ba_ptr(salt),
+                                    (uint32_t)ba_len(msg), ba_ptr(msg), q + 1);
+  free(skey);
+  q[0] = ok ? 0 : 1;
+  if (!ok) memset(q + 1, 0, modBytes);
+  return r;
+}
+
+/* RSA-PSS verify against the public key (n‖e) with the given salt length. Returns 1-byte 0/1. */
+LEAN_EXPORT lean_object *kroopt_ffi_rsapss_verify(b_lean_obj_arg nb, b_lean_obj_arg eb,
+                                                  uint32_t saltLen, b_lean_obj_arg sgnt,
+                                                  b_lean_obj_arg msg) {
+  lean_object *r = mk_ba(1);
+  lean_sarray_cptr(r)[0] = 0;
+  if (ba_len(nb) == 0 || ba_len(eb) == 0 || ba_len(msg) > UINT32_MAX) return r;
+  uint32_t modBits = (uint32_t)(ba_len(nb) * 8);
+  uint32_t eBits   = (uint32_t)(ba_len(eb) * 8);
+  uint64_t *pkey = Hacl_RSAPSS_new_rsapss_load_pkey(modBits, eBits, ba_ptr(nb), ba_ptr(eb));
+  if (pkey == NULL) return r;
+  bool ok = Hacl_RSAPSS_rsapss_verify(Spec_Hash_Definitions_SHA2_256, modBits, eBits, pkey,
+                                      saltLen, (uint32_t)ba_len(sgnt), ba_ptr(sgnt),
+                                      (uint32_t)ba_len(msg), ba_ptr(msg));
+  free(pkey);
   lean_sarray_cptr(r)[0] = ok ? 1 : 0;
   return r;
 }

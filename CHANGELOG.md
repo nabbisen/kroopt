@@ -5,6 +5,38 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.56.0-dev] — RFC (v0.4 breadth): RSA-PSS/SHA-256 server-auth signing — crypto + provider path — 2026-06-14
+
+Third v0.4 server-auth scheme: kroopt can now **produce RSA-PSS (rsa_pss_rsae_sha256) CertificateVerify
+signatures** (RFC 8446 §4.2.3), completing the server-auth triad (Ed25519 + ECDSA-P256 + RSA-PSS) and
+unlocking real-world RSA certificates. This increment lands the crypto primitive and provider signing
+path — all additive, with no change to the proven surface (94 theorems, axiom profile unchanged). A
+parser code point for 0x0804 plus an RSA server config and a live interop are the explicit next step
+(the cert-aware negotiation built in 0.55.0-dev already selects per endpoint, so that step is light).
+
+- **Vendored crypto (assumed, not hand-rolled).** Added `Hacl_RSAPSS.c` + `Hacl_Bignum.c` (generic
+  bignum) to the vendored HACL tree and the lakefile; both compile against the existing internal
+  headers. Two FFI entry points (`kroopt_ffi_rsapss_sign`, `_verify`) load the key via
+  `Hacl_RSAPSS_new_rsapss_load_skey`/`_pkey`, sign/verify with SHA-256, and free the key. Sign fails
+  closed on empty key material; bit lengths are byte-aligned.
+- **Bindings.** `Hacl.rsapssSign (n e d salt msg)` returns the raw RSA signature (`n.size` bytes, no
+  DER wrapper — unlike ECDSA); `Hacl.rsapssVerify (n e) saltLen sgnt msg`. TLS 1.3 uses
+  saltLen = hashLen = 32.
+- **KAT (`Tests/Hacl.lean`, now 41 checks).** A generated RSA-2048 keypair drives a sign→verify
+  round-trip (the standard known-answer for randomized PSS), tamper-rejection, signature sizing, and a
+  fail-closed empty-key check.
+- **Provider signing path.** `RealProvider.submit` handles `signCertificateVerify .rsaPssRsaeSha256`
+  via `rsapssSign`, returning the raw signature; `RealCryptoConfig` gains defaulted `rsaN`/`rsaE`/`rsaD`
+  and reuses the per-connection `signNonce` as the 32-byte PSS salt (fresh per connection). The match
+  over signature schemes is now exhaustive (the wildcard is gone). The realprovider suite (19 checks)
+  confirms the dispatch produces a signature that verifies against the public key.
+- **Fixtures.** An RSA-2048 leaf (`rsaCertDer`, modulus = `rsaN`) and `rsaCfg` are in place for the
+  upcoming interop.
+- **Validation.** All 24 suites green (376 checks); parser fuzz clean; all gates green.
+
+Crypto remains ASSUMED (vendored HACL\*), protocol PROVEN, wire TESTED. Server-auth signing now spans
+Ed25519 + ECDSA-P256 (both live) + RSA-PSS (signing path in place, pending parser code point + interop).
+
 ## [0.55.0-dev] — RFC (v0.4 breadth): cert-aware signature-scheme negotiation — ECDSA-P256 LIVE — 2026-06-14
 
 Turns ECDSA-P256 on for live handshakes by making the core present a signature scheme the *selected

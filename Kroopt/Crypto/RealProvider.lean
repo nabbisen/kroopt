@@ -49,8 +49,14 @@ structure RealCryptoConfig where
   certPublic       : ByteArray
   /-- Per-connection ECDSA signing nonce `k` (32 bytes), drawn fresh from the CSPRNG at the IO
   layer when the certificate key is ECDSA-P256. Unused for Ed25519 (deterministic). Must never be
-  reused across signatures; the server signs CertificateVerify once per handshake. -/
+  reused across signatures; the server signs CertificateVerify once per handshake. For RSA-PSS it
+  doubles as the 32-byte PSS salt (also fresh per connection, saltLen = hashLen). -/
   signNonce        : ByteArray := ByteArray.empty
+  /-- RSA private key material `(modulus n, public exponent e, private exponent d)` for an RSA
+  certificate. Empty unless the configured leaf is RSA. -/
+  rsaN             : ByteArray := ByteArray.empty
+  rsaE             : ByteArray := ByteArray.empty
+  rsaD             : ByteArray := ByteArray.empty
   deriving Inhabited
 
 namespace RealProvider
@@ -138,7 +144,14 @@ def submit (cfg : RealCryptoConfig) (a : SecretArena) (_ : OperationId) :
           match Hacl.ecdsaP256SignDer input cfg.certPrivate cfg.signNonce with
           | some der => .ok (a, .signature der)
           | none     => .error .providerInternal
-      | _ => .error .unsupportedOperation
+      | .rsaPssRsaeSha256 =>
+          -- RSA-PSS / SHA-256 (RFC 8446 rsa_pss_rsae_sha256): sign the signing input with the RSA
+          -- private key (n, e, d) and the fresh per-connection 32-byte salt; the raw RSA signature
+          -- goes on the wire (no DER wrapper, unlike ECDSA).
+          if cfg.rsaN.isEmpty then .error .unsupportedOperation
+          else match Hacl.rsapssSign cfg.rsaN cfg.rsaE cfg.rsaD cfg.signNonce input with
+            | some sig => .ok (a, .signature sig)
+            | none     => .error .providerInternal
   | .computeServerFinished _ transcriptHash =>
       -- The server Finished verify_data = HMAC(server_finished_key, H) over the transcript
       -- hash through CertificateVerify, using the *write* (server) handshake-traffic secret

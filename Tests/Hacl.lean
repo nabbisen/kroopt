@@ -153,6 +153,36 @@ def main : IO UInt32 := do
     | some d => d.size ≥ 8 ∧ d.get! 0 == 0x30 ∧ d.get! 2 == 0x02
     | none   => false
 
+  -- RSA-PSS / SHA-256 sign→verify round-trip. PSS is randomized through the salt, so a self-
+  -- consistency round-trip (HACL sign then HACL verify) is the known-answer for the binding; the
+  -- key is a generated RSA-2048 keypair. TLS 1.3 uses saltLen = hashLen = 32 (RFC 8446 §4.2.3).
+  let rsa_n := hexToBytes ("a3b6d19ae4dfaab4fecb2a0206d694dd6dcd9158481a3019460cecf4092af4f06" ++
+    "f0f31ffc15c1fa2becd39e586ce04acc7ce9058ddf74a6a1c95608a6d36e04d6" ++
+    "d2d5af937ab2911f5106d5a7be177ec273b61903493e7035ce93428d000f06c1" ++
+    "06623b3839e109b9ba548c2381e86745cce660d25d7452c37445d947a0ff0a50" ++
+    "c722e7c56439254258f19c12e696af1c603f2e51e947ffb05dcbf55391758a22" ++
+    "02bc4e88168cc718f7ad41901acc1cc0d447fb3b5f9f1066036ec0bb6ec258a9" ++
+    "8521e1a14a6beadb5f45a06d81e848e76d9853f2c925a3bd9898da47d6249160" ++
+    "c8317936fc986f914a1e5a9f41c89837169cd5169a0f901b7abc223eb619f6d")
+  let rsa_e := hexToBytes "010001"
+  let rsa_d := hexToBytes ("0a3d2d42cbf015fa4b20641efeba7db8f9f645c53c19fd9750a9dbe32f5accd2" ++
+    "e7f2755812bcffd8b7dbcb9ac887f79d485d035151ed5d07485190f2f0fdaed4" ++
+    "02713823c0772792d123b0acc2db7c4dc9218e04200c18023e3c25f9c5def5f7" ++
+    "390a8a4eab7b72e275585fcf5c38c2ea61c1eee0ce07dd0c0e7d9ee7e1f272dd" ++
+    "ffaf7594ad4bc7cfdac41d9785a22c4869d766419349c99b64003eb4e56dd8bb" ++
+    "98dcefb7f16f196322c8e2fd01e88fe327f093631afba73ac1cdeb7bb59929c2" ++
+    "5a1662f199609763a6b21377a483e0cbcc88916e8dd11a1883b3ef2f935cdaaf" ++
+    "021e17cd7f3eba28b254081a32083fe1ef45e48e1fd8b89e4cbbffb477b46ce9")
+  let rsa_salt := rep 32 0x5a
+  let rsa_msg := hexToBytes "deadbeefcafe"
+  let rsa_sig := rsapssSign rsa_n rsa_e rsa_d rsa_salt rsa_msg
+  let rsa_sigSized := match rsa_sig with | some s => s.size == 256 | none => false
+  let rsa_verifyOk := match rsa_sig with
+    | some s => rsapssVerify rsa_n rsa_e 32 s rsa_msg | none => false
+  let rsa_verifyTampered := match rsa_sig with
+    | some s => rsapssVerify rsa_n rsa_e 32 s (rsa_msg.push 0x00) | none => false
+  let rsa_signBadKey := rsapssSignRaw ByteArray.empty rsa_e rsa_d rsa_salt rsa_msg
+
   let checks : List Check :=
     [ { name := "SHA-256(\"abc\") matches FIPS 180-4 vector"
       , ok := bytesEq (sha256 "abc".toUTF8) (hexToBytes sha256_abc) }
@@ -188,6 +218,14 @@ def main : IO UInt32 := do
       , ok := ec_derOk }
     , { name := "ECDSA P-256 sign rejects a wrong-size nonce, fails closed (RFC 037 §2)"
       , ok := ec_signBadK.size == 65 ∧ ec_signBadK.get! 0 == 1 }
+    , { name := "RSA-PSS/SHA-256 sign produces a 256-byte signature (RSA-2048)"
+      , ok := rsa_sigSized }
+    , { name := "RSA-PSS/SHA-256 verify accepts the signature (sign→verify round-trip)"
+      , ok := rsa_verifyOk }
+    , { name := "RSA-PSS/SHA-256 verify rejects a tampered message"
+      , ok := !rsa_verifyTampered }
+    , { name := "RSA-PSS sign rejects empty key material, fails closed (RFC 037 §2)"
+      , ok := rsa_signBadKey.size == 1 ∧ rsa_signBadKey.get! 0 == 1 }
     , { name := "ChaCha20-Poly1305 seal/open round-trips"
       , ok := (match opened with | some p => bytesEq p pt | none => false) }
     , { name := "ChaCha20-Poly1305 rejects a tampered ciphertext"

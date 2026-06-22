@@ -1,3 +1,4 @@
+import Tests.RealFixtures
 import Kroopt.Crypto.RealProvider
 import Kroopt.Crypto.Provider
 import Kroopt.Crypto.Arena
@@ -140,6 +141,19 @@ def runChecks : Except Kroopt.CryptoError (List (String × Bool)) := do
         der.size ≥ 8 ∧ der.get! 0 == 0x30 ∧ der.size == (der.get! 1).toNat + 2 ∧ der.get! 2 == 0x02
     | _ => false
 
+  -- real RSA-PSS CertificateVerify: the provider dispatches to rsapssSign with the RSA key and the
+  -- per-connection salt; the raw RSA signature verifies against the public key (round-trip).
+  let rsaSalt := hexToBytes "5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+  let rsaCfg2 : RealCryptoConfig :=
+    { ephemeralPrivate := hexToBytes serverPriv, certPrivate := ByteArray.empty
+      certPublic := ByteArray.empty, signNonce := rsaSalt
+      rsaN := Tests.RealFixtures.rsaN, rsaE := Tests.RealFixtures.rsaE, rsaD := Tests.RealFixtures.rsaD }
+  let (_, rrsa) ← (RealProvider.submit rsaCfg2) a oid (.signCertificateVerify .rsaPssRsaeSha256 msg)
+  let rsaSigOk := match rrsa with
+    | .signature sig =>
+        sig.size == 256 ∧ Kroopt.Crypto.Hacl.rsapssVerify Tests.RealFixtures.rsaN Tests.RealFixtures.rsaE 32 sig msg
+    | _ => false
+
   -- Finished: provider derives finished_key from the handshake base secret
   let finKey := KeySchedule.finishedKey (hexToBytes sHs)
   let goodMac := Kroopt.Crypto.Hacl.hmac256 finKey (hexToBytes th2)
@@ -168,6 +182,7 @@ def runChecks : Except Kroopt.CryptoError (List (String × Bool)) := do
     , ("AEAD open of a tampered record returns verifyFailed", aeadTamper)
     , ("CertificateVerify Ed25519 signature verifies", signOk)
     , ("CertificateVerify ECDSA-P256 produces a DER Ecdsa-Sig-Value", ecdsaSigOk)
+    , ("CertificateVerify RSA-PSS signature verifies (round-trip)", rsaSigOk)
     , ("verifyFinished accepts the correct Finished MAC", finishedOk)
     , ("verifyFinished rejects a wrong Finished MAC", finishedRejects)
     ]
