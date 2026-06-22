@@ -118,6 +118,31 @@ def chMsgDupP256 : List UInt8 :=
   [1] ++ [0, (chBodyDupP256.length / 256).toUInt8, (chBodyDupP256.length % 256).toUInt8] ++ chBodyDupP256
 def chRecordDupP256 : ByteArray := record chMsgDupP256
 
+/-! ## supported_groups / key_share consistency (RFC 039 §4.6). `supported_groups` (ext
+0x000a) data is a u16-length-prefixed list of u16 group ids. One ClientHello offers an
+x25519 key_share but a `supported_groups` that omits x25519 (a contradiction → reject); the
+other lists a group in `supported_groups` but sends no key_share at all (no usable share, no
+HRR → clean fail). -/
+
+def extSupGroupsP256Only : List UInt8 := [0, 0x0a, 0, 4, 0, 2, 0x00, 0x17]  -- supported_groups = [secp256r1]
+def extSupGroupsX25519 : List UInt8 := [0, 0x0a, 0, 4, 0, 2, 0x00, 0x1d]    -- supported_groups = [x25519]
+
+def extsBodyKsNotInSg : List UInt8 := extSupVer ++ extSupGroupsP256Only ++ extKeyShare ++ extSigAlgs
+def chBodyKsNotInSg : List UInt8 :=
+  [0x03, 0x03] ++ (List.replicate 32 0xAA) ++ [0] ++
+  [0, 2, 0x13, 0x03] ++ [1, 0] ++ (u16be extsBodyKsNotInSg.length ++ extsBodyKsNotInSg)
+def chMsgKsNotInSg : List UInt8 :=
+  [1] ++ [0, (chBodyKsNotInSg.length / 256).toUInt8, (chBodyKsNotInSg.length % 256).toUInt8] ++ chBodyKsNotInSg
+def chRecordKsNotInSg : ByteArray := record chMsgKsNotInSg
+
+def extsBodySgNoKs : List UInt8 := extSupVer ++ extSupGroupsX25519 ++ extSigAlgs
+def chBodySgNoKs : List UInt8 :=
+  [0x03, 0x03] ++ (List.replicate 32 0xAA) ++ [0] ++
+  [0, 2, 0x13, 0x03] ++ [1, 0] ++ (u16be extsBodySgNoKs.length ++ extsBodySgNoKs)
+def chMsgSgNoKs : List UInt8 :=
+  [1] ++ [0, (chBodySgNoKs.length / 256).toUInt8, (chBodySgNoKs.length % 256).toUInt8] ++ chBodySgNoKs
+def chRecordSgNoKs : ByteArray := record chMsgSgNoKs
+
 /-! ## Fake crypto provider (deterministic, purpose-aware) -/
 
 def fakeCrypto : CryptoOp → CryptoResult
@@ -230,6 +255,14 @@ def runUnkP256 : Driver :=
 def runDupP256 : Driver :=
   driveFuel 16 fresh [InputEvent.transportBytes ⟨0, 0⟩ chRecordDupP256]
 
+/-- key_share for a group omitted from `supported_groups` → contradiction, rejected (§4.6). -/
+def runKsNotInSg : Driver :=
+  driveFuel 16 fresh [InputEvent.transportBytes ⟨0, 0⟩ chRecordKsNotInSg]
+
+/-- `supported_groups` present but no usable key_share → clean no-HRR failure (§4.6). -/
+def runSgNoKs : Driver :=
+  driveFuel 16 fresh [InputEvent.transportBytes ⟨0, 0⟩ chRecordSgNoKs]
+
 /-! ## Negative scenarios -/
 
 def malformedChRecord : ByteArray := record [1, 0, 0, 4, 0x03, 0x03, 0, 0]  -- complete header (len24=4), body too short for a CH
@@ -302,6 +335,10 @@ def checks : List Check :=
     , ok := runUnkP256.st.negotiated.selectedGroup == some .secp256r1 && runUnkP256.st.handshake == .connected }
   , { name := "RFC 039: duplicate secp256r1 key_share rejected, never connected"
     , ok := runDupP256.st.handshake != .connected && runDupP256.st.handshake.isTerminal }
+  , { name := "RFC 039 §4.6: key_share group omitted from supported_groups → rejected"
+    , ok := runKsNotInSg.st.handshake != .connected && runKsNotInSg.st.handshake.isTerminal }
+  , { name := "RFC 039 §4.6: supported_groups present but no usable key_share → no-HRR fail"
+    , ok := runSgNoKs.st.handshake != .connected && runSgNoKs.st.handshake.isTerminal }
     -- negatives
   , { name := "malformed ClientHello fails, not connected"
     , ok := runMalformedCH.st.handshake.isTerminal && runMalformedCH.st.handshake != .connected }

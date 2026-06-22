@@ -131,14 +131,29 @@ def hasDupGroupIds (entries : List (UInt16 × ByteArray)) : Bool :=
   let ids := entries.map (·.fst)
   ids.any (fun x => (ids.filter (· == x)).length > 1)
 
+/-- The group ids in the client's `supported_groups` extension (0x000a), if present. The
+extension data is a u16-length-prefixed list of u16 `NamedGroup` codes, so drop the 2-byte
+list length and read the codes. `none` distinguishes an absent extension (no constraint) from
+a present-but-empty list (`some []`, which constrains away every `key_share`). -/
+def supportedGroupIds (exts : List RawExtension) : Option (List UInt16) :=
+  (findExt exts 0x000a).map (fun d => u16sOfBytes (d.extract 2 d.size))
+
 /-- The client's recognized ECDHE `key_share` offers, **in client order**, surfaced for the
 core to choose among (RFC 039 §4.3 — selection is the core's job, not the parser's). kroopt
 recognizes x25519 (group 0x001d, 32-byte share) and secp256r1 (group 0x0017, 65-byte
 uncompressed point `0x04 || X || Y`); each share's wire length (and the P-256 0x04 prefix) is
-validated here so a malformed share is rejected before negotiation (RFC 8446 §4.2.8). Yields
-`none` — a malformed ClientHello — when the extension is absent, structurally broken, carries a
-duplicate group id, or offers no recognized group (no acceptable `key_share` and, with no HRR,
-nothing to negotiate); otherwise a non-empty list. -/
+validated here so a malformed share is rejected before negotiation (RFC 8446 §4.2.8).
+
+Consistency with `supported_groups` (RFC 039 §4.6 / RFC 8446 §4.2.8): if `supported_groups`
+is present, **every** offered `key_share` group id must appear in it — a `key_share` for an
+omitted group is a contradiction and the ClientHello is rejected. If `supported_groups` is
+absent, `key_share` alone is authoritative (the constrained no-HRR profile). A group listed in
+`supported_groups` with no `key_share` is simply not selectable (no HRR); that surfaces as a
+clean selection failure downstream, not here.
+
+Yields `none` — a malformed ClientHello — when the extension is absent, structurally broken,
+carries a duplicate group id, contradicts `supported_groups`, or offers no recognized group
+(no acceptable `key_share` and, with no HRR, nothing to negotiate); otherwise a non-empty list. -/
 def findOfferedKeyShares (exts : List RawExtension) : Option (List (NamedGroup × ByteArray)) :=
   match findExt exts 51 with
   | none => none
@@ -149,7 +164,12 @@ def findOfferedKeyShares (exts : List RawExtension) : Option (List (NamedGroup �
           match (Reader.ofBytes entriesBytes).takeCountedItems maxKeyShares parseKeyShareEntry with
           | .error _ => none
           | .ok (entries, _) =>
+              let inconsistentWithSupportedGroups : Bool :=
+                match supportedGroupIds exts with
+                | none    => false
+                | some sg => entries.any (fun e => !(sg.contains e.fst))
               if hasDupGroupIds entries then none
+              else if inconsistentWithSupportedGroups then none
               else
                 let recognized : List (NamedGroup × ByteArray) :=
                   entries.filterMap (fun e =>

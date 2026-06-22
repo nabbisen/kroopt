@@ -5,6 +5,32 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.80.0-dev] — RFC 039 §4.6 (supported_groups / key_share consistency) — 2026-06-14
+
+The last negotiation-boundary feature of RFC 039: the parser now enforces consistency
+between the `key_share` and `supported_groups` extensions (RFC 8446 §4.2.8 / RFC 039 §4.6).
+
+### Parser (RFC 039 §4.6)
+- New `supportedGroupIds` reads the `supported_groups` extension (0x000a) as an `Option`
+  (absent vs present-but-empty are distinct).
+- `findOfferedKeyShares` now rejects a ClientHello in which **any** offered `key_share`
+  group id is absent from a *present* `supported_groups` — a `key_share` for an omitted
+  group is a contradiction (illegal parameter), so the core never selects such a group. When
+  `supported_groups` is absent, `key_share` remains authoritative (the constrained no-HRR
+  compatibility profile). A group listed in `supported_groups` with no usable `key_share` is
+  simply not selectable under no-HRR and surfaces as a clean handshake failure.
+
+### Tests
+- `kroopt-e2e-test` (**22**, +2): a `key_share` group omitted from `supported_groups` is
+  rejected; `supported_groups` present with no usable `key_share` fails cleanly (no HRR).
+- Live interop unchanged (20 checks): real OpenSSL/Python clients send a `supported_groups`
+  that contains their `key_share` group, so the consistency check accepts them.
+
+### Remaining for RFC 039 → done/
+safe negotiation tracing (§4.9 + `traceRedactsKeyShareBytes`), the P-256 point-validation
+tests (§8.12, incl. the off-curve provider-rejection case), alert-determinism (§8.14), the
+x25519-only-listener interop run (§8.16), and the doc refresh (§9).
+
 ## [0.79.0-dev] — RFC 039 §5.2 completion (no-disallowed-group proof) + selection-test breadth — 2026-06-14
 
 Completes the verification dimension of RFC 039 (acceptance item #17): all three §5
