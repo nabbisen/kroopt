@@ -24,8 +24,7 @@ def bytes (l : List UInt8) : ByteArray := ByteArray.mk l.toArray
 
 def vch : ValidClientHello :=
   { selectedSuite := .aes128GcmSha256
-    selectedGroup := .x25519
-    clientShare := bytes (List.replicate 32 0x07)
+    offeredShares := [(.x25519, bytes (List.replicate 32 0x07))]
     offeredSigSchemes := [.ed25519]
     sni := some (bytes [0x65, 0x78]) -- "ex"
     alpn := [bytes [0x68, 0x32]]

@@ -5,6 +5,43 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.78.0-dev] — RFC 039 Stages 4–5 (core group selection + authorization proofs) — 2026-06-14
+
+This closes the live gap left after Stages 2–3: the endpoint `namedGroups` policy was
+*validated* at startup but not *enforced* on selection, so an `[x25519]`-only endpoint did
+not actually restrict negotiation. Stage 4 moves ECDHE group selection out of the parser and
+into the verified core, gated on the resolved endpoint's policy; Stage 5 proves the
+selection is authorized.
+
+### Core selection (Stage 4, RFC 039 §4.3)
+- Parser no longer pre-selects a group. `findKeyShare` is replaced by `findOfferedKeyShares`,
+  which surfaces **all** recognized offered shares (`ValidClientHello.offeredShares :
+  List (NamedGroup × ByteArray)`, client order) and **rejects duplicate group ids** as a
+  malformed ClientHello (`hasDupGroupIds`, RFC 8446 §4.2.8 / RFC 039 §4.5).
+- New core primitives `groupPreference := [.x25519, .secp256r1]`, `shareFor?`, and the total
+  `selectGroup` (no `get!`): it walks the server preference and takes the first group that is
+  **both** endpoint-allowed and client-offered. `onClientHello` calls it against the resolved
+  endpoint's `namedGroups`; no overlap ⇒ clean `handshake_failure` (§4.8). A secp256r1-only
+  client now meets an `[x25519]`-only endpoint with a refusal instead of a P-256 negotiation.
+
+### Authorization proofs (Stage 5, RFC 039 §5)
+- `selectGroup_authorized` (§5.1): any group `selectGroup` returns is both `∈ allowed` and
+  backed by a share `∈ offered` — no path picks a group outside policy or fabricates a share.
+- `ecdhe_op_matches_selected_group` (§5.2): a P-256 ECDHE op is emitted by `onServerRandomDone`
+  only when the recorded `selectedGroup` is `secp256r1`.
+- Five existing proofs threaded through the new selection branch (`onClientHello_legal`, the
+  `hs_no_emit`/`hs_no_accept`/`hs_no_aeadOpen` handshake lemmas, and RecordPath's
+  `onClientHello_pp`). Axiom audit now covers **96** public theorems (whitelisted axioms only).
+
+### Tests
+- `kroopt-e2e-test` (**18**, +4): both-groups-offered prefers x25519 over client order;
+  duplicate `key_share` rejected; **x25519-only endpoint refuses a secp256r1-only client**
+  (policy enforced); and that refusal never records a negotiated P-256 group.
+
+### Tooling
+- `scripts/check-axioms.sh` theorem-name grep widened to accept Lean identifier characters
+  (`?!'`) so `?`-named public theorems are audited rather than silently aborting the gate.
+
 ## [0.77.0-dev] — RFC 039 finalized + Stages 2–3 (endpoint group policy + validation) — 2026-06-14
 
 RFC 039 (Named-Group Policy and Selection Enforcement) is approved-for-implementation

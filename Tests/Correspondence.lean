@@ -49,8 +49,8 @@ def hsIv  : ByteArray := Kroopt.Crypto.KeySchedule.trafficIv hsSecret
 -- transcript-prefix bytes the core carried in it (RFC 031 §3 — the core is the single transcript
 -- authority). The flow mirrors Tests.Handshake's synthetic drive.
 def vch : ValidClientHello :=
-  { selectedSuite := .aes128GcmSha256, selectedGroup := .x25519
-    clientShare := ByteArray.mk (Array.mkArray 32 0x07), offeredSigSchemes := [.ed25519]
+  { selectedSuite := .aes128GcmSha256
+    offeredShares := [(.x25519, ByteArray.mk (Array.mkArray 32 0x07))], offeredSigSchemes := [.ed25519]
     sni := some (ByteArray.mk #[0x65, 0x78]), alpn := [ByteArray.mk #[0x68, 0x32]]
     sessionId := ByteArray.empty }
 def s0core : State := State.initial ⟨0, 0⟩ ⟨0⟩ .sha256

@@ -65,6 +65,33 @@ def chMsgP256 : List UInt8 :=
   [1] ++ [0, (chBodyP256.length / 256).toUInt8, (chBodyP256.length % 256).toUInt8] ++ chBodyP256
 def chRecordP256 : ByteArray := record chMsgP256
 
+/-! ## A ClientHello offering BOTH x25519 and secp256r1 key_shares (x25519 listed
+first), and one with a DUPLICATE x25519 entry (RFC 8446 §4.2.8.2 forbids it). These
+exercise RFC 039: server preference picks x25519 over the client's order, and a
+duplicate group id is a malformed ClientHello. -/
+
+def keyShareEntryBoth : List UInt8 := keyShareEntry ++ keyShareEntryP256
+def extKeyShareBoth : List UInt8 :=
+  [0, 51] ++ u16be (keyShareEntryBoth.length + 2) ++ u16be keyShareEntryBoth.length ++ keyShareEntryBoth
+def extsBodyBoth : List UInt8 := extSupVer ++ extKeyShareBoth ++ extSigAlgs
+def chBodyBoth : List UInt8 :=
+  [0x03, 0x03] ++ (List.replicate 32 0xAA) ++ [0] ++
+  [0, 2, 0x13, 0x03] ++ [1, 0] ++ (u16be extsBodyBoth.length ++ extsBodyBoth)
+def chMsgBoth : List UInt8 :=
+  [1] ++ [0, (chBodyBoth.length / 256).toUInt8, (chBodyBoth.length % 256).toUInt8] ++ chBodyBoth
+def chRecordBoth : ByteArray := record chMsgBoth
+
+def keyShareEntryDup : List UInt8 := keyShareEntry ++ keyShareEntry
+def extKeyShareDup : List UInt8 :=
+  [0, 51] ++ u16be (keyShareEntryDup.length + 2) ++ u16be keyShareEntryDup.length ++ keyShareEntryDup
+def extsBodyDup : List UInt8 := extSupVer ++ extKeyShareDup ++ extSigAlgs
+def chBodyDup : List UInt8 :=
+  [0x03, 0x03] ++ (List.replicate 32 0xAA) ++ [0] ++
+  [0, 2, 0x13, 0x03] ++ [1, 0] ++ (u16be extsBodyDup.length ++ extsBodyDup)
+def chMsgDup : List UInt8 :=
+  [1] ++ [0, (chBodyDup.length / 256).toUInt8, (chBodyDup.length % 256).toUInt8] ++ chBodyDup
+def chRecordDup : ByteArray := record chMsgDup
+
 /-! ## Fake crypto provider (deterministic, purpose-aware) -/
 
 def fakeCrypto : CryptoOp → CryptoResult
@@ -135,6 +162,37 @@ def runE2EP256 : Driver :=
     [InputEvent.transportBytes ⟨0, 0⟩ chRecordP256,
      InputEvent.transportBytes ⟨0, 0⟩ clientFinishedRecord]
 
+/-- A both-groups-offered ClientHello against the default endpoint (allows both): the
+server preference (x25519 first) must win over the client's listing order, so x25519 is
+negotiated and the handshake completes (RFC 039 §4.3). -/
+def runE2EBoth : Driver :=
+  driveFuel 256 fresh
+    [InputEvent.transportBytes ⟨0, 0⟩ chRecordBoth,
+     InputEvent.transportBytes ⟨0, 0⟩ clientFinishedRecord]
+
+/-- A duplicate-group ClientHello: the parser rejects it as malformed (RFC 8446 §4.2.8 /
+RFC 039 §4.5), so it never reaches `connected`. -/
+def runDupKeyShare : Driver :=
+  driveFuel 16 fresh [InputEvent.transportBytes ⟨0, 0⟩ chRecordDup]
+
+/-- A hardened endpoint that allows only x25519 (`namedGroups := [.x25519]`). This is the
+profile RFC 039 makes *enforceable*: before Stage 4 it was validated at startup but ignored
+on selection. -/
+def x25519OnlyConfig : ValidatedServerConfig :=
+  { ValidatedServerConfig.baseline with
+    defaultEndpoint := ValidatedServerConfig.baseline.defaultEndpoint.map
+      (fun e => { e with namedGroups := [.x25519] }) }
+
+def freshX25519Only : Driver :=
+  { st := { State.initial ⟨0, 0⟩ ⟨0⟩ .sha256 with serverConfig := x25519OnlyConfig }
+    outbound := [], emitted := [], completed := false, errored := false }
+
+/-- The live-gap closure: a secp256r1-*only* client meets an x25519-only endpoint. The core
+finds no group both allowed and offered and fails with `handshake_failure` (RFC 039 §4.3/§4.8)
+— it must NOT negotiate P-256. -/
+def runP256ClientX25519OnlyServer : Driver :=
+  driveFuel 64 freshX25519Only [InputEvent.transportBytes ⟨0, 0⟩ chRecordP256]
+
 /-! ## Negative scenarios -/
 
 def malformedChRecord : ByteArray := record [1, 0, 0, 4, 0x03, 0x03, 0, 0]  -- complete header (len24=4), body too short for a CH
@@ -194,6 +252,15 @@ def checks : List Check :=
     , ok := runE2EP256.st.handshake == .connected }
   , { name := "secp256r1 ClientHello records the P-256 group in negotiation state"
     , ok := runE2EP256.st.negotiated.selectedGroup == some .secp256r1 }
+  , { name := "RFC 039: both groups offered, server preference picks x25519 (not client order)"
+    , ok := runE2EBoth.st.negotiated.selectedGroup == some .x25519 && runE2EBoth.st.handshake == .connected }
+  , { name := "RFC 039: duplicate key_share group is rejected, never connected"
+    , ok := runDupKeyShare.st.handshake != .connected && runDupKeyShare.st.handshake.isTerminal }
+  , { name := "RFC 039: x25519-only endpoint refuses a secp256r1-only client (policy enforced)"
+    , ok := runP256ClientX25519OnlyServer.st.handshake != .connected
+            && runP256ClientX25519OnlyServer.st.handshake.isTerminal }
+  , { name := "RFC 039: that refusal never negotiated P-256 (no unauthorized group)"
+    , ok := runP256ClientX25519OnlyServer.st.negotiated.selectedGroup == none }
     -- negatives
   , { name := "malformed ClientHello fails, not connected"
     , ok := runMalformedCH.st.handshake.isTerminal && runMalformedCH.st.handshake != .connected }

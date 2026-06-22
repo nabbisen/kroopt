@@ -17,7 +17,7 @@ trap 'rm -f "$AUDIT"' EXIT
   echo 'import Kroopt.Proofs'
   echo 'open Kroopt.Core.Proofs Kroopt.Core Kroopt.Parse Kroopt.Parse.Proofs Proofs'
   # Public theorems only (exclude `private theorem`).
-  grep -rhoE '^theorem [A-Za-z0-9_]+' Kroopt/Proofs/*.lean | awk '{print "#print axioms " $2}'
+  grep -rhoE "^theorem [A-Za-z0-9_?!']+" Kroopt/Proofs/*.lean | awk '{print "#print axioms " $2}'
 } > "$AUDIT"
 
 N=$(grep -c '#print axioms' "$AUDIT")

@@ -334,8 +334,15 @@ theorem onClientHello_pp
     · split at h
       · simp only [Except.ok.injEq, Prod.mk.injEq] at h
         obtain ⟨rfl, -⟩ := h; right; rfl
-      · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, -⟩ := h; left; rfl
+      · cases hsel : selectGroup vch.offeredShares
+            ((Option.map (fun x => x.namedGroups) (selectEndpoint s.serverConfig vch.sni)).getD []) with
+        | none =>
+          simp only [hsel, Except.ok.injEq, Prod.mk.injEq] at h
+          obtain ⟨rfl, -⟩ := h; right; rfl
+        | some gp =>
+          obtain ⟨selGroup, selShare⟩ := gp
+          simp only [hsel, State.allocOp, Except.ok.injEq, Prod.mk.injEq] at h
+          obtain ⟨rfl, -⟩ := h; left; rfl
   · simp only [Except.ok.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h; right; rfl
 

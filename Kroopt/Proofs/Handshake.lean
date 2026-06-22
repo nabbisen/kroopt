@@ -35,6 +35,86 @@ private theorem hsFail_legal (s : State) (a : AlertDescription) (e : TlsError)
   unfold legalEdge
   simp [hnt]
 
+/-! ## RFC 039 §5: named-group selection is authorized
+
+The core never negotiates a group outside the endpoint's policy, and never invents a
+share the client did not send. `selectGroup_authorized` is the §5.1 capstone — any group
+selection is simultaneously endpoint-allowed and client-offered — and
+`ecdhe_op_matches_selected_group` (§5.2) ties the actual ECDHE crypto op to the recorded
+group, so a P-256 ECDHE operation is requested only when P-256 was the selected group. -/
+
+/-- A share found for group `g` belongs to a pair the client actually offered: `shareFor?`
+returns a `find?` hit, and a hit is a member whose first component is `g` (RFC 039 §4.3). -/
+private theorem shareFor?_mem {g : NamedGroup} {offered : List (NamedGroup × ByteArray)} {sh : ByteArray}
+    (h : shareFor? g offered = some sh) : (g, sh) ∈ offered := by
+  unfold shareFor? at h
+  rw [Option.map_eq_some'] at h
+  obtain ⟨p, hfind, hsnd⟩ := h
+  obtain ⟨a, b⟩ := p
+  simp only [] at hsnd
+  have hpred := List.find?_some hfind
+  simp only [] at hpred
+  have hfst : a = g := of_decide_eq_true hpred
+  subst hfst; subst hsnd
+  exact List.mem_of_find?_eq_some hfind
+
+/-- RFC 039 §5.1: core group selection is authorized. Whatever group `selectGroup` returns
+is both in the endpoint's `allowed` policy and backed by a share the client offered. There is
+no execution path on which the core picks a group outside the policy or fabricates a share —
+which is precisely what makes an `[x25519]`-only endpoint refuse a secp256r1-only client. -/
+theorem selectGroup_authorized {offered : List (NamedGroup × ByteArray)} {allowed : List NamedGroup}
+    {g : NamedGroup} {sh : ByteArray}
+    (h : selectGroup offered allowed = some (g, sh)) :
+    g ∈ allowed ∧ (g, sh) ∈ offered := by
+  unfold selectGroup groupPreference at h
+  simp only [List.findSome?_cons, List.findSome?_nil] at h
+  by_cases hc1 : NamedGroup.x25519 ∈ allowed
+  · cases hsh1 : shareFor? NamedGroup.x25519 offered with
+    | some s1 =>
+      simp only [if_pos hc1, hsh1, Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, rfl⟩ := h
+      exact ⟨hc1, shareFor?_mem hsh1⟩
+    | none =>
+      by_cases hc2 : NamedGroup.secp256r1 ∈ allowed
+      · cases hsh2 : shareFor? NamedGroup.secp256r1 offered with
+        | some s2 =>
+          simp only [if_pos hc1, hsh1, if_pos hc2, hsh2, Option.some.injEq, Prod.mk.injEq] at h
+          obtain ⟨rfl, rfl⟩ := h
+          exact ⟨hc2, shareFor?_mem hsh2⟩
+        | none => simp only [if_pos hc1, hsh1, if_pos hc2, hsh2, reduceCtorEq] at h
+      · simp only [if_pos hc1, hsh1, if_neg hc2, reduceCtorEq] at h
+  · by_cases hc2 : NamedGroup.secp256r1 ∈ allowed
+    · cases hsh2 : shareFor? NamedGroup.secp256r1 offered with
+      | some s2 =>
+        simp only [if_neg hc1, if_pos hc2, hsh2, Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨rfl, rfl⟩ := h
+        exact ⟨hc2, shareFor?_mem hsh2⟩
+      | none => simp only [if_neg hc1, if_pos hc2, hsh2, reduceCtorEq] at h
+    · simp only [if_neg hc1, if_neg hc2, reduceCtorEq] at h
+
+/-- RFC 039 §5.2: the ECDHE operation matches the selected group. If `onServerRandomDone`
+emits a P-256 ECDHE op, then the recorded `selectedGroup` is `secp256r1` — the core never
+runs a P-256 ECDH for a connection on which it negotiated a different group. -/
+theorem ecdhe_op_matches_selected_group
+    (s s' : State) (random : ByteArray) (acts : List OutputAction)
+    (c : ConnId) (oid : OperationId) (peer : ByteArray)
+    (h : onServerRandomDone s random = .ok (s', acts))
+    (hmem : OutputAction.callCrypto c oid (CryptoOp.ecdheP256 peer) ∈ acts) :
+    s.negotiated.selectedGroup = some .secp256r1 := by
+  unfold onServerRandomDone at h
+  split at h
+  · simp only [State.allocOp, Except.ok.injEq, Prod.mk.injEq] at h
+    obtain ⟨-, rfl⟩ := h
+    split at hmem
+    · rename_i hsel; exact hsel
+    · simp only [List.mem_cons, List.not_mem_nil, or_false, OutputAction.callCrypto.injEq,
+        CryptoOp.ecdheX25519.injEq, reduceCtorEq, and_false] at hmem
+  · unfold hsFail at h
+    simp only [Except.ok.injEq, Prod.mk.injEq] at h
+    obtain ⟨-, rfl⟩ := h
+    simp only [List.mem_cons, List.not_mem_nil, or_false, OutputAction.callCrypto.injEq,
+      reduceCtorEq, or_self] at hmem
+
 /-- `onClientHello` moves along a legal edge (RFC 006 §9). -/
 theorem onClientHello_legal
     (s s' : State) (vch : ValidClientHello) (w : ByteArray) (acts : List OutputAction)
@@ -48,9 +128,17 @@ theorem onClientHello_legal
     · exact hsFail_legal _ _ _ _ _ h hnt
     · split at h
       · exact hsFail_legal _ _ _ _ _ h hnt
-      · simp only [State.allocOp, Except.ok.injEq, Prod.mk.injEq] at h
-        obtain ⟨hs, -⟩ := h
-        rw [← hs, hcond]; rfl
+      · cases hsel : selectGroup vch.offeredShares
+            ((Option.map (fun x => x.namedGroups) (selectEndpoint s.serverConfig vch.sni)).getD []) with
+        | none =>
+          simp only [hsel] at h
+          have hl := hsFail_legal _ _ _ _ _ h hnt
+          exact hl
+        | some gp =>
+          obtain ⟨selGroup, selShare⟩ := gp
+          simp only [hsel, State.allocOp, Except.ok.injEq, Prod.mk.injEq] at h
+          obtain ⟨hs, -⟩ := h
+          rw [← hs, hcond]; rfl
   · exact hsFail_legal _ _ _ _ _ h hnt
 
 /-- `onEcdheDone` moves along a legal edge. -/
@@ -235,11 +323,34 @@ private theorem hs_no_emit_onClientHello
     OutputAction.emitPlaintext c bb ∉ acts := by
   intro hmem
   unfold onClientHello hsFail at h
-  split at h <;> (try split at h) <;> (try split at h) <;>
-    (simp only [State.allocOp, Except.ok.injEq, Prod.mk.injEq] at h
-     obtain ⟨-, rfl⟩ := h
-     simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
-       or_self, or_false] at hmem)
+  split at h
+  · split at h
+    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+      obtain ⟨-, rfl⟩ := h
+      simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+        or_self, or_false] at hmem
+    · split at h
+      · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+        obtain ⟨-, rfl⟩ := h
+        simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+          or_self, or_false] at hmem
+      · cases hsel : selectGroup vch.offeredShares
+            ((Option.map (fun x => x.namedGroups) (selectEndpoint s.serverConfig vch.sni)).getD []) with
+        | none =>
+          simp only [hsel, Except.ok.injEq, Prod.mk.injEq] at h
+          obtain ⟨-, rfl⟩ := h
+          simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+            or_self, or_false] at hmem
+        | some gp =>
+          obtain ⟨selGroup, selShare⟩ := gp
+          simp only [hsel, State.allocOp, Except.ok.injEq, Prod.mk.injEq] at h
+          obtain ⟨-, rfl⟩ := h
+          simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+            or_self, or_false] at hmem
+  · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+    obtain ⟨-, rfl⟩ := h
+    simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+      or_self, or_false] at hmem
 
 private theorem hs_no_emit_onEcdheDone
     (s s' : State) (serverShare : ByteArray) (secret : SecretKeyHandle) (acts : List OutputAction)
@@ -395,11 +506,34 @@ private theorem hs_no_accept_generic_onClientHello
     OutputAction.acceptPlaintextBytes c n ∉ acts := by
   intro hmem
   unfold onClientHello hsFail at h
-  split at h <;> (try split at h) <;> (try split at h) <;>
-    (simp only [State.allocOp, Except.ok.injEq, Prod.mk.injEq] at h
-     obtain ⟨-, rfl⟩ := h
-     simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
-       or_self, or_false] at hmem)
+  split at h
+  · split at h
+    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+      obtain ⟨-, rfl⟩ := h
+      simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+        or_self, or_false] at hmem
+    · split at h
+      · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+        obtain ⟨-, rfl⟩ := h
+        simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+          or_self, or_false] at hmem
+      · cases hsel : selectGroup vch.offeredShares
+            ((Option.map (fun x => x.namedGroups) (selectEndpoint s.serverConfig vch.sni)).getD []) with
+        | none =>
+          simp only [hsel, Except.ok.injEq, Prod.mk.injEq] at h
+          obtain ⟨-, rfl⟩ := h
+          simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+            or_self, or_false] at hmem
+        | some gp =>
+          obtain ⟨selGroup, selShare⟩ := gp
+          simp only [hsel, State.allocOp, Except.ok.injEq, Prod.mk.injEq] at h
+          obtain ⟨-, rfl⟩ := h
+          simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+            or_self, or_false] at hmem
+  · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+    obtain ⟨-, rfl⟩ := h
+    simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+      or_self, or_false] at hmem
 
 private theorem hs_no_accept_onEcdheDone
     (s s' : State) (serverShare : ByteArray) (secret : SecretKeyHandle) (acts : List OutputAction)
@@ -552,11 +686,34 @@ private theorem hs_no_aeadOpen_onClientHello
     OutputAction.callCrypto c oid (CryptoOp.aeadOpen meta aad ct) ∉ acts := by
   intro hmem
   unfold onClientHello hsFail at h
-  split at h <;> (try split at h) <;> (try split at h) <;>
-    (simp only [State.allocOp, Except.ok.injEq, Prod.mk.injEq] at h
-     obtain ⟨-, rfl⟩ := h
-     simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
-       or_self, or_false, and_false, OutputAction.callCrypto.injEq] at hmem)
+  split at h
+  · split at h
+    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+      obtain ⟨-, rfl⟩ := h
+      simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+        or_self, or_false, and_false, OutputAction.callCrypto.injEq] at hmem
+    · split at h
+      · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+        obtain ⟨-, rfl⟩ := h
+        simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+          or_self, or_false, and_false, OutputAction.callCrypto.injEq] at hmem
+      · cases hsel : selectGroup vch.offeredShares
+            ((Option.map (fun x => x.namedGroups) (selectEndpoint s.serverConfig vch.sni)).getD []) with
+        | none =>
+          simp only [hsel, Except.ok.injEq, Prod.mk.injEq] at h
+          obtain ⟨-, rfl⟩ := h
+          simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+            or_self, or_false, and_false, OutputAction.callCrypto.injEq] at hmem
+        | some gp =>
+          obtain ⟨selGroup, selShare⟩ := gp
+          simp only [hsel, State.allocOp, Except.ok.injEq, Prod.mk.injEq] at h
+          obtain ⟨-, rfl⟩ := h
+          simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+            or_self, or_false, and_false, OutputAction.callCrypto.injEq] at hmem
+  · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+    obtain ⟨-, rfl⟩ := h
+    simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+      or_self, or_false, and_false, OutputAction.callCrypto.injEq] at hmem
 
 private theorem hs_no_aeadOpen_onClientFinishedBytes
     (s s' : State) (cf : ByteArray) (acts : List OutputAction)

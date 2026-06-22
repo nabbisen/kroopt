@@ -123,12 +123,23 @@ def offersTls13 (exts : List RawExtension) : Bool :=
       let body := d.extract 1 d.size
       (u16sOfBytes body).contains 0x0304
 
-/-- Extract the client's best-supported ECDHE `key_share`. kroopt supports x25519
-(group 0x001d, 32-byte share) and secp256r1 (group 0x0017, 65-byte uncompressed point
-`0x04 || X || Y`), preferring x25519. The `key_share` extension data is a
-u16-length-prefixed list of `KeyShareEntry`; the chosen point's wire length is validated
-here so a malformed share is rejected before negotiation (RFC 8446 §4.2.8). -/
-def findKeyShare (exts : List RawExtension) : Option (NamedGroup × ByteArray) :=
+/-- Does any `key_share` group id appear more than once? RFC 8446 §4.2.8 forbids a client
+from sending two `KeyShareEntry`s for the same group; such a ClientHello is malformed and the
+parser rejects it (rather than silently taking the first), so the core only ever sees a
+duplicate-free offer (RFC 039 §4.5). -/
+def hasDupGroupIds (entries : List (UInt16 × ByteArray)) : Bool :=
+  let ids := entries.map (·.fst)
+  ids.any (fun x => (ids.filter (· == x)).length > 1)
+
+/-- The client's recognized ECDHE `key_share` offers, **in client order**, surfaced for the
+core to choose among (RFC 039 §4.3 — selection is the core's job, not the parser's). kroopt
+recognizes x25519 (group 0x001d, 32-byte share) and secp256r1 (group 0x0017, 65-byte
+uncompressed point `0x04 || X || Y`); each share's wire length (and the P-256 0x04 prefix) is
+validated here so a malformed share is rejected before negotiation (RFC 8446 §4.2.8). Yields
+`none` — a malformed ClientHello — when the extension is absent, structurally broken, carries a
+duplicate group id, or offers no recognized group (no acceptable `key_share` and, with no HRR,
+nothing to negotiate); otherwise a non-empty list. -/
+def findOfferedKeyShares (exts : List RawExtension) : Option (List (NamedGroup × ByteArray)) :=
   match findExt exts 51 with
   | none => none
   | some d =>
@@ -138,15 +149,16 @@ def findKeyShare (exts : List RawExtension) : Option (NamedGroup × ByteArray) :
           match (Reader.ofBytes entriesBytes).takeCountedItems maxKeyShares parseKeyShareEntry with
           | .error _ => none
           | .ok (entries, _) =>
-              let x25519 : Option (NamedGroup × ByteArray) :=
-                match (entries.find? (fun e => e.fst == 0x001d)).map Prod.snd with
-                | some s => if s.size == 32 then some (.x25519, s) else none
-                | none   => none
-              let p256 : Option (NamedGroup × ByteArray) :=
-                match (entries.find? (fun e => e.fst == 0x0017)).map Prod.snd with
-                | some s => if s.size == 65 ∧ s.get! 0 == 0x04 then some (.secp256r1, s) else none
-                | none   => none
-              x25519.orElse (fun _ => p256)
+              if hasDupGroupIds entries then none
+              else
+                let recognized : List (NamedGroup × ByteArray) :=
+                  entries.filterMap (fun e =>
+                    if e.fst == 0x001d then
+                      (if e.snd.size == 32 then some (.x25519, e.snd) else none)
+                    else if e.fst == 0x0017 then
+                      (if e.snd.size == 65 ∧ e.snd.get! 0 == 0x04 then some (.secp256r1, e.snd) else none)
+                    else none)
+                if recognized.isEmpty then none else some recognized
 
 /-- Pick the first offered cipher suite kroopt supports. -/
 def selectSuite (offered : List UInt16) : Option CipherSuite :=
@@ -203,14 +215,13 @@ def parseClientHello (input : ByteArray) : Except ParseError (Kroopt.Core.WireBo
              | .ok (exts, _) => pure exts
   if hasDuplicateExt exts then throw .valueOutOfRange
   if !offersTls13 exts then throw .valueOutOfRange
-  let some (grp, share) := findKeyShare exts | throw .valueOutOfRange
+  let some offeredShares := findOfferedKeyShares exts | throw .valueOutOfRange
   let some suite := selectSuite (u16sOfBytes suitesBytes) | throw .valueOutOfRange
   let offeredSchemes := recognizedSigSchemes (clientSigSchemeCodes exts)
   if offeredSchemes.isEmpty then throw .valueOutOfRange
   let vch : ValidClientHello :=
     { selectedSuite := suite
-      selectedGroup := grp
-      clientShare := share
+      offeredShares := offeredShares
       offeredSigSchemes := offeredSchemes
       sni := (findExt exts 0).bind parseSni
       alpn := (findExt exts 16).map parseAlpn |>.getD []

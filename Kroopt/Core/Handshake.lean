@@ -86,8 +86,12 @@ TLS 1.3 offered, an acceptable suite, an X25519 `key_share` present, a compatibl
 signature scheme, no duplicate extensions, no early data. -/
 structure ValidClientHello where
   selectedSuite : CipherSuite
-  selectedGroup : NamedGroup
-  clientShare : ByteArray
+  /-- The ECDHE `key_share` groups the client offered that kroopt recognizes (x25519, secp256r1),
+  each paired with its share bytes, in client order. Non-empty (the parser rejects a ClientHello
+  with no recognized `key_share` and rejects duplicate group entries, RFC 8446 §4.2.8). The
+  *selected* group is chosen in the core against the endpoint's `namedGroups` policy (RFC 039
+  §4.3), never in the parser. -/
+  offeredShares : List (NamedGroup × ByteArray)
   /-- The signature schemes the client offered that kroopt recognizes (RFC 8446 §4.2.3), in client
   order. Non-empty (the parser rejects a ClientHello with no recognized scheme). The *presented*
   scheme is chosen in the core against the selected certificate's capabilities. -/
@@ -134,6 +138,40 @@ resets the sequence; the real HKDF-derived handles arrive at M6). -/
 def installEpoch (e : Epoch) : EpochState :=
   { epoch := e, seq := SeqNo.zero, keysInstalled := true }
 
+/-! ## ECDHE named-group selection (RFC 039 §4.3)
+
+Group selection lives in the verified core, not the parser: the parser surfaces the
+client's recognized offered shares (`ValidClientHello.offeredShares`), and the core
+intersects them with the resolved endpoint's `namedGroups` policy under a fixed server
+preference. This is what makes a hardened `[x25519]`-only endpoint actually refuse a
+secp256r1-only client (the policy is *enforced* on selection, not merely validated at
+startup). `selectGroup` is total — no `get!`, no panic on the empty/no-overlap case — and
+its result is provably authorized (`Kroopt.Proofs.selectGroup_authorized`): a returned group
+is always both endpoint-allowed and client-offered. -/
+
+/-- The server's fixed ECDHE group preference (RFC 039 §4.3): x25519 first, then secp256r1.
+Selection walks this order and takes the first group that is both endpoint-allowed and offered
+by the client, so server preference — not client order — decides ties. -/
+def groupPreference : List NamedGroup := [.x25519, .secp256r1]
+
+/-- The client's share bytes for group `g`, if it offered one (RFC 039 §4.3). -/
+def shareFor? (g : NamedGroup) (offered : List (NamedGroup × ByteArray)) : Option ByteArray :=
+  (offered.find? (fun p => decide (p.fst = g))).map (·.snd)
+
+/-- Select the ECDHE group and its client share by walking the server `groupPreference`
+and taking the first group that is **both** in the endpoint's `allowed` policy and present
+in the client's `offered` shares (RFC 039 §4.3). Total: yields `none` when no preferred group
+is simultaneously allowed and offered (the caller maps this to a `handshake_failure`, RFC 039
+§4.8). By construction the result is authorized — see `Kroopt.Proofs.selectGroup_authorized`. -/
+def selectGroup (offered : List (NamedGroup × ByteArray)) (allowed : List NamedGroup)
+    : Option (NamedGroup × ByteArray) :=
+  groupPreference.findSome? (fun g =>
+    if g ∈ allowed then
+      match shareFor? g offered with
+      | some sh => some (g, sh)
+      | none    => none
+    else none)
+
 /-! ## Transitions (RFC 006 §10) -/
 
 /-- `start → requestedEcdhe`. Record the negotiated parameters, commit the exact
@@ -161,15 +199,24 @@ def onClientHello (s : State) (vch : ValidClientHello) (chWire : ByteArray) : Hs
       negotiateAlpn s.serverConfig.alpnMode (vch.alpn.map AlpnProtocol.mk) e.allowedAlpn)
     let cert := ep.map (·.chain)
     let certDer := (ep.map (·.der)).getD (ByteArray.mk #[])
+    -- RFC 039 §4.3: choose the ECDHE group in the core by intersecting the client's offered
+    -- shares with the resolved endpoint's `namedGroups` policy under the server preference. No
+    -- overlap ⇒ no group both endpoint-allowed and client-offered ⇒ clean handshake_failure
+    -- (§4.8), never a fallback to an unauthorized group. A hardened `[x25519]`-only endpoint
+    -- therefore refuses a secp256r1-only client here rather than negotiating P-256.
+    let allowed := (ep.map (·.namedGroups)).getD []
+    match selectGroup vch.offeredShares allowed with
+    | none => hsFail s .handshakeFailure (.protocol .unsupportedGroup)
+    | some (selGroup, selShare) =>
     let s := { s with
       negotiated := { selectedSuite := some vch.selectedSuite
-                      selectedGroup := some vch.selectedGroup
+                      selectedGroup := some selGroup
                       selectedSigScheme := some sigScheme
                       selectedSni := vch.sni
                       selectedAlpn := alpn
                       selectedCert := cert
                       serverShare := none
-                      clientShare := some vch.clientShare
+                      clientShare := some selShare
                       serverRandom := none
                       selectedCertDer := certDer
                       clientSessionId := vch.sessionId }
