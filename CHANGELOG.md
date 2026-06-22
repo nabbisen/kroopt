@@ -5,6 +5,30 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.58.0-dev] — RFC (v0.4 operational polish): HTTP/1.1 keep-alive — multi-request connections — 2026-06-14
+
+Removes the one-request-per-handshake limitation: a single TLS connection now serves **many HTTP
+requests** (HTTP/1.1 keep-alive), so real clients stop paying a full handshake per request. This is an
+**integration-layer** change — the kroopt **core is unchanged** (94 theorems, axiom profile untouched):
+its application-data send/recv path already handled multiple records, and this increment exercises that
+proven path — including the read/write sequence-number monotonicity the core proves — live under
+sustained traffic. The serving logic lives in the kroopt-iotakt driver.
+
+- **kroopt-iotakt driver.** `tryServe` now responds and leaves the connection in `connected` rather
+  than closing; the response carries `Connection: keep-alive`. Subsequent requests arrive as further
+  readable events and are served the same way. The connection closes when the client sends
+  `close_notify`/EOF (the existing terminal path closes and counts it) or when a per-connection bound
+  `maxKeepAlive = 100` is reached (graceful `close_notify`). A `served` counter on `ConnState` enforces
+  the bound — bounded everything, RFC 019 ethos.
+- **Live validation.** curl issuing several URLs to the same host completes them over **one TCP/TLS
+  connection** (`num_connects = 1`, then `0`), and the driver logs N `HTTP_REQ`/`HTTP_RESP` pairs on a
+  single fd followed by one `CONN_CLOSED (served N request(s))`. Verified across all three cert
+  profiles (Ed25519, ECDSA-P256, RSA-PSS): 4 requests per connection, every response HTTP 200.
+- **kroopt core.** No change; all gates green (94 theorems, deps/hygiene clean).
+
+Known limitation: request framing is per-record (sequential, non-pipelined clients), which covers
+curl/browser keep-alive; HTTP pipelining and a request split across records are future refinements.
+
 ## [0.57.0-dev] — RFC (v0.4 breadth): RSA-PSS LIVE — server-auth triad complete — 2026-06-14
 
 Turns RSA-PSS on for live handshakes, completing the TLS 1.3 server-auth triad: **Ed25519, ECDSA-P256,
