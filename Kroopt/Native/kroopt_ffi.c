@@ -147,6 +147,58 @@ LEAN_EXPORT lean_object *kroopt_ffi_hmac256(b_lean_obj_arg key, b_lean_obj_arg m
   return r;
 }
 
+/* HMAC-SHA384 (48-byte tag) — direct HACL primitive. */
+LEAN_EXPORT lean_object *kroopt_ffi_hmac384(b_lean_obj_arg key, b_lean_obj_arg msg) {
+  if (!len_u32_ok(key) || !len_u32_ok(msg)) return mk_ba(0);
+  lean_object *r = mk_ba(48);
+  Hacl_HMAC_compute_sha2_384(lean_sarray_cptr(r), ba_ptr(key), (uint32_t)ba_len(key),
+                             ba_ptr(msg), (uint32_t)ba_len(msg));
+  return r;
+}
+
+/* HKDF-Extract-SHA384 (RFC 5869): PRK = HMAC-Hash(salt, IKM). HACL ships HKDF for SHA-256/512 but
+ * not SHA-384, so kroopt builds the SHA-384 HKDF on the verified HMAC-SHA384 primitive exactly as
+ * HACL builds its own (extract is a single HMAC). 48-byte output. */
+LEAN_EXPORT lean_object *kroopt_ffi_hkdf_extract384(b_lean_obj_arg salt, b_lean_obj_arg ikm) {
+  if (!len_u32_ok(salt) || !len_u32_ok(ikm)) return mk_ba(0);
+  lean_object *r = mk_ba(48);
+  Hacl_HMAC_compute_sha2_384(lean_sarray_cptr(r), ba_ptr(salt), (uint32_t)ba_len(salt),
+                             ba_ptr(ikm), (uint32_t)ba_len(ikm));
+  return r;
+}
+
+/* HKDF-Expand-SHA384 (RFC 5869): OKM = T(1) | T(2) | ... truncated to len, where
+ * T(i) = HMAC(PRK, T(i-1) | info | i). The iterated-HMAC construction HACL uses internally for its
+ * 256/512 HKDF, here over HMAC-SHA384 (HashLen = 48). Fails closed on len > 255*48 (RFC 5869 bound).*/
+LEAN_EXPORT lean_object *kroopt_ffi_hkdf_expand384(b_lean_obj_arg prk, b_lean_obj_arg info,
+                                                   uint32_t len) {
+  if (!len_u32_ok(prk) || !len_u32_ok(info)) return mk_ba(0);
+  const uint32_t HL = 48;
+  if (len > 255U * HL) return mk_ba(0);
+  lean_object *r = mk_ba(len);
+  uint8_t *okm = lean_sarray_cptr(r);
+  uint8_t *prkp = ba_ptr(prk); uint32_t prklen = (uint32_t)ba_len(prk);
+  uint8_t *infop = ba_ptr(info); size_t infolen = ba_len(info);
+  uint8_t *text = (uint8_t *)malloc((size_t)HL + infolen + 1);
+  if (!text) return mk_ba(0);
+  uint8_t Ti[48];
+  uint32_t Ti_len = 0, done = 0; uint8_t i = 0;
+  while (done < len) {
+    i++;
+    uint32_t off = 0;
+    memcpy(text + off, Ti, Ti_len); off += Ti_len;
+    memcpy(text + off, infop, infolen); off += (uint32_t)infolen;
+    text[off++] = i;
+    Hacl_HMAC_compute_sha2_384(Ti, prkp, prklen, text, off);
+    Ti_len = HL;
+    uint32_t take = (len - done < HL) ? (len - done) : HL;
+    memcpy(okm + done, Ti, take);
+    done += take;
+  }
+  free(text);
+  return r;
+}
+
 LEAN_EXPORT lean_object *kroopt_ffi_ed25519_public(b_lean_obj_arg priv) {
   if (ba_len(priv) != 32) return mk_ba(0);
   lean_object *r = mk_ba(32);

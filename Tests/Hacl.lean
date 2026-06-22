@@ -68,6 +68,7 @@ def hkdf_prk := "077709362c2e32df0ddc3f0dc47bba6390b6c73bb50f9c3122ec844ad7c2b3e
 def hkdf_okm := "3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf34007208d5b887185865"
 -- RFC 4231 §4.2 Test Case 1 (HMAC-SHA-256): key = 20×0x0b, data = ASCII "Hi There".
 def hmac_tc1 := "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7"
+def hmac384_tc1 := "afd03944d84895626b0825f4ab46907f15f9dadbe4101ec682aa034c7cebc59cfaea9ea9076ede7f4af152e8b2fa9cb6"
 
 def main : IO UInt32 := do
   -- AEAD round-trip (self-consistency / tamper rejection — NOT a published vector;
@@ -207,6 +208,18 @@ def main : IO UInt32 := do
                          (aes256_sealed.set! 0 ((aes256_sealed.get! 0) ^^^ 1))
   let aes256_badKey := aes256GcmOpen (rep 31 0x00) aes_iv aes_aad aes256_sealed
 
+  -- SHA-384 HKDF/HMAC. RFC 4231 TC1 anchors the HMAC-SHA384 primitive; HACL ships no SHA-384 HKDF,
+  -- so kroopt builds it on that primitive (RFC 5869) and we verify the construction against it:
+  -- Extract is one HMAC; Expand is iterated HMAC with T(i) = HMAC(PRK, T(i-1) || info || i).
+  let h384_salt := hexToBytes "000102030405060708090a0b0c"
+  let h384_ikm  := rep 22 0x0b
+  let h384_prk  := hkdfExtract384 h384_salt h384_ikm
+  let h384_info := hexToBytes "f0f1f2f3f4f5f6f7f8f9"
+  let h384_T1   := hmac384 h384_prk (h384_info ++ ByteArray.mk #[(0x01 : UInt8)])
+  let h384_T2   := hmac384 h384_prk (h384_T1 ++ h384_info ++ ByteArray.mk #[(0x02 : UInt8)])
+  let h384_exp48 := hkdfExpand384 h384_prk h384_info 48
+  let h384_exp80 := hkdfExpand384 h384_prk h384_info 80
+
   let checks : List Check :=
     [ { name := "SHA-256(\"abc\") matches FIPS 180-4 vector"
       , ok := bytesEq (sha256 "abc".toUTF8) (hexToBytes sha256_abc) }
@@ -286,6 +299,16 @@ def main : IO UInt32 := do
                       (hexToBytes hkdf_okm) }
     , { name := "HMAC-SHA256 matches RFC 4231 TC1"
       , ok := bytesEq (hmac256 (rep 20 0x0b) "Hi There".toUTF8) (hexToBytes hmac_tc1) }
+    , { name := "HMAC-SHA384 matches RFC 4231 TC1"
+      , ok := bytesEq (hmac384 (rep 20 0x0b) "Hi There".toUTF8) (hexToBytes hmac384_tc1) }
+    , { name := "HKDF-Extract-SHA384 is HMAC-SHA384(salt, IKM) (RFC 5869)"
+      , ok := bytesEq h384_prk (hmac384 h384_salt h384_ikm) }
+    , { name := "HKDF-Expand-SHA384 first block is HMAC(PRK, info || 0x01) (RFC 5869)"
+      , ok := bytesEq h384_exp48 h384_T1 }
+    , { name := "HKDF-Expand-SHA384 chains T(2) = HMAC(PRK, T1 || info || 0x02)"
+      , ok := bytesEq (h384_exp80.extract 48 80) (h384_T2.extract 0 32) }
+    , { name := "HKDF-Expand-SHA384 returns the requested output length"
+      , ok := h384_exp48.size == 48 ∧ h384_exp80.size == 80 }
     , { name := "Ed25519 sign/verify round-trips"
       , ok := edOk }
     , { name := "Ed25519 rejects a signature over a different message"

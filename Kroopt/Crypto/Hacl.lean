@@ -93,6 +93,19 @@ opaque hkdfExpand256 (prk info : ByteArray) (len : UInt32) : ByteArray
 @[extern "kroopt_ffi_hmac256"]
 opaque hmac256 (key msg : ByteArray) : ByteArray
 
+/-- HMAC-SHA384 (48-byte tag). -/
+@[extern "kroopt_ffi_hmac384"]
+opaque hmac384 (key msg : ByteArray) : ByteArray
+
+/-- HKDF-Extract-SHA384 (48-byte PRK). HACL ships no SHA-384 HKDF, so kroopt builds it on the
+verified HMAC-SHA384 primitive (extract is a single HMAC; RFC 5869). -/
+@[extern "kroopt_ffi_hkdf_extract384"]
+opaque hkdfExtract384 (salt ikm : ByteArray) : ByteArray
+
+/-- HKDF-Expand-SHA384 (RFC 5869 iterated HMAC over HMAC-SHA384). -/
+@[extern "kroopt_ffi_hkdf_expand384"]
+opaque hkdfExpand384 (prk info : ByteArray) (len : UInt32) : ByteArray
+
 @[extern "kroopt_ffi_ed25519_public"]
 opaque ed25519Public (priv : ByteArray) : ByteArray
 

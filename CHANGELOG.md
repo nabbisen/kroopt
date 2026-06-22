@@ -5,6 +5,46 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.70.0-dev] — SHA-384 HKDF/HMAC primitive layer (toward AES-256-GCM-SHA384) — 2026-06-14
+
+The first step toward `TLS_AES_256_GCM_SHA384`, the one remaining suite whose key schedule differs
+(SHA-384 changes the HKDF hash and the Finished/secret lengths from 32 to 48 bytes). This increment
+lands and validates the SHA-384 HKDF/HMAC primitives; the hash-parameterized key schedule and the
+negotiation come next, mirroring the AES-GCM sequence (0.66 primitives → 0.67/0.68 plumbing → 0.69
+negotiation).
+
+HACL ships HKDF for SHA-256 and SHA-512 but **not SHA-384** — though it does ship the
+`HMAC-SHA384` primitive. Since HKDF is exactly the iterated-HMAC construction (RFC 5869) — the same
+way HACL builds its own HKDF-256/512 internally — kroopt builds SHA-384 HKDF on the verified
+HMAC-SHA384 primitive.
+
+### This increment (TESTED)
+- `Kroopt/Native/kroopt_ffi.c`: `kroopt_ffi_hmac384` (direct `Hacl_HMAC_compute_sha2_384`),
+  `kroopt_ffi_hkdf_extract384` (HKDF-Extract = one HMAC), and `kroopt_ffi_hkdf_expand384`
+  (RFC 5869 iterated HMAC, `T(i) = HMAC(PRK, T(i-1) || info || i)`, HashLen 48, fail-closed on
+  `len > 255*48`). Same fail-closed length validation as the SHA-256 wrappers.
+- `Kroopt/Crypto/Hacl.lean`: `hmac384`, `hkdfExtract384`, `hkdfExpand384` externs.
+
+### Tests
+- `kroopt-hacl-test` (+5 checks, **55** total): HMAC-SHA384 matches the published RFC 4231 TC1
+  vector (anchoring the primitive); then the HKDF-384 construction is verified against that anchored
+  primitive — Extract equals `HMAC(salt, IKM)`, Expand's first block equals `HMAC(PRK, info||0x01)`,
+  Expand chains `T(2) = HMAC(PRK, T1||info||0x02)`, and the output length is honored. This checks the
+  full iterated-HMAC logic against a vector-anchored HMAC.
+
+### Trust posture
+- HMAC-SHA384 is an ASSUMED HACL primitive (anchored to RFC 4231). The SHA-384 HKDF *construction*
+  is kroopt's (HACL ships no SHA-384 HKDF) and is therefore TESTED rather than ASSUMED — verified to
+  be the exact RFC 5869 iterated-HMAC construction over the anchored primitive. SHA-256 HKDF
+  continues to use HACL's own HKDF directly. 94 public theorems unchanged.
+
+### Remaining for AES-256-GCM-SHA384
+1. Hash-parameterize `Kroopt/Crypto/KeySchedule.lean` (extract/expand/deriveSecret/finishedKey/
+   emptyHash by `HashAlgorithm`) and thread the suite's hash through `RealProvider.submit` and the
+   core transcript hash.
+2. Recognize `0x1302` in `suiteOfU16`, advertise the suite + SHA-384 in `realCapabilities`, and
+   validate end-to-end (deterministic + OpenSSL `-ciphersuites TLS_AES_256_GCM_SHA384`).
+
 ## [0.69.0-dev] — AES-128-GCM-SHA256 negotiated + served end-to-end (real OpenSSL interop) — 2026-06-14
 
 The payoff of 0.66–0.68. `TLS_AES_128_GCM_SHA256` is now a fully negotiable, fully served suite: the
