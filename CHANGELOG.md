@@ -5,6 +5,42 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.84.0-dev] — RFC 037 §6: inbound alert parsing (close_notify vs. fatal) — 2026-06-15
+
+Inbound TLS 1.3 alerts are now parsed and dispatched deterministically instead of being
+collapsed to a graceful close. Previously **every** inbound alert — including a peer's *fatal*
+alert — was treated as `close_notify` and routed to a graceful close; a fatal alert now fails
+the connection. (RFC 037 §6 / RFC 8446 §6.2; RFC 037 remains in `proposed/` — §4.1 crypto-op
+budget enforcement is still pending.)
+
+### Core
+- New `onInboundAlert` (`Kroopt/Core/RecordPath.lean`) decodes the two-byte alert
+  `[level, description]` and dispatches: `close_notify` (description `0`) begins a graceful
+  peer close (unchanged); **any other alert is fatal** in TLS 1.3 regardless of the level byte
+  — the connection moves to `failed`, records the received description in
+  `closeState := fatalReceived`, and tears down abortively *without* sending a response alert
+  (the peer has already aborted). A payload that is not exactly two bytes is a decode error.
+- All three inbound-alert sites (one plaintext, two encrypted/`aeadOpened`) now route through
+  `onInboundAlert`; the deferred "full policy at M9" stub is retired.
+- New total decoder `AlertDescription.ofByte` (`Kroopt/Error.lean`) maps standard alert codes
+  to descriptions for recording the received alert.
+
+### Proofs
+- The no-unauthenticated-plaintext headline (`buffered_plaintext_authenticated` /
+  `buffered_plaintext_provenance`) is preserved across the new path via
+  `onInboundAlert_no_new_plaintext` (the handler never *newly* buffers plaintext — it clears
+  `pendingPlainOut` or leaves it untouched). Action-discipline (`no_emit` / `no_accept`) is
+  preserved via `onInboundAlert_no_emit` / `onInboundAlert_no_accept`; the crypto-op
+  separation/nonce proofs unfold the handler to discharge its concrete leaves. All new lemmas
+  are private — the axiom gate still audits **98** public theorems, no `sorryAx`.
+
+### Tests
+- `kroopt-close-test` (**23**, +4): inbound fatal alert → terminal + `fatalReceived` +
+  abortive `closeTransport`; a non-`close_notify` alert is never a graceful close; a malformed
+  (non-two-byte) alert is a decode error; `AlertDescription.ofByte` decodes known codes and
+  rejects unknown ones. The existing inbound-`close_notify` → `receivedCloseNotify` check is
+  unchanged.
+
 ## [0.83.0-dev] — RFC 039 Issue 3 hygiene: fatalize defensive crypto-failure arms — 2026-06-15
 
 Closes the deferred hygiene follow-up from the 0.82.0-dev closure review (RFC 039 Issue 3).

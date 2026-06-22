@@ -48,6 +48,26 @@ def recordFailAlert (s : State) (a : AlertDescription) (e : TlsError) : RecordSt
        [ OutputAction.failWithAlert s.connId a,
          OutputAction.reportError s.connId e ])
 
+/-- Decode and dispatch an inbound TLS 1.3 alert (RFC 037 §6 / RFC 8446 §6.2). An alert is
+exactly two bytes `[level, description]`. `close_notify` (description `0`) begins a graceful
+peer close. **Every other alert is fatal in TLS 1.3** regardless of the level byte: the
+connection fails — recording the received description in `closeState := fatalReceived` — and
+is torn down abortively, *without* sending a response alert (the peer has already aborted). A
+payload that is not exactly two bytes is a decode error. This emits no application plaintext
+and accepts none. -/
+def onInboundAlert (s : State) (alertBytes : ByteArray) : RecordStepResult :=
+  if alertBytes.size == 2 then
+    if alertBytes.get! 1 == 0 then
+      .ok ({ s with handshake := .closing, closeState := .receivedCloseNotify },
+           [OutputAction.closeTransport s.connId .graceful])
+    else
+      let a := (AlertDescription.ofByte (alertBytes.get! 1)).getD .internalError
+      .ok ({ s with handshake := .failed a, closeState := .fatalReceived a,
+                    pendingPlainOut := none },
+           [OutputAction.closeTransport s.connId .abortive])
+  else
+    recordFailAlert s (alertForParseError .truncated) (.parse .truncated)
+
 /-- AEAD metadata for a read-direction protected record. The epoch follows the
 installed read epoch: `handshake` while opening a protected handshake record (the
 client Finished) before `connected`, `application` afterwards (RFC 004 §6.5). -/
@@ -166,9 +186,8 @@ def handleTransportBytes (s0 : State) (b : ByteArray) : RecordStepResult :=
               | some (msg, rest) =>
                   handshakeOnPlaintextRecord { s with handshakeReasm := rest } msg
       | .alert =>
-          -- Minimal inbound-alert handling: begin close (full policy at M9).
-          .ok ({ s with handshake := .closing, closeState := .receivedCloseNotify },
-               [OutputAction.closeTransport s.connId .graceful])
+          -- Inbound alert (plaintext path): parse level/description and dispatch (RFC 037 §6).
+          onInboundAlert s body
       | .invalid =>
           recordFailAlert s (alertForParseError .invalidContentType) (.parse .invalidContentType)
 
@@ -196,11 +215,7 @@ def handleCryptoResultCorrelated (s : State) (op : OperationId) (r : CryptoResul
                     .ok ((s.clearOp op |> fun s =>
                           { s with pendingPlainOut := some inner.content
                                    readEpoch := { s.readEpoch with seq := sq } }), [])
-            | .alert =>
-                .ok ((s.clearOp op |> fun s =>
-                      { s with handshake := .closing
-                               closeState := .receivedCloseNotify }),
-                     [OutputAction.closeTransport s.connId .graceful])
+            | .alert => onInboundAlert (s.clearOp op) inner.content
             | .handshake => .ok (s.clearOp op, [])
             | .changeCipherSpec => .ok (s.clearOp op, [])
             | .invalid => .ok (s.clearOp op, [])
@@ -223,11 +238,7 @@ def handleCryptoResultCorrelated (s : State) (op : OperationId) (r : CryptoResul
                     handshakeOnPlaintextRecord s inner.content
             | .applicationData =>
                 recordFailAlert s .unexpectedMessage (.protocol .illegalMessageForState)
-            | .alert =>
-                .ok ((s.clearOp op |> fun s =>
-                      { s with handshake := .closing
-                               closeState := .receivedCloseNotify }),
-                     [OutputAction.closeTransport s.connId .graceful])
+            | .alert => onInboundAlert (s.clearOp op) inner.content
             | .changeCipherSpec => .ok (s.clearOp op, [])
             | .invalid =>
                 recordFailAlert s (alertForParseError .invalidContentType) (.parse .invalidContentType)

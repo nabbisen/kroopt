@@ -70,6 +70,31 @@ def checks : List Check :=
                (.cryptoResult conn0 ⟨0⟩ (.aeadOpened (bytesOf [0x01, 0x00, 21]))) with
              | .ok (s', _) => s'.closeState == .receivedCloseNotify
              | .error _ => false) }
+  , { name := "inbound fatal alert → failed / fatalReceived, torn down abortively (RFC 037 §6)"
+    , ok := (match step connectedWithOp
+               (.cryptoResult conn0 ⟨0⟩ (.aeadOpened (bytesOf [2, 40, 21]))) with
+             | .ok (s', acts) =>
+                 s'.handshake.isTerminal
+                 && (match s'.closeState with | .fatalReceived .handshakeFailure => true | _ => false)
+                 && acts.any (fun a => match a with | .closeTransport _ .abortive => true | _ => false)
+             | .error _ => false) }
+  , { name := "inbound non-close_notify alert is never treated as a graceful close (RFC 037 §6)"
+    , ok := (match step connectedWithOp
+               (.cryptoResult conn0 ⟨0⟩ (.aeadOpened (bytesOf [2, 47, 21]))) with
+             | .ok (s', _) =>
+                 s'.handshake.isTerminal
+                 && (match s'.closeState with | .receivedCloseNotify => false | _ => true)
+             | .error _ => false) }
+  , { name := "malformed inbound alert (not exactly two bytes) is a decode error (RFC 037 §6)"
+    , ok := (match step connectedWithOp
+               (.cryptoResult conn0 ⟨0⟩ (.aeadOpened (bytesOf [0x01, 21]))) with
+             | .ok (s', _) => s'.handshake.isTerminal
+             | .error _ => false) }
+  , { name := "AlertDescription.ofByte decodes known codes and rejects unknown"
+    , ok := (match AlertDescription.ofByte 0 with | some .closeNotify => true | _ => false)
+            && (match AlertDescription.ofByte 40 with | some .handshakeFailure => true | _ => false)
+            && (match AlertDescription.ofByte 47 with | some .illegalParameter => true | _ => false)
+            && (match AlertDescription.ofByte 99 with | none => true | _ => false) }
     -- terminal idempotence / discipline (RFC 013 §7)
   , { name := "appClose in a terminal state is absorbed (idempotent)"
     , ok := (match step failedState (.appClose conn0 .graceful) with

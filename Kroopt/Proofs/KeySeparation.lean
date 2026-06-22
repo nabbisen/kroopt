@@ -62,7 +62,7 @@ theorem aeadOpen_uses_read_keys
     (aad ct : ByteArray)
     (hmem : OutputAction.callCrypto c oid (CryptoOp.aeadOpen meta aad ct) ∈ acts) :
     meta.direction = .read ∧ meta.epoch = s.readEpoch.epoch := by
-  unfold handleTransportBytes recordFailAlert at h
+  unfold handleTransportBytes onInboundAlert recordFailAlert at h
   simp only [] at h
   all_goals (try split at h)
   all_goals (try split at h)

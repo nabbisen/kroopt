@@ -30,6 +30,25 @@ inductive AlertDescription where
   | userCanceled
   deriving DecidableEq, Repr, Inhabited
 
+/-- Decode a TLS alert *description* byte (RFC 8446 §6) to a known `AlertDescription`;
+`none` for an unrecognised code. Used to record an inbound peer alert; the close-notify
+code (`0`) is handled by the caller before this is consulted. -/
+def AlertDescription.ofByte : UInt8 → Option AlertDescription
+  | 0   => some .closeNotify
+  | 10  => some .unexpectedMessage
+  | 20  => some .badRecordMac
+  | 22  => some .recordOverflow
+  | 40  => some .handshakeFailure
+  | 47  => some .illegalParameter
+  | 50  => some .decodeError
+  | 51  => some .decryptError
+  | 70  => some .protocolVersion
+  | 80  => some .internalError
+  | 90  => some .userCanceled
+  | 109 => some .missingExtension
+  | 110 => some .unsupportedExtension
+  | _   => none
+
 /-- Alert level. In TLS 1.3 almost every alert is fatal; `closeNotify` is the
 sole routine warning. -/
 inductive AlertLevel where

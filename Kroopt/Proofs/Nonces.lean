@@ -60,7 +60,7 @@ theorem successful_open_increments_read_seq
     (b : ByteArray) (hb : s'.pendingPlainOut = some b)
     (hne : s.pendingPlainOut ≠ some b) :
     s'.readEpoch.seq.value = s.readEpoch.seq.value + 1 := by
-  unfold handleCryptoResult handleCryptoResultCorrelated recordFailAlert at h
+  unfold handleCryptoResult handleCryptoResultCorrelated onInboundAlert recordFailAlert at h
   simp only [] at h
   all_goals (try split at h)
   all_goals (try split at h)

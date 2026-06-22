@@ -86,6 +86,51 @@ theorem handshakeOnPlaintextRecord_no_aeadOpen
       obtain ⟨-, rfl⟩ := h
       simp only [List.not_mem_nil] at hmem
 
+/-- `onInboundAlert` emits no application plaintext: it produces only a `closeTransport`
+(graceful or abortive) or a `recordFailAlert` (decode-error) action list. -/
+private theorem onInboundAlert_no_emit (s s' : State) (b : ByteArray) (acts : List OutputAction)
+    (h : onInboundAlert s b = .ok (s', acts)) (c : ConnId) (bb : ByteArray) :
+    OutputAction.emitPlaintext c bb ∉ acts := by
+  unfold onInboundAlert recordFailAlert at h
+  split at h
+  · split at h <;>
+      (simp only [Except.ok.injEq, Prod.mk.injEq] at h
+       obtain ⟨-, rfl⟩ := h
+       simp)
+  · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+    obtain ⟨-, rfl⟩ := h
+    simp
+
+/-- `onInboundAlert` accepts no application plaintext bytes (it only closes/fails). -/
+private theorem onInboundAlert_no_accept (s s' : State) (b : ByteArray) (acts : List OutputAction)
+    (h : onInboundAlert s b = .ok (s', acts)) (c : ConnId) (n : Nat) :
+    OutputAction.acceptPlaintextBytes c n ∉ acts := by
+  unfold onInboundAlert recordFailAlert at h
+  split at h
+  · split at h <;>
+      (simp only [Except.ok.injEq, Prod.mk.injEq] at h
+       obtain ⟨-, rfl⟩ := h
+       simp)
+  · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+    obtain ⟨-, rfl⟩ := h
+    simp
+
+/-- `onInboundAlert` never *newly* buffers application plaintext: it either clears
+`pendingPlainOut` (fatal / malformed) or leaves it untouched (close_notify). This keeps the
+no-unauthenticated-plaintext headline proof intact across the inbound-alert path. -/
+private theorem onInboundAlert_no_new_plaintext (s s' : State) (b : ByteArray)
+    (acts : List OutputAction) (h : onInboundAlert s b = .ok (s', acts)) :
+    s'.pendingPlainOut = none ∨ s'.pendingPlainOut = s.pendingPlainOut := by
+  unfold onInboundAlert recordFailAlert at h
+  split at h
+  · split at h <;>
+      (simp only [Except.ok.injEq, Prod.mk.injEq] at h
+       obtain ⟨rfl, -⟩ := h
+       first | (right; rfl) | (left; rfl))
+  · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    left; rfl
+
 /-- Shared closer: after splitting a handler into its leaves, each leaf returns a
 concrete action list with no `emitPlaintext`, contradicting membership. -/
 private theorem handleTransportBytes_no_emit
@@ -109,6 +154,8 @@ private theorem handleTransportBytes_no_emit
     | exact handshakeOnGatingResult_no_emit _ _ _ _ _ h _ _ hmem
     | exact handshakeOnPlaintextRecord_no_accept _ _ _ _ h _ _ hmem
     | exact handshakeOnGatingResult_no_accept _ _ _ _ _ h _ _ hmem
+    | exact onInboundAlert_no_emit _ _ _ _ h _ _ hmem
+    | exact onInboundAlert_no_accept _ _ _ _ h _ _ hmem
     | (simp only [Except.ok.injEq, Prod.mk.injEq] at h
        obtain ⟨-, rfl⟩ := h
        simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
@@ -139,6 +186,8 @@ private theorem handleCryptoResult_no_emit
     | exact handshakeOnGatingResult_no_emit _ _ _ _ _ h _ _ hmem
     | exact handshakeOnPlaintextRecord_no_accept _ _ _ _ h _ _ hmem
     | exact handshakeOnGatingResult_no_accept _ _ _ _ _ h _ _ hmem
+    | exact onInboundAlert_no_emit _ _ _ _ h _ _ hmem
+    | exact onInboundAlert_no_accept _ _ _ _ h _ _ hmem
     | (simp only [Except.ok.injEq, Prod.mk.injEq] at h
        obtain ⟨-, rfl⟩ := h
        simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
@@ -169,6 +218,8 @@ private theorem handleAppSend_no_emit
     | exact handshakeOnGatingResult_no_emit _ _ _ _ _ h _ _ hmem
     | exact handshakeOnPlaintextRecord_no_accept _ _ _ _ h _ _ hmem
     | exact handshakeOnGatingResult_no_accept _ _ _ _ _ h _ _ hmem
+    | exact onInboundAlert_no_emit _ _ _ _ h _ _ hmem
+    | exact onInboundAlert_no_accept _ _ _ _ h _ _ hmem
     | (simp only [Except.ok.injEq, Prod.mk.injEq] at h
        obtain ⟨-, rfl⟩ := h
        simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
@@ -197,6 +248,8 @@ private theorem handleTransportBytes_no_accept'
     | exact handshakeOnGatingResult_no_emit _ _ _ _ _ h _ _ hmem
     | exact handshakeOnPlaintextRecord_no_accept _ _ _ _ h _ _ hmem
     | exact handshakeOnGatingResult_no_accept _ _ _ _ _ h _ _ hmem
+    | exact onInboundAlert_no_emit _ _ _ _ h _ _ hmem
+    | exact onInboundAlert_no_accept _ _ _ _ h _ _ hmem
     | (simp only [Except.ok.injEq, Prod.mk.injEq] at h
        obtain ⟨-, rfl⟩ := h
        simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
@@ -225,6 +278,8 @@ private theorem handleCryptoResult_no_accept'
     | exact handshakeOnGatingResult_no_emit _ _ _ _ _ h _ _ hmem
     | exact handshakeOnPlaintextRecord_no_accept _ _ _ _ h _ _ hmem
     | exact handshakeOnGatingResult_no_accept _ _ _ _ _ h _ _ hmem
+    | exact onInboundAlert_no_emit _ _ _ _ h _ _ hmem
+    | exact onInboundAlert_no_accept _ _ _ _ h _ _ hmem
     | (simp only [Except.ok.injEq, Prod.mk.injEq] at h
        obtain ⟨-, rfl⟩ := h
        simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
@@ -410,6 +465,9 @@ theorem buffered_plaintext_authenticated
   all_goals (
     first
     | assumption
+    | (cases onInboundAlert_no_new_plaintext _ _ _ _ h with
+       | inl h0 => rw [h0] at hb; simp only [reduceCtorEq] at hb
+       | inr he => rw [he] at hb; exact absurd hb hne)
     | (cases handshakeOnPlaintextRecord_pp _ _ _ _ h with
        | inl hpp => rw [hpp] at hb; exact absurd hb hne
        | inr hpp => rw [hpp] at hb; simp only [reduceCtorEq] at hb)
