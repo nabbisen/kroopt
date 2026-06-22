@@ -68,8 +68,24 @@ ECDSA/RSA as signature schemes — even though the provider *implements* those p
 (used by other certificate profiles) — so a `ServerConfig` requiring an out-of-profile
 signature scheme is rejected at validation (`validateServerConfigCapabilities`) with a
 typed `CapabilityError` — never accepted and failed at runtime, never silently
-downgraded. (Group *policy* — restricting an endpoint to a subset of advertised groups —
-is the structural follow-up tracked in the secp256r1 capability-gap review.)
+downgraded.
+
+**Group policy is now load-bearing (RFC 039).** The group dimension follows the same
+three-layer model the contract uses for suites and signature schemes: the **provider**
+declares which groups it can perform; each **endpoint** declares a `namedGroups` policy
+(default `[x25519, secp256r1]`, x25519 preferred; a hardened listener sets `[x25519]`); and
+the **client** offers `key_share` entries. Config validation rejects an endpoint policy not
+⊆ provider capability (a `CapabilityError.unsupportedGroup`, alongside `.emptyGroupPolicy`
+and `.duplicateNamedGroup`), and the verified core selects the negotiated group as the
+intersection of endpoint policy and client `key_share`, ordered by server preference — never
+inferred from parser reachability. P-256 point validation is layered: the parser checks wire
+shape (65 bytes, `0x04` prefix) while the provider performs on-curve validation inside
+`Hacl_P256_ecp256dh_r` (fail-closed `none` on an off-curve point or point at infinity), and
+the core treats any provider ECDH rejection as a fatal handshake failure — no `ecdheComplete`
+is fabricated. The hash dimension is likewise **derived-and-enforced**: required hashes are
+derived from the configured suites and validated against provider capability, not treated as
+informational. `scripts/tls-interop.sh` additionally exercises an x25519-only listener that
+refuses an OpenSSL `-groups P-256` client (RFC 039 §8.16).
 
 Entropy fails **closed**. `Hacl.randomBytes` returns a typed `RandomResult`; the native
 `getrandom` wrapper, on any failure, returns a zero-length buffer (never a zero-filled

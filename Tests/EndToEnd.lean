@@ -143,6 +143,33 @@ def chMsgSgNoKs : List UInt8 :=
   [1] ++ [0, (chBodySgNoKs.length / 256).toUInt8, (chBodySgNoKs.length % 256).toUInt8] ++ chBodySgNoKs
 def chRecordSgNoKs : ByteArray := record chMsgSgNoKs
 
+/-! ## Malformed secp256r1 key_share shapes (RFC 039 §4.7/§8.12): a 65-byte point with the
+wrong leading byte (not `0x04`), and a 64-byte point (wrong length). The parser surfaces
+neither as a P-256 offer, so — being the only offered group — the ClientHello has no usable
+key_share and is rejected (illegal_parameter). -/
+
+def keyShareEntryP256BadPrefix : List UInt8 := [0x00, 0x17, 0, 65] ++ ([0x05] ++ List.replicate 64 0x07)
+def extKeyShareP256BadPrefix : List UInt8 :=
+  [0, 51] ++ u16be (keyShareEntryP256BadPrefix.length + 2) ++ u16be keyShareEntryP256BadPrefix.length ++ keyShareEntryP256BadPrefix
+def extsBodyP256BadPrefix : List UInt8 := extSupVer ++ extKeyShareP256BadPrefix ++ extSigAlgs
+def chBodyP256BadPrefix : List UInt8 :=
+  [0x03, 0x03] ++ (List.replicate 32 0xAA) ++ [0] ++
+  [0, 2, 0x13, 0x03] ++ [1, 0] ++ (u16be extsBodyP256BadPrefix.length ++ extsBodyP256BadPrefix)
+def chMsgP256BadPrefix : List UInt8 :=
+  [1] ++ [0, (chBodyP256BadPrefix.length / 256).toUInt8, (chBodyP256BadPrefix.length % 256).toUInt8] ++ chBodyP256BadPrefix
+def chRecordP256BadPrefix : ByteArray := record chMsgP256BadPrefix
+
+def keyShareEntryP256BadLen : List UInt8 := [0x00, 0x17, 0, 64] ++ List.replicate 64 0x07
+def extKeyShareP256BadLen : List UInt8 :=
+  [0, 51] ++ u16be (keyShareEntryP256BadLen.length + 2) ++ u16be keyShareEntryP256BadLen.length ++ keyShareEntryP256BadLen
+def extsBodyP256BadLen : List UInt8 := extSupVer ++ extKeyShareP256BadLen ++ extSigAlgs
+def chBodyP256BadLen : List UInt8 :=
+  [0x03, 0x03] ++ (List.replicate 32 0xAA) ++ [0] ++
+  [0, 2, 0x13, 0x03] ++ [1, 0] ++ (u16be extsBodyP256BadLen.length ++ extsBodyP256BadLen)
+def chMsgP256BadLen : List UInt8 :=
+  [1] ++ [0, (chBodyP256BadLen.length / 256).toUInt8, (chBodyP256BadLen.length % 256).toUInt8] ++ chBodyP256BadLen
+def chRecordP256BadLen : ByteArray := record chMsgP256BadLen
+
 /-! ## Fake crypto provider (deterministic, purpose-aware) -/
 
 def fakeCrypto : CryptoOp → CryptoResult
@@ -166,6 +193,7 @@ structure Driver where
   emitted : List ByteArray
   completed : Bool
   errored : Bool
+  alerts : List AlertDescription := []
 
 def applyAction (d : Driver) : OutputAction → Driver × List InputEvent
   | .writeTransport _ bytes => ({ d with outbound := d.outbound ++ [bytes] }, [])
@@ -175,7 +203,7 @@ def applyAction (d : Driver) : OutputAction → Driver × List InputEvent
   | .reportHandshakeComplete _ _ => ({ d with completed := true }, [])
   | .emitPlaintext _ bytes => ({ d with emitted := d.emitted ++ [bytes] }, [])
   | .reportError _ _ => ({ d with errored := true }, [])
-  | .failWithAlert _ _ => ({ d with errored := true }, [])
+  | .failWithAlert _ a => ({ d with errored := true, alerts := d.alerts ++ [a] }, [])
   | _ => (d, [])
 
 def step1 (d : Driver) (ev : InputEvent) : Driver × List InputEvent :=
@@ -263,6 +291,14 @@ def runKsNotInSg : Driver :=
 def runSgNoKs : Driver :=
   driveFuel 16 fresh [InputEvent.transportBytes ⟨0, 0⟩ chRecordSgNoKs]
 
+/-- secp256r1 key_share with a non-`0x04` leading byte → not a P-256 offer → rejected (§8.12). -/
+def runP256BadPrefix : Driver :=
+  driveFuel 16 fresh [InputEvent.transportBytes ⟨0, 0⟩ chRecordP256BadPrefix]
+
+/-- secp256r1 key_share of the wrong length (64, not 65) → not a P-256 offer → rejected (§8.12). -/
+def runP256BadLen : Driver :=
+  driveFuel 16 fresh [InputEvent.transportBytes ⟨0, 0⟩ chRecordP256BadLen]
+
 /-! ## Negative scenarios -/
 
 def malformedChRecord : ByteArray := record [1, 0, 0, 4, 0x03, 0x03, 0, 0]  -- complete header (len24=4), body too short for a CH
@@ -303,6 +339,18 @@ def runBadFinished : Driver :=
     [InputEvent.transportBytes ⟨0, 0⟩ chRecord,
      InputEvent.transportBytes ⟨0, 0⟩ clientFinishedRecord]
 
+/-- Did the driver emit `a` as a fatal alert? (`AlertDescription` has `DecidableEq`, not
+`BEq`, so compare via `decide`.) -/
+def hasAlert (d : Driver) (a : AlertDescription) : Bool := d.alerts.any (fun x => decide (x = a))
+
+/-! ## Negotiation-trace redaction (RFC 039 §4.9). The offered share carries a recognizable
+0xBE (=190) fill; the rendered trace must surface group ids (x25519=29, secp256r1=23) and the
+selected group, but never that share byte. -/
+def sampleTraceShares : List (NamedGroup × ByteArray) :=
+  [(.secp256r1, (ByteArray.mk #[0x04]) ++ ByteArray.mk (Array.mkArray 64 0xBE))]
+def sampleTraceStr : String :=
+  (NegotiationTrace.ofClientHello [.x25519, .secp256r1] sampleTraceShares (some .secp256r1) none).render
+
 def checks : List Check :=
   [ { name := "handshake reaches connected through step"
     , ok := runE2E.st.handshake == .connected }
@@ -339,6 +387,24 @@ def checks : List Check :=
     , ok := runKsNotInSg.st.handshake != .connected && runKsNotInSg.st.handshake.isTerminal }
   , { name := "RFC 039 §4.6: supported_groups present but no usable key_share → no-HRR fail"
     , ok := runSgNoKs.st.handshake != .connected && runSgNoKs.st.handshake.isTerminal }
+  , { name := "RFC 039 §8.12: secp256r1 key_share with bad prefix rejected"
+    , ok := runP256BadPrefix.st.handshake != .connected && runP256BadPrefix.st.handshake.isTerminal }
+  , { name := "RFC 039 §8.12: secp256r1 key_share with bad length rejected"
+    , ok := runP256BadLen.st.handshake != .connected && runP256BadLen.st.handshake.isTerminal }
+  , { name := "RFC 039 §8.14: no-overlap (x25519-only vs P-256-only) → handshake_failure alert"
+    , ok := hasAlert runP256ClientX25519OnlyServer .handshakeFailure }
+  , { name := "RFC 039 §8.14: duplicate key_share group → illegal_parameter alert"
+    , ok := hasAlert runDupKeyShare .illegalParameter }
+  , { name := "RFC 039 §8.14: key_share omitted from supported_groups → illegal_parameter alert"
+    , ok := hasAlert runKsNotInSg .illegalParameter }
+  , { name := "RFC 039 §8.14: malformed P-256 key_share → illegal_parameter alert"
+    , ok := hasAlert runP256BadPrefix .illegalParameter }
+  , { name := "RFC 039 §4.9: trace surfaces the selected group id (secp256r1=23)"
+    , ok := (sampleTraceStr.splitOn "selected=23").length == 2 }
+  , { name := "RFC 039 §4.9: trace surfaces endpoint/offered group ids (x25519=29)"
+    , ok := (sampleTraceStr.splitOn "29").length ≥ 2 }
+  , { name := "RFC 039 §4.9: trace never leaks raw key_share bytes (0xBE=190 absent)"
+    , ok := (sampleTraceStr.splitOn "190").length == 1 }
     -- negatives
   , { name := "malformed ClientHello fails, not connected"
     , ok := runMalformedCH.st.handshake.isTerminal && runMalformedCH.st.handshake != .connected }

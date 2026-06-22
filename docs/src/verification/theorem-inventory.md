@@ -263,9 +263,29 @@ no axioms at all:
 The other hardening RFCs in this milestone are documentation and gates: the
 threat model (RFC 017), deferred-feature scope control (RFC 016, enforced via the
 parser and exercised by the hardening suite), and the proof gates (RFC 022 — the
-hygiene, dependency, and new axiom gates, plus CI). The axiom gate audits **78
-public theorems** with no `sorryAx` (plus 17 private helper lemmas used by them);
-the per-milestone "~N total" figures above count the headline results enumerated
+hygiene, dependency, and new axiom gates, plus CI). The axiom gate audits **98
+public theorems** with no `sorryAx` (plus the private helper lemmas they use); the
+per-milestone "~N total" figures above count the headline results enumerated
 in each section, not these supporting lemmas.
+
+## RFC 039 — named-group selection authorization (PROVEN)
+
+Four theorems over the group-selection path (`Kroopt.Proofs`, group ids only — no
+secret material), establishing that the negotiated group is the intersection of
+endpoint policy and client `key_share`, never inferred from parser reachability:
+
+- `selectGroup_authorized` — any group `selectGroup` returns is both endpoint-allowed
+  and backed by a share the client offered (§5.1; the selection-authorization capstone).
+- `ecdhe_op_matches_selected_group` — a P-256 ECDHE crypto op is emitted only when the
+  recorded `selectedGroup` is `secp256r1` (§5.2).
+- `onClientHello_selectedGroup_allowed` — on a successful ClientHello the recorded
+  `selectedGroup` lies in the resolved endpoint's policy.
+- `no_disallowed_group_crypto_op` — composing the above: a group outside endpoint policy
+  reaches neither `selectedGroup` nor an ECDHE crypto op (§5.2, the §4.8 non-event).
+
+The supporting `shareFor?_mem` is a private helper. Group-selection authorization and
+crypto-op consistency are thus **PROVEN**, not conventional; the hash dimension is
+**derived-and-enforced** (required hashes derived from configured suites and validated
+against provider capability at config load), not informational.
 
 ## Planned — later milestones

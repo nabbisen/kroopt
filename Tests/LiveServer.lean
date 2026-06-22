@@ -131,6 +131,7 @@ def exchangeAppData (fd : UInt32) (prov : CryptoProvider)
 
 def serve (args : List String) : IO Unit := do
   let path := args.headD "/tmp/kroopt-tls.sock"
+  let x25519Only := args.contains "x25519-only"
   let ephR ← Hacl.randomBytes 32
   let srR  ← Hacl.randomBytes 32
   match ephR, srR with
@@ -148,8 +149,13 @@ def serve (args : List String) : IO Unit := do
           match r with
           | .randomBytes _ => .ok (a, .randomBytes sr)
           | _              => RealProvider.submit liveCfg a o r }
+    let groupCfg : Kroopt.Core.ValidatedServerConfig :=
+      if x25519Only then
+        let x25519Ep := realServerConfig.defaultEndpoint.map (fun e => { e with namedGroups := [Kroopt.Core.NamedGroup.x25519] })
+        { realServerConfig with defaultEndpoint := x25519Ep }
+      else realServerConfig
     let s0 : State :=
-      { State.initial conn0 ⟨0⟩ .sha256 with serverConfig := realServerConfig }
+      { State.initial conn0 ⟨0⟩ .sha256 with serverConfig := groupCfg }
     let lfd ← sockListen path
     if lfd == 0xFFFFFFFF then
       IO.println "LISTEN FAILED"

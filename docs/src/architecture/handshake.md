@@ -1,8 +1,9 @@
 # Handshake state model
 
 kroopt implements the TLS 1.3 **server** handshake without HelloRetryRequest
-(RFC 006). A client must present an acceptable X25519 `key_share` in its initial
-ClientHello, or the handshake fails cleanly — there is no HRR round trip. This is
+(RFC 006). A client must present, in its initial ClientHello, a usable `key_share`
+for a group the listener's policy allows — x25519 or secp256r1 (RFC 039) — or the
+handshake fails cleanly; there is no HRR round trip. This is
 deliberate: HRR changes the transcript rules and multiplies proof and interop
 surface, so the first release line ships a strict, small, server-side path.
 
@@ -52,8 +53,8 @@ transport/provider is M5.
 
 The ClientHello parser selects the negotiated parameters from the client's offers
 rather than assuming them. Cipher suite and group already work this way
-(`selectSuite` picks the first offered suite kroopt supports; `findX25519Share`
-takes the x25519 share among the offered key shares). Signature scheme now does too:
+(`selectSuite` picks the first offered suite kroopt supports; group selection is
+covered in **Named-group selection** below). Signature scheme now does too:
 `offeredSigSchemes` reads the client's `signature_algorithms` (extension 0x000d) and
 `selectSigScheme` picks the first that kroopt can *present* — in the constrained
 profile, Ed25519 (0x0807) only. The server no longer hardcodes an Ed25519
@@ -78,6 +79,44 @@ provider cannot perform). All three negotiated parameters — suite, group, and 
 scheme — are thus selected from the client's offers and bound to what the server can
 present or perform. The suite map widens when a real AES provider is introduced
 (RFC 035).
+
+### Named-group selection (RFC 039)
+
+The negotiated ECDHE group is **not** inferred from parser reachability. The canonical
+rule: *a negotiated group is the intersection of provider capability, endpoint policy,
+and the client's `key_share`, ordered by a fixed server preference.* The three layers are
+distinct: the **provider** declares which groups it can perform (validated against each
+endpoint's policy at config load); each **endpoint** declares its `namedGroups` policy
+(default `[x25519, secp256r1]`, x25519 preferred; a hardened listener sets `[x25519]`);
+and the **client** offers `key_share` entries. The parser surfaces the client's recognized
+offers (`findOfferedKeyShares`), and the verified core's total `selectGroup` walks the
+server preference `[x25519, secp256r1]` and takes the first group that is both
+endpoint-allowed and client-offered. No overlap is a clean `handshake_failure` (no HRR);
+the core never falls back to an unauthorized group. This is proven, not conventional:
+`selectGroup_authorized` shows any selected group is both allowed and offered, and
+`ecdhe_op_matches_selected_group` / `no_disallowed_group_crypto_op` show the ECDHE crypto
+op matches the recorded group and a disallowed group reaches neither selection nor a
+crypto op.
+
+`supported_groups`/`key_share` consistency (RFC 8446 §4.2.8) is enforced at parse: if the
+ClientHello carries a present `supported_groups`, every offered `key_share` group must
+appear in it (a contradiction is rejected as `illegal_parameter`); when `supported_groups`
+is absent, `key_share` is authoritative for this constrained no-HRR profile. P-256
+`key_share` validation is layered: the parser checks wire shape (65 bytes, `0x04` prefix)
+and the provider performs on-curve point validation (HACL `Hacl_P256_ecp256dh_r`,
+fail-closed), with any provider rejection a fatal handshake failure and no fabricated
+shared secret.
+
+**Alert mapping** is deterministic and non-leaking (RFC 013): no acceptable `key_share`
+under no-HRR and a provider point rejection map to `handshake_failure`; a duplicate
+`key_share` group, a group omitted from `supported_groups`, and a malformed P-256 point map
+to `illegal_parameter`. A "selected-but-disallowed" group is a non-event — the gate makes it
+unselectable, so there is no runtime state to alert on.
+
+**Tracing** is redaction-safe (RFC 039 §4.9 / RFC 018): the opt-in `NegotiationTrace` carries
+endpoint groups, client offered group ids, the selected group, and a rejection category — and
+is bytes-free by construction (it has no `ByteArray` field), so raw `key_share` bytes and the
+ClientHello blob can never appear in a trace.
 
 ### ClientHello strictness
 

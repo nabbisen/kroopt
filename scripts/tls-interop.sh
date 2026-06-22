@@ -23,9 +23,9 @@ fail=0
 echo "Building kroopt live servers..."
 lake build kroopt-live-server kroopt-live-server-nb 2>&1 | tail -1
 
-start_server() {  # $1 = exe
+start_server() {  # $1 = exe, $2 = optional extra server arg (e.g. x25519-only)
   rm -f "$SOCK"
-  ( timeout 30 lake exe "$1" "$SOCK" > "$SRVOUT" 2>&1 ) &
+  ( timeout 30 lake exe "$1" "$SOCK" ${2:-} > "$SRVOUT" 2>&1 ) &
   SRVPID=$!
   i=0
   while [ ! -S "$SOCK" ] && [ $i -lt 100 ]; do sleep 0.1; i=$((i+1)); done
@@ -50,6 +50,19 @@ test_openssl() {  # $1 = exe, $2 = label, $3 = ciphersuite (default ChaCha20-Pol
   check "OpenSSL [$2] TLS 1.3 handshake ($CS / $GRP)" "$hs"
   check "OpenSSL [$2] app-data received + response sealed ($CS / $GRP)" "$app"
   if [ "$hs" -ne 0 ] || [ "$app" -ne 0 ]; then echo "    --- server ---"; cat "$SRVOUT"; fi
+}
+
+test_openssl_reject() {  # $1 = exe, $2 = label, $3 = forced groups (default P-256)
+  GRP="${3:-P-256}"
+  start_server "$1" x25519-only
+  OUT=$( (printf 'ping\n'; sleep 1) | timeout 15 openssl s_client -unix "$SOCK" -tls1_3 -groups "$GRP" 2>&1 || true)
+  await_server
+  # RFC 039 §8.16: an x25519-only listener must refuse a P-256-only client (no HRR) — the
+  # server reaches a failed phase and never `connected`.
+  grep -q "HANDSHAKE_INCOMPLETE final phase failed" "$SRVOUT" \
+    && ! grep -q "HANDSHAKE_OK reached connected" "$SRVOUT"; refused=$?
+  check "OpenSSL [$2] x25519-only listener refuses -groups $GRP client (RFC 039 §8.16)" "$refused"
+  if [ "$refused" -ne 0 ]; then echo "    --- server ---"; cat "$SRVOUT"; fi
 }
 
 test_python() {  # $1 = exe, $2 = label
@@ -86,6 +99,7 @@ test_openssl kroopt-live-server "blocking" TLS_CHACHA20_POLY1305_SHA256
 test_openssl kroopt-live-server "blocking" TLS_AES_128_GCM_SHA256
 test_openssl kroopt-live-server "blocking" TLS_AES_256_GCM_SHA384
 test_openssl kroopt-live-server "blocking P-256" TLS_CHACHA20_POLY1305_SHA256 P-256
+test_openssl_reject kroopt-live-server "blocking" P-256
 test_python  kroopt-live-server "blocking"
 
 echo

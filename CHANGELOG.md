@@ -5,6 +5,50 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.81.0-dev] — RFC 039 finalized (§4.9 tracing, §8.12/§8.14/§8.16 acceptance) → done/ — 2026-06-14
+
+Closes RFC 039. The remaining acceptance items land — safe negotiation tracing, the P-256
+point-validation tests (including off-curve provider rejection), alert determinism, and the
+x25519-only-listener interop run — and the RFC moves to `done/`. No verified-core logic
+changed this release; the work is observability, tests, an interop driver mode, and docs.
+
+### Core — safe negotiation tracing (RFC 039 §4.9)
+- New `NegotiationTrace` (`Kroopt/Core/Handshake.lean`): an opt-in, redaction-safe view of a
+  group negotiation carrying endpoint groups, client **offered group ids**, the selected
+  group, and a rejection *category*. It is **bytes-free by construction** — the structure has
+  no `ByteArray` field, so raw `key_share` bytes and the ClientHello blob can never appear in
+  a trace. `NegotiationTrace.ofClientHello` collapses each offered `(group, share)` to its id
+  (dropping the share); `NegotiationTrace.render` emits group ids + selected id + category only.
+
+### Tests
+- `kroopt-e2e-test` (**31**, +9): §8.12 P-256 `key_share` with a bad prefix rejected; with a
+  bad length rejected; §8.14 alert determinism — no-overlap → `handshake_failure`, duplicate
+  group / `supported_groups`-omission / malformed P-256 → `illegal_parameter` (the e2e `Driver`
+  now captures emitted alerts); §4.9 trace surfaces the selected and endpoint/offered group ids
+  and never leaks a raw `key_share` byte (a `0xBE` share marker is absent from the rendering).
+- `kroopt-hacl-test` (**56**, +1): §8.12 — a 65-byte, `0x04`-prefixed but **off-curve** P-256
+  point is rejected fail-closed (`none`) by HACL's on-curve check; no shared secret is fabricated.
+
+### Interop (RFC 039 §8.16)
+- The blocking live server gains an `x25519-only` policy mode; `scripts/tls-interop.sh` (**21**,
+  +1) now starts an x25519-only listener and asserts an OpenSSL `-groups P-256` client is
+  refused (the server reaches a failed phase, never `connected`) — the capability-gap closure
+  confirmed end-to-end over the wire, with no HRR.
+
+### Documentation (RFC 039 §9)
+- `architecture/handshake.md`: corrected the "X25519-only" framing; added a **Named-group
+  selection** section (three-layer model, canonical rule, `selectGroup`, the §5 proofs,
+  `supported_groups` consistency, layered P-256 validation, alert mapping, redaction-safe tracing).
+- `crypto/crypto-ffi-contract.md`: replaced the stale "group policy is a structural follow-up"
+  note with the now-load-bearing three-layer model + P-256 point-validation contract.
+- `verification/theorem-inventory.md`: added the RFC 039 PROVEN subsection (four theorems);
+  corrected the audited public-theorem count to **98**.
+
+### RFC lifecycle
+- RFC 039 status → **Implemented (v0.81.0-dev)**; moved `proposed/` → `done/`; `rfcs/README.md`
+  index and intro updated.
+
+
 ## [0.80.0-dev] — RFC 039 §4.6 (supported_groups / key_share consistency) — 2026-06-14
 
 The last negotiation-boundary feature of RFC 039: the parser now enforces consistency

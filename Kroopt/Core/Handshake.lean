@@ -172,6 +172,36 @@ def selectGroup (offered : List (NamedGroup × ByteArray)) (allowed : List Named
       | none    => none
     else none)
 
+/-! ## Safe negotiation tracing (RFC 039 §4.9)
+
+An opt-in, redaction-safe view of a group negotiation (RFC 018 data classification): configured
+endpoint groups, the client's offered groups, the selected group, and a rejection *category*.
+It is bytes-free **by construction** — `NegotiationTrace` has no `ByteArray` field, so raw
+`key_share` bytes and the ClientHello blob can never appear in a trace or its rendering. -/
+
+/-- A redaction-safe negotiation trace: group ids and a rejection category only. -/
+structure NegotiationTrace where
+  endpointGroups    : List NamedGroup
+  offeredGroups     : List NamedGroup
+  selectedGroup     : Option NamedGroup
+  rejectionCategory : Option String
+
+/-- Build a trace from a negotiation, collapsing each offered `(group, share)` to its group id
+— the share bytes are dropped here and never reach the trace (RFC 039 §4.9). -/
+def NegotiationTrace.ofClientHello
+    (endpointGroups : List NamedGroup) (offeredShares : List (NamedGroup × ByteArray))
+    (selected : Option NamedGroup) (rejection : Option String) : NegotiationTrace :=
+  { endpointGroups := endpointGroups, offeredGroups := offeredShares.map (·.fst),
+    selectedGroup := selected, rejectionCategory := rejection }
+
+/-- Render a trace as group ids, selected id, and rejection category. Emits no raw bytes. -/
+def NegotiationTrace.render (t : NegotiationTrace) : String :=
+  let ids (gs : List NamedGroup) : String :=
+    String.intercalate "," (gs.map (fun g => toString (namedGroupToU16 g)))
+  let sel := match t.selectedGroup with | some g => toString (namedGroupToU16 g) | none => "none"
+  s!"endpoint=[{ids t.endpointGroups}] offered=[{ids t.offeredGroups}] \
+     selected={sel} reject={t.rejectionCategory.getD "none"}"
+
 /-! ## Transitions (RFC 006 §10) -/
 
 /-- `start → requestedEcdhe`. Record the negotiated parameters, commit the exact

@@ -128,6 +128,9 @@ def main : IO UInt32 := do
   -- fail-closed (RFC 037 §2): wrong-size scalar / malformed peer point.
   let p256BadPriv := p256Shared (rep 31 0x01) p256Peer
   let p256BadPeer := p256Shared (hexToBytes p256_d) (rep 65 0x05)   -- first byte ≠ 0x04
+  -- RFC 039 §8.12: a 65-byte, 0x04-prefixed, but off-curve point. Shape passes; the on-curve
+  -- check inside Hacl_P256_ecp256dh_r must reject it (fail-closed `none`, no fabricated secret).
+  let p256OffCurve := p256Shared (hexToBytes p256_d) ((ByteArray.mk #[0x04]) ++ rep 32 0x01 ++ rep 32 0x01)
   let p256PubBad  := p256Public (rep 31 0x01)
 
   -- ECDSA P-256 / SHA-256 — NIST CAVP 186-4 ECDSA SigGen, P-256/SHA-256, first vector
@@ -243,6 +246,8 @@ def main : IO UInt32 := do
       , ok := p256BadPriv.isNone }
     , { name := "P-256 ECDH rejects a malformed peer point, fails closed (RFC 037 §2)"
       , ok := p256BadPeer.isNone }
+    , { name := "P-256 ECDH rejects an off-curve 0x04-prefixed point, fails closed (RFC 039 §8.12)"
+      , ok := p256OffCurve.isNone }
     , { name := "P-256 public derivation rejects a wrong-size scalar (RFC 037 §2)"
       , ok := p256PubBad.size == 0 }
     , { name := "ECDSA P-256/SHA-256 sign matches NIST CAVP 186-4 SigGen vector (fixed k)"

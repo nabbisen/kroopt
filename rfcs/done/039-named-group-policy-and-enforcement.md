@@ -1,7 +1,7 @@
 # RFC 039 — Named-Group Policy and Selection Enforcement
 
 **Project.** kroopt  
-**Status.** Proposed  
+**Status.** Implemented (v0.81.0-dev)  
 **Type.** Implementation RFC  
 **Target milestone.** v0.4 hardening (follows 0.76.0-dev Stage 1)  
 **Depends on.** RFC 008 (crypto provider / capability validation), RFC 034 (capability
