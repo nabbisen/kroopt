@@ -5,6 +5,30 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.63.0-dev] — RFC (v0.4): RSA leaf lint completes the cert/key check — TESTED + LIVE — 2026-06-14
+
+Closes the one `CONFIG_LINT_SKIPPED` case from 0.62: the cert/private-key compatibility lint now
+covers RSA leaves, so all three server-auth key types (Ed25519, EC P-256, RSA) are checked.
+
+- **Minimal DER reader in `Kroopt.Crypto.CertLint`.** Unlike Ed25519/EC, an RSA SPKI wraps a
+  `RSAPublicKey ::= SEQUENCE { modulus INTEGER, publicExponent INTEGER }` whose modulus length varies
+  with key size, so a fixed-header anchor isn't enough. Added `readLen` (DER short + long-form length,
+  up to four octets), `readInteger` (tag `0x02` + content), and `stripZeros` (normalizes the
+  positive-integer `0x00` padding). `leafRsaPub` anchors on the rsaEncryption AlgId (OID
+  1.2.840.113549.1.1.1 + NULL, RFC 8017), steps over the BIT STRING and `RSAPublicKey` SEQUENCE, and
+  reads both INTEGERs; `rsaKeyMatches` compares the leading-zero–normalized `(modulus, exponent)` to
+  the configured `(n, e)`. Still **TESTED, not PROVEN** — crypto trusted zone, no proof obligation;
+  94-theorem axiom profile unchanged.
+- **Validated on the real RSA fixture.** 3 checks in the real-provider suite: the RSA leaf's modulus
+  and exponent match the configured 2048-bit key; a mismatched modulus is rejected; an RSA check
+  against an Ed25519 certificate is rejected (no rsaEncryption SPKI). Real-provider suite 23 → 26;
+  full sweep 392.
+- **Driver.** The `rsa` profile now lints (was `CONFIG_LINT_SKIPPED`) and `multi` lints all three
+  leaves; both report `CONFIG_LINT_OK` live against their real certificates. No profile reports
+  SKIPPED anymore.
+- **Trust posture unchanged.** Protocol PROVEN (94 theorems), crypto ASSUMED, cert/key lint TESTED +
+  live across all three key types. Hygiene/deps/axioms clean; fuzz 20000 clean.
+
 ## [0.62.0-dev] — RFC (v0.4): cert / private-key compatibility lint — TESTED + LIVE — 2026-06-14
 
 A config-load lint that catches a leaf certificate whose public key does not match the configured

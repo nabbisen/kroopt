@@ -194,6 +194,12 @@ def runChecks : Except Kroopt.CryptoError (List (String × Bool)) := do
         !Kroopt.Crypto.CertLint.ed25519KeyMatches Tests.RealFixtures.certDer Tests.RealFixtures.ecdsaCertPriv)
     , ("cert-lint: an Ed25519 check against an EC certificate is rejected (no Ed25519 SPKI)",
         !Kroopt.Crypto.CertLint.ed25519KeyMatches Tests.RealFixtures.ecdsaCertDer Tests.RealFixtures.certSeed)
+    , ("cert-lint: RSA leaf (modulus, exponent) match the configured key",
+        Kroopt.Crypto.CertLint.rsaKeyMatches Tests.RealFixtures.rsaCertDer Tests.RealFixtures.rsaN Tests.RealFixtures.rsaE)
+    , ("cert-lint: a mismatched RSA modulus is rejected",
+        !Kroopt.Crypto.CertLint.rsaKeyMatches Tests.RealFixtures.rsaCertDer Tests.RealFixtures.rsaE Tests.RealFixtures.rsaE)
+    , ("cert-lint: an RSA check against an Ed25519 certificate is rejected (no rsaEncryption SPKI)",
+        !Kroopt.Crypto.CertLint.rsaKeyMatches Tests.RealFixtures.certDer Tests.RealFixtures.rsaN Tests.RealFixtures.rsaE)
     ]
   return checks
 

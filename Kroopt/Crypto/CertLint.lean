@@ -74,4 +74,76 @@ def ecP256KeyMatches (certDer scalar : ByteArray) : Bool :=
   | some pt => baEq pt (Kroopt.Crypto.Hacl.p256Public scalar)
   | none    => false
 
+/-! ## RSA leaf lint
+
+Unlike Ed25519/EC P-256, an RSA SubjectPublicKeyInfo wraps a `RSAPublicKey ::= SEQUENCE { modulus
+INTEGER, publicExponent INTEGER }` whose modulus length varies with key size, so a fixed-header
+anchor isn't enough — the modulus and exponent INTEGERs need real DER length decoding. -/
+
+private def expectTag (b : ByteArray) (pos : Nat) (tag : UInt8) : Bool :=
+  decide (pos < b.size) && b.get! pos == tag
+
+/-- Read a DER length octet group at `pos`: returns `(length, nextPos)` where `nextPos` is just past
+the length octets. Short form (`< 0x80`) and long form up to four length octets; `none` otherwise. -/
+def readLen (b : ByteArray) (pos : Nat) : Option (Nat × Nat) :=
+  if decide (pos < b.size) then
+    let first := (b.get! pos).toNat
+    if first < 0x80 then some (first, pos + 1)
+    else
+      let nbytes := first - 0x80
+      if nbytes == 0 || nbytes > 4 || decide (pos + 1 + nbytes > b.size) then none
+      else some ((List.range nbytes).foldl (fun acc k => acc * 256 + (b.get! (pos + 1 + k)).toNat) 0,
+                 pos + 1 + nbytes)
+  else none
+
+/-- Read a DER INTEGER at `pos` (tag `0x02`): returns its raw content bytes and the next position.
+Leading-zero normalization is left to the caller. -/
+def readInteger (b : ByteArray) (pos : Nat) : Option (ByteArray × Nat) :=
+  if expectTag b pos 0x02 then
+    (readLen b (pos + 1)).bind fun (len, vstart) =>
+      if decide (vstart + len ≤ b.size) then some (b.extract vstart (vstart + len), vstart + len)
+      else none
+  else none
+
+private def stripZerosAux (b : ByteArray) (i fuel : Nat) : ByteArray :=
+  match fuel with
+  | 0 => b.extract i b.size
+  | fuel + 1 => if decide (i < b.size) && b.get! i == 0 then stripZerosAux b (i + 1) fuel
+                else b.extract i b.size
+
+/-- Drop leading `0x00` octets — normalizes the DER positive-integer padding so a stored raw modulus
+and the cert's `00`-prefixed modulus INTEGER compare equal. -/
+def stripZeros (b : ByteArray) : ByteArray := stripZerosAux b 0 b.size
+
+/-- rsaEncryption AlgorithmIdentifier (OID 1.2.840.113549.1.1.1 + NULL params), RFC 8017; the
+BIT STRING wrapping the `RSAPublicKey` SEQUENCE follows. -/
+def rsaAlgIdHeader : ByteArray :=
+  ByteArray.mk #[0x30,0x0d,0x06,0x09,0x2a,0x86,0x48,0x86,0xf7,0x0d,0x01,0x01,0x01,0x05,0x00]
+
+/-- The leaf's RSA `(modulus, publicExponent)`, extracted from its DER SPKI by anchoring on the
+rsaEncryption AlgId, stepping over the BIT STRING and `RSAPublicKey` SEQUENCE, then reading the two
+INTEGERs. Bytes are returned raw (callers normalize leading zeros). -/
+def leafRsaPub (certDer : ByteArray) : Option (ByteArray × ByteArray) :=
+  (findSub certDer rsaAlgIdHeader).bind fun i =>
+    let p0 := i + rsaAlgIdHeader.size                 -- BIT STRING tag
+    if expectTag certDer p0 0x03 then
+      (readLen certDer (p0 + 1)).bind fun (_, p1) =>
+        let p2 := p1 + 1                              -- skip the unused-bits octet (00)
+        if expectTag certDer p2 0x30 then             -- RSAPublicKey SEQUENCE
+          (readLen certDer (p2 + 1)).bind fun (_, p3) =>
+            (readInteger certDer p3).bind fun (modulus, p4) =>
+              (readInteger certDer p4).bind fun (exponent, _) =>
+                some (modulus, exponent)
+        else none
+    else none
+
+/-- Lint: the leaf RSA certificate's `(modulus, exponent)` match the configured `(n, e)`. `false` if
+the leaf is not an RSA certificate or either component differs. Leading-zero–normalized so DER
+padding doesn't cause a spurious mismatch. -/
+def rsaKeyMatches (certDer n e : ByteArray) : Bool :=
+  match leafRsaPub certDer with
+  | some (modulus, exponent) =>
+      baEq (stripZeros modulus) (stripZeros n) && baEq (stripZeros exponent) (stripZeros e)
+  | none => false
+
 end Kroopt.Crypto.CertLint
