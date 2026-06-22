@@ -2,6 +2,8 @@ import Kroopt.Core.State
 import Kroopt.Core.Event
 import Kroopt.Core.Action
 import Kroopt.Parse.Wire
+import Kroopt.Core.Alert
+import Kroopt.Core.Budget
 
 /-!
 # Kroopt.Core.Handshake
@@ -127,6 +129,14 @@ def installEpoch (e : Epoch) : EpochState :=
 ClientHello bytes to the transcript, and request the ECDHE shared secret. -/
 def onClientHello (s : State) (vch : ValidClientHello) (chWire : ByteArray) : HsResult :=
   if s.handshake = .start then
+    -- RFC 037 §4: charge the ClientHello message bytes against the ClientHello budget in
+    -- the core before negotiating (proven in `Kroopt.Proofs.Budget`). This is tighter than
+    -- the cumulative total-handshake-bytes budget charged in `RecordPath` and bounds a single
+    -- oversized initial flight. Limits are the standard RFC 019 ceilings.
+    match chargeClientHelloBytes ResourceLimits.standard s.budgets chWire.size with
+    | .error e => hsFail s (alertForResourceLimit e) (.resourceLimit e)
+    | .ok b' =>
+    let s := { s with budgets := b' }
     let ep := selectEndpoint s.serverConfig vch.sni
     let alpn := ep.bind (fun e =>
       negotiateAlpn s.serverConfig.alpnMode (vch.alpn.map AlpnProtocol.mk) e.allowedAlpn)

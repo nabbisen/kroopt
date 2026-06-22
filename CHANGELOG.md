@@ -5,6 +5,207 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.48.0-dev] — RFC 037 (native safety + budget enforcement) M37 band — 2026-06-13
+
+### RFC 037 slice 8 — ASan/UBSan sanitizer target (§7.5; closes RFC 009/024 sanitizer deliverable)
+
+- `scripts/sanitizer-check.sh` + `Kroopt/Native/kroopt_sanitizer_harness.c`: a sanitizer harness compiled
+  with system gcc under `-fsanitize=address,undefined` (the Lean-bundled clang ships no ASan runtime),
+  linking the Lean runtime so it can hand genuine `ByteArray`s to the shim. Two complementary halves:
+  - **Buffer bounds (tight ASan).** Direct HACL\* calls on malloc-backed, exact-size buffers — `out = mlen+16`
+    for AEAD seal, `len` for HKDF-expand, etc. — so any read past an input or write past an output is caught.
+    Verified live by a negative control: under-sizing the AEAD output by one byte triggers a heap-buffer-overflow
+    write. (Lean's own allocator places `ByteArray` data outside ASan's redzones, so this malloc-backed half is
+    what gives real bounds coverage of the crypto I/O.)
+  - **Real shim (UBSan + behaviour).** Calls the actual `kroopt_ffi_*` entry points with Lean `ByteArray`s,
+    exercising the production marshalling/length-guard code under UBSan, with KAT (SHA-256, Ed25519 RFC 8032)
+    confirming correct wiring and boundary cases (wrong-size keys, sub-tag ciphertext, tampered tag) confirming
+    the fail-closed guards.
+- Docs: the FFI-boundary trust assumption (RFC 009/024) is now partly discharged — `crypto-ffi-contract.md`
+  and `proof-assumptions.md` record that the shim and the HACL\* calls it issues run clean under ASan/UBSan on
+  KAT and adversarial inputs.
+
+This closes the M37 native-hardening band (RFC 037 §2/§3/§5/§6-sending complete, §4 substantial). Deferred
+with rationale: the C-owned zeroizing arena (before any production/stable claim), §4.1 crypto-op count/lifetime
+bounds and config-sourced limits (with the async-crypto work), and inbound alert level/description parsing.
+
+### RFC 037 slice 7 — graceful close seals and sends an encrypted close_notify (§6)
+
+Before this slice the server sent no close_notify at all: a graceful close just transitioned state and
+dropped the transport, leaving a peer unable to distinguish a clean close from a truncation. RFC 8446
+§6.1 requires an encrypted close_notify under the current epoch first.
+
+- `Kroopt/Core/Step.lean`: a graceful close from `connected` now seals a close_notify (level warning = 1,
+  description close_notify = 0) under the application write epoch, reusing the same AEAD-seal action as
+  application data — it advances the write sequence and emits `callCrypto (aeadSeal …)` rather than an
+  immediate `closeTransport`. Before `connected` there is no application epoch, so the transport still
+  closes directly.
+- `Kroopt/Core/RecordPath.lean`: when a sealed record returns and a graceful close is in flight
+  (`closeState = .sentCloseNotify` — the only outstanding seal at that point), the `.aeadSealed` handler
+  writes the record and then closes the transport. Otherwise it is application data and is just written.
+- Proofs: `appClose_no_emit` (Closure) and the appClose / cryptoResult cases in `ActionDiscipline` and
+  `RecordPath` were repaired for the new nested matches. All stay true — a close_notify is a
+  `callCrypto`/`writeTransport`/`closeTransport`, never `emitPlaintext`/`acceptPlaintextBytes` — so the
+  no-early-/no-after-close-plaintext guarantees are unchanged. 94 public theorems, axioms unchanged.
+- `Tests/Correspondence.lean` (33 checks): a core-level check confirms the close_notify is sealed with
+  inner plaintext `[1, 0, alert]`; an end-to-end check drives the close through the production interpreter
+  and confirms a sealed record (outer type `0x17`) is written before the transport closes.
+
+Remaining in §6: inbound alert records still use minimal handling (begin close); deterministic
+level/description parsing (close_notify vs fatal) feeding the close state machine is deferred. All
+suites, fuzz, and both interop scripts green. No release.
+
+### RFC 037 slice 6 — secret-arena classification + terminal-path leak tests (§3)
+
+The honest part of §3 for the constrained dev/interop milestone: the Lean `SecretArena` is tolerated
+only if the trust matrix states its *real* guarantee and secret-leak tests cover every terminal path.
+This also closed a live gap — nothing dropped a connection's secrets on teardown, and `releaseSecret`
+was a no-op.
+
+- `Kroopt/Conn/Interpreter.lean`: a `terminate` helper marks the runtime terminal and drops every live
+  secret reference via `SecretArena.bumpGeneration` (drops the stored bytes, invalidates outstanding
+  handles). Every terminal arm now routes through it — `closeTransport` (all modes), `failWithAlert`,
+  `reportError`, the wrong-kind crypto-result guard, and the §5 oversize-record failures. The
+  `releaseSecret` arm now honours the action (`arena.release`) instead of no-op'ing.
+- `Tests/Correspondence.lean` (31 checks): five secret-leak checks assert that after a graceful, fatal,
+  or abortive close, a fatal alert, or a reported error, the runtime arena holds no live secret material
+  (precondition: a keyed arena with `liveCount > 0`).
+- Docs (`threat-model.md`, `proof-assumptions.md`): the secret-memory property is classified honestly as
+  **TESTED / best-effort, not zeroization-guaranteed**. The interpreter drops references on terminal but
+  does not overwrite memory; guaranteed zeroization is the job of the C-owned zeroizing arena (RFC 013
+  §13.4), the fixed target whose timing is staged. **No production zeroization guarantee is claimed**
+  until it lands.
+
+Per §3, the C zeroizing arena remains required before any production/stable claim — that is deferred,
+not done here. All suites, fuzz, and both interop scripts green. No release.
+
+### RFC 037 slice 5 — `sealRecord` enforces the 2^14 record bound (§5)
+
+`Record13.sealRecord` computed the record length with a truncating `ctLen.toUInt16` cast: an
+oversize fragment (e.g. a misconfigured >16 KB certificate chain) would silently wrap to a wrong
+length header and emit a malformed record. Per RFC 037 §5 it now **enforces** the bound.
+
+- `Kroopt/Conn/Record13.lean`: `sealRecord` rejects content above `maxRecordPlaintext` (2^14, RFC 8446
+  §5.1) *before* sealing, returning `Except ResourceLimitError ByteArray` (typed `recordSize` error).
+  A `sealRecord!` convenience (panics on oversize) is provided for known-small test fixtures only.
+- `Kroopt/Conn/Interpreter.lean`: the failure is propagated without weakening security. `sealHandshakeRecord`
+  now returns `Except _ (Option ByteArray)` — distinguishing *sealed* from the transitional *no-key*
+  case from *oversize*; `handshakeWire` maps no-key to the cleartext fallback but oversize to a typed
+  error; the `writeHandshake`/`writeCertificate` interpreter arms turn that error into a terminal
+  connection failure. Crucially, an oversize handshake message can no longer fall through to the
+  keyless cleartext path (which would have leaked it unencrypted) — it fails the connection.
+- Tests: `Tests/Record13.lean` (13 checks) — oversize content is rejected (`error recordSize`), content
+  at the 2^14 bound still seals; existing `sealRecord` test/diagnostic call sites migrated to
+  `sealRecord!`, and the `handshakeWire` correspondence checks adapted to the `Except` result.
+
+Acceptance criterion §7.4 met. Legitimate records (handshake flight, ≤2^14 app fragments) are unaffected
+— all suites, fuzz, and both interop scripts (which drive the real seal path) green. No release.
+
+### RFC 037 slice 4 — ClientHello-bytes budget charged in the core (§4)
+
+Continues §4 with a tighter, ClientHello-specific bound. `onClientHello` (the `start → requestedServerRandom`
+transition) now charges the ClientHello message's wire bytes against the ClientHello budget via the proven
+`chargeClientHelloBytes` (16384, RFC 019) before negotiating — bounding a single oversized initial flight
+more tightly than the cumulative total-handshake-bytes budget (slice 3). Exhaustion fails the handshake
+terminally with the generic `internal_error` alert and emits no plaintext.
+
+- `Kroopt/Core/Handshake.lean`: charge wired into `onClientHello`.
+- `Kroopt/Proofs/Handshake.lean` + `Kroopt/Proofs/RecordPath.lean`: the five theorems that unfold
+  `onClientHello` (legal-edge, no-emit, no-accept, no-aeadOpen, pending-plaintext) updated for the new
+  nested charge `match` — the charge-error arm routes through `hsFail` (already proven to move along a
+  legal edge, emit no plaintext, and clear `pendingPlainOut`), so the safety invariants carry through
+  unchanged (still 94 theorems, no `sorry`).
+- `Tests/Handshake.lean` (now 12 checks): an oversized ClientHello (20000 bytes) is rejected by the
+  budget (`failed internal_error`); a normal ClientHello stays under budget and advances the handshake.
+
+Legitimate handshakes (~200-byte ClientHello) are far under budget — all suites, fuzz, and both interop
+unaffected. Still open in §4: extension-count / total-extension-bytes (needs the parser to surface the
+count), decrypted inner-handshake bytes, pending-ciphertext, the §4.1 crypto-op bounds, and
+config-sourced limits. No release.
+
+### RFC 037 slice 3 — resource budgets charged in the core: total handshake bytes (§4)
+
+`Core/Budget.lean` had proven charge/check functions (the DoS bound in `Kroopt.Proofs.Budget`) that
+`step` never invoked — so the budgets were not, as RFC 037 §4 requires, charged on the core path
+where proofs and tests can see them. This slice wires the first one in.
+
+- `Kroopt/Core/RecordPath.lean`: the inbound handshake-record path now charges the record's bytes
+  against the cumulative total-handshake-bytes budget via the proven `chargeHandshakeBytes`
+  (limits from `ResourceLimits.standard`, RFC 019 defaults), threading the updated `BudgetState`
+  through the core state. This is distinct from — and now fires before — the per-buffer reassembly
+  cap. Exhaustion is a terminal, typed `resourceLimit` failure that emits no plaintext.
+- `Kroopt/Core/Alert.lean`: `alertForResourceLimit` added to the centralized error→alert mapping —
+  budget exhaustion maps uniformly to the generic `internal_error` so the alert leaks neither which
+  budget was hit nor any detail (consistent with `sequenceOverflow`).
+- `Kroopt/Proofs/Closure.lean`: `alertForResourceLimit_is_fatal` and `…_not_closeNotify` proved, so
+  the new mapping upholds the standing invariant that every error alert is fatal and never the benign
+  `close_notify` (94 public theorems, up from 92).
+- `Tests/Correspondence.lean` (now 26 checks): the over-large handshake input previously rejected by
+  the buffer cap is now shown to fail specifically via the core budget charge (`failed internal_error`),
+  pinning that the proven budget machinery is the active guard.
+
+Scope: this charges the **plaintext** handshake-record path (the inbound ClientHello and any
+handshake fragmentation — the pre-encryption attacker surface). Still open in §4: charging decrypted
+inner-handshake bytes, the ClientHello-specific / extension-count budgets, pending-ciphertext, and the
+§4.1 crypto-op count/bytes/lifetime bounds; and sourcing limits from validated config rather than the
+standard defaults. The legitimate handshake (~200 inbound bytes) is far under budget — all suites,
+fuzz, and both interop scripts unaffected. No release.
+
+### RFC 037 slice 2 — FFI length contracts complete: the no-failure-channel primitives (§2)
+
+Completes §2 by extending length validation to the primitives that produce output unconditionally and
+so had no way to signal rejection. Consistent with the shim's existing CSPRNG convention (a failed draw
+returns a zero-length `ByteArray`), each now returns the **empty** fail-closed sentinel on a length
+violation rather than casting a bad length into the `uint32_t` HACL parameter:
+
+- `aead_seal` (key = 32, nonce = 12, AAD/plaintext ≤ `UINT32_MAX`);
+- `ed25519_sign` (private key = 32, message ≤ `UINT32_MAX`); `ed25519_public`, `x25519_public`
+  (private key = 32);
+- `hkdf_extract` / `hkdf_expand` (salt/ikm and prk/info ≤ `UINT32_MAX`); `hmac256` (key/msg);
+  `sha256` / `sha384` / `sha512` (input ≤ `UINT32_MAX`), via a shared `len_u32_ok` helper.
+
+For well-formed kroopt inputs every guard is unreachable, so no production behaviour changes; the
+checks are defense-in-depth at the trust boundary (the C shim no longer trusts Lean-supplied lengths
+for memory safety). `Tests/Hacl.lean` (now 26 checks) adds five more fixed-size negative cases
+(wrong-size key/nonce on seal; wrong-size private key on sign and on both public derivations), each
+asserting the empty result. KATs, tamper rejection, and both interop scripts — which drive the real
+seal/sign paths with valid lengths — are unaffected.
+
+**§2 is now complete:** every native primitive validates all input lengths and rejects (never
+truncates) violations — status-tagged for the failure-channel primitives (slice 1: `aead_open`,
+`x25519_shared`, `ed25519_verify`), empty-sentinel for the rest (this slice). Acceptance criterion
+§7.1 is met. Remaining RFC 037: §3 secret-arena classification, §4 core-side budget charging +
+crypto-op bounds, §5 `sealRecord` size enforcement, §6 close_notify/alert polish, §7.5 sanitizer
+target. Proofs untouched (92 theorems). No release.
+
+### RFC 037 slice 1 — FFI length contracts on the failure-channel primitives (§2)
+
+Opening the M37 native-hardening band (the gate, with RFC 031, before live-client interop). The
+native shim cast every `ByteArray` length straight to the `uint32_t` HACL parameter with no
+validation. RFC 037 §2 requires validating every length **before** each HACL call and rejecting
+(never truncating) anything that does not fit the expected fixed size or the `uint32_t` bound.
+
+This slice hardens the three attacker-facing primitives that already carry a failure channel, so the
+change is purely additive — a length violation is indistinguishable to the caller from a normal
+cryptographic failure, and fails closed:
+
+- `kroopt_ffi_aead_open` (ChaCha20-Poly1305): rejects key ≠ 32, nonce ≠ 12, AAD length > `UINT32_MAX`,
+  or message length > `UINT32_MAX` → status 1 → `chachaPolyOpen` returns `none`. No plaintext is
+  emitted on a malformed call.
+- `kroopt_ffi_x25519_shared`: rejects a private scalar or peer point ≠ 32 bytes → status 1 → `none`.
+- `kroopt_ffi_ed25519_verify`: rejects public key ≠ 32, signature ≠ 64, or message > `UINT32_MAX`
+  → result 0 (invalid).
+
+`Tests/Hacl.lean` (now 21 checks) adds six negative-length cases — wrong-size key/nonce on AEAD open,
+wrong-size scalar/point on X25519, wrong-size public key/signature on Ed25519 verify — each asserting
+the call fails closed. Positive KATs, tamper rejection, and both interop scripts (`ed25519-interop`,
+`record-interop`) are unaffected, confirming the guards do not perturb the legitimate paths.
+
+Still open in §2: the primitives with **no** failure channel (`aead_seal`, `ed25519_sign`,
+`hkdf_extract`/`expand`, `hmac`, the SHA family, `*_public`) need a status-tagged return or a
+caller-side length pre-check before they can reject malformed input — the next §2 slice. No production
+behaviour changed for well-formed input; proofs untouched (92 theorems). No release.
+
 ## [0.47.0-dev] — RFC 031 (production-interpreter correspondence) milestone: `RealHandshake` retired — 2026-06-13
 
 ### RFC 031 — `RealHandshake` reduced to nothing: the production interpreter owns the real handshake
@@ -281,7 +482,7 @@ No behaviour change for the existing fake-provider `conn`/`https` suites: the fa
 ignores the resolved transcript reference. Proofs untouched (92 public theorems); the change
 is runtime-only.
 
-## [0.46.0-dev] — RFC 032 RESOLVED: typed flight assembly, no first-byte dispatch — 2026-06-12
+
 
 Milestone release (RFC 032 "no first-byte dispatch" theme complete; RFC moved to
 `rfcs/done/`). All five server-flight messages are emitted as typed `OutputAction`s and

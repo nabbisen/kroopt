@@ -42,7 +42,7 @@ def main : IO UInt32 := do
   let ivSized  := iv.size == 12
 
   -- (1) handshake-record round-trip, no padding.
-  let rec0 := Record13.sealRecord key iv 0 msg .handshake 0
+  let rec0 := Record13.sealRecord! key iv 0 msg .handshake 0
   let open0 := Record13.openRecord key iv 0 rec0
   let rt0 := match open0 with | some (c, t) => eqB c msg && t == ContentType.handshake | none => false
 
@@ -57,12 +57,12 @@ def main : IO UInt32 := do
   let encrypted := !(eqB (rec0.extract 5 rec0.size) (Record13.innerPlaintext msg .handshake 0))
 
   -- (4) padding is stripped on open.
-  let recPad := Record13.sealRecord key iv 0 msg .handshake 17
+  let recPad := Record13.sealRecord! key iv 0 msg .handshake 17
   let rtPad := match Record13.openRecord key iv 0 recPad with
                | some (c, t) => eqB c msg && t == ContentType.handshake | none => false
 
   -- (5) application_data content type round-trips.
-  let recApp := Record13.sealRecord key iv 0 msg .applicationData 0
+  let recApp := Record13.sealRecord! key iv 0 msg .applicationData 0
   let rtApp := match Record13.openRecord key iv 0 recApp with
                | some (_, t) => t == ContentType.applicationData | none => false
 
@@ -76,12 +76,20 @@ def main : IO UInt32 := do
 
   -- (8) the sequence number binds the nonce: seq 1 differs, and opening rec0 at
   -- the wrong sequence fails.
-  let rec1 := Record13.sealRecord key iv 1 msg .handshake 0
+  let rec1 := Record13.sealRecord! key iv 1 msg .handshake 0
   let seqBindsCiphertext := !(eqB rec0 rec1)
   let wrongSeqRejected := (Record13.openRecord key iv 1 rec0).isNone
 
   let checks : List (String × Bool) :=
     [ ("derived ChaCha20-Poly1305 key is 32 octets", keySized)
+    , -- RFC 037 §5: content above the 2^14 record bound is rejected (typed resourceLimit error),
+      -- never sealed through the truncating UInt16 length cast; content at the bound still seals.
+      ("oversize content is rejected by sealRecord (RFC 037 §5)",
+        (match Record13.sealRecord key iv 0 (ByteArray.mk (Array.mkArray 16385 (0:UInt8))) .applicationData 0 with
+         | .error .recordSize => true | _ => false))
+    , ("content at the 2^14 bound still seals (RFC 037 §5)",
+        (match Record13.sealRecord key iv 0 (ByteArray.mk (Array.mkArray 16384 (0:UInt8))) .applicationData 0 with
+         | .ok _ => true | _ => false))
     , ("derived record IV is 12 octets", ivSized)
     , ("handshake record round-trips (content + inner type)", rt0)
     , ("record is a TLSCiphertext: 0x17 0x0303, length, tag-expanded size", struct)

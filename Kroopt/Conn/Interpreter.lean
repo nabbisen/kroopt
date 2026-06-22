@@ -130,26 +130,42 @@ handshake-traffic key installed in the arena, at the core-authorized sequence nu
 (RFC 031 §3 — the interpreter MAY seal but the epoch/seq come from the core). Returns `none`
 when no handshake write key is installed; that is the transitional fake-provider path, whose
 bytes never reach a real wire. -/
-def sealHandshakeRecord (arena : SecretArena) (seq : UInt64) (plain : ByteArray) : Option ByteArray :=
+def sealHandshakeRecord (arena : SecretArena) (seq : UInt64) (plain : ByteArray) :
+    Except Kroopt.ResourceLimitError (Option ByteArray) :=
   match arena.lookupBaseSecret .write .handshake with
-  | none => none
+  | none => .ok none
   | some sid =>
     match arena.getById sid with
-    | none => none
+    | none => .ok none
     | some secret =>
         let key := Kroopt.Crypto.KeySchedule.trafficKey .chacha20Poly1305Sha256 secret
         let iv  := Kroopt.Crypto.KeySchedule.trafficIv secret
-        some (Record13.sealRecord key iv seq plain .handshake 0)
+        (Record13.sealRecord key iv seq plain .handshake 0).map some
 
 /-- Realize a flight message as the wire bytes its core-authorized epoch demands: a
 `.handshake`-epoch message becomes a sealed protected record (or, transitionally, a cleartext
 record if no key is installed); the `.initial`-epoch ServerHello becomes a cleartext handshake
 record. The transcript itself lives in the core (RFC 031 §3) — over plaintext messages — so
 the interpreter only frames/seals the wire; it does not maintain a transcript. -/
-def handshakeWire (arena : SecretArena) (epoch : Kroopt.Core.Epoch) (seq : UInt64) (plain : ByteArray) : ByteArray :=
+def handshakeWire (arena : SecretArena) (epoch : Kroopt.Core.Epoch) (seq : UInt64) (plain : ByteArray) :
+    Except Kroopt.ResourceLimitError ByteArray :=
   match epoch with
-  | .handshake => (sealHandshakeRecord arena seq plain).getD (plaintextHandshakeRecord plain)
-  | _ => plaintextHandshakeRecord plain
+  | .handshake =>
+      match sealHandshakeRecord arena seq plain with
+      | .ok (some r) => .ok r
+      | .ok none     => .ok (plaintextHandshakeRecord plain)  -- transitional no-key cleartext path
+      | .error e     => .error e                              -- oversize record → fail the connection
+  | _ => .ok (plaintextHandshakeRecord plain)
+
+/-- Mark the runtime terminal and drop every live secret reference (RFC 037 §3). On the Lean
+side this is a *best-effort* release: `bumpGeneration` drops the stored secret bytes and invalidates
+every outstanding handle (a stale handle then resolves to `none`, never the wrong secret). It is
+**not** guaranteed memory zeroization — the C-owned zeroizing arena (RFC 013 §13.4) is the fixed
+target for that, and no production zeroization guarantee is claimed until it lands. -/
+def terminate (rt : RuntimeState) (err : Option TlsError := none) : RuntimeState :=
+  { rt with terminal := true
+            arena := rt.arena.bumpGeneration
+            lastError := match err with | some e => some e | none => rt.lastError }
 
 /-- Execute one action (RFC 010 §6). Dispatches on the action **variant only** —
 no protocol-state branching. Returns the updated runtime/transport and any
@@ -178,19 +194,21 @@ def execAction {τ : Type} [Transport τ] (prov : CryptoProvider) (rt : RuntimeS
       -- (plaintext ServerHello, sealed encrypted flight). The transcript is the core's, not the
       -- interpreter's.
       let plain := Kroopt.Core.serializeHandshakeOut msg
-      let wire := handshakeWire rt.arena epoch seq plain
-      let (rt', tr') := drainOutbound
-        { rt with outbound := rt.outbound ++ wire } tr
-      (rt', tr', [])
+      match handshakeWire rt.arena epoch seq plain with
+      | .ok wire =>
+          let (rt', tr') := drainOutbound { rt with outbound := rt.outbound ++ wire } tr
+          (rt', tr', [])
+      | .error e => (terminate rt (some (.resourceLimit e)), tr, [])
   | .writeCertificate _ epoch seq _ =>
       -- The interpreter owns Certificate serialization from the chain handle (RFC 032 §4).
       -- Until the configured DER is wired in, production serializes a structurally-valid empty
       -- Certificate; it is sealed under the handshake epoch like the rest of the flight.
       let plain := Kroopt.Parse.Wire.certificate (ByteArray.mk #[]) (ByteArray.mk #[])
-      let wire := handshakeWire rt.arena epoch seq plain
-      let (rt', tr') := drainOutbound
-        { rt with outbound := rt.outbound ++ wire } tr
-      (rt', tr', [])
+      match handshakeWire rt.arena epoch seq plain with
+      | .ok wire =>
+          let (rt', tr') := drainOutbound { rt with outbound := rt.outbound ++ wire } tr
+          (rt', tr', [])
+      | .error e => (terminate rt (some (.resourceLimit e)), tr, [])
   | .enableWriteInterest _  => ({ rt with writeInterest := true }, Transport.enableWrite tr (Transport.fd tr), [])
   | .disableWriteInterest _ => ({ rt with writeInterest := false }, Transport.disableWrite tr (Transport.fd tr), [])
   | .callCrypto conn op req =>
@@ -202,15 +220,15 @@ def execAction {τ : Type} [Transport τ] (prov : CryptoProvider) (rt : RuntimeS
             -- The provider answered with a result whose kind cannot answer this op (RFC 031 §4):
             -- an internal-invariant violation. Terminate; never feed the mismatched result into
             -- the verified core, where it would be dispatched on the result kind alone.
-            ({ rt with arena := arena', lastError := some .internalInvariantFailure, terminal := true }, tr, [])
+            (terminate { rt with arena := arena' } (some .internalInvariantFailure), tr, [])
       | .error e        => (rt, tr, [InputEvent.cryptoResult conn op (.failed e)])
   | .emitPlaintext _ b        => ({ rt with plaintextOut := some b }, tr, [])
   | .acceptPlaintextBytes _ n => ({ rt with acceptedBytes := rt.acceptedBytes + n }, tr, [])
   | .reportHandshakeComplete _ info => ({ rt with metadata := some info }, tr, [])
-  | .reportError _ e          => ({ rt with lastError := some e, terminal := true }, tr, [])
-  | .failWithAlert _ _        => ({ rt with terminal := true }, tr, [])
-  | .closeTransport _ _       => ({ rt with terminal := true }, Transport.closeConnection tr (Transport.fd tr), [])
-  | .releaseSecret _          => (rt, tr, [])
+  | .reportError _ e          => (terminate rt (some e), tr, [])
+  | .failWithAlert _ _        => (terminate rt, tr, [])
+  | .closeTransport _ _       => (terminate rt, Transport.closeConnection tr (Transport.fd tr), [])
+  | .releaseSecret h          => ({ rt with arena := rt.arena.release h }, tr, [])
 
 /-- Execute a list of actions in order, accumulating follow-up events. -/
 def execActions {τ : Type} [Transport τ] (prov : CryptoProvider) (rt : RuntimeState) (tr : τ)

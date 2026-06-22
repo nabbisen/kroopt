@@ -83,10 +83,10 @@ def main : IO Unit := do
   let cert := hx "0b 00 00 05 00 00 01 00 00"        -- Certificate (short, for transport)
   let cv   := hx "0f 00 00 06 08 07 00 02 ab cd"     -- CertificateVerify (ed25519 scheme)
   let fin  := (hx "14 00 00 20") ++ zeros 32         -- Finished (32-byte verify_data slot)
-  let r0 := Record13.sealRecord shk shi 0 ee   .handshake 0
-  let r1 := Record13.sealRecord shk shi 1 cert .handshake 0
-  let r2 := Record13.sealRecord shk shi 2 cv   .handshake 0
-  let r3 := Record13.sealRecord shk shi 3 fin  .handshake 0
+  let r0 := Record13.sealRecord! shk shi 0 ee   .handshake 0
+  let r1 := Record13.sealRecord! shk shi 1 cert .handshake 0
+  let r2 := Record13.sealRecord! shk shi 2 cv   .handshake 0
+  let r3 := Record13.sealRecord! shk shi 3 fin  .handshake 0
   let _ ← sockWrite b (plainRecord 22 sh)
   let _ ← sockWrite b ((r0 ++ r1 ++ r2) ++ r3)
 
@@ -105,14 +105,14 @@ def main : IO Unit := do
   -- 3) the peer seals a client Finished and writes it; kroopt reads + opens it
   let chk := keyOf cHs; let chi := ivOf cHs
   let cfin := (hx "14 00 00 20") ++ zeros 32
-  let _ ← sockWrite a (Record13.sealRecord chk chi 0 cfin .handshake 0)
+  let _ ← sockWrite a (Record13.sealRecord! chk chi 0 cfin .handshake 0)
   let kGot ← readRecord b
   let finishedOk := kGot.get! 0 == 0x17 && opensTo (Record13.openRecord chk chi 0 kGot) cfin .handshake
 
   -- 4) application data under the server application-traffic key, over the socket
   let apk := keyOf sAp; let api := ivOf sAp
   let app := String.toUTF8 "hello from kroopt over a real socket"
-  let _ ← sockWrite b (Record13.sealRecord apk api 0 app .applicationData 0)
+  let _ ← sockWrite b (Record13.sealRecord! apk api 0 app .applicationData 0)
   let peerApp ← readRecord a
   let appOk := opensTo (Record13.openRecord apk api 0 peerApp) app .applicationData
 

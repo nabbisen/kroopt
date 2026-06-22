@@ -5,6 +5,7 @@ import Kroopt.Parse.Record
 import Kroopt.Core.Handshake
 import Kroopt.Parse.Handshake
 import Kroopt.Core.Alert
+import Kroopt.Core.Budget
 
 /-!
 # Kroopt.Core.RecordPath
@@ -146,16 +147,24 @@ def handleTransportBytes (s0 : State) (b : ByteArray) : RecordStepResult :=
           -- may carry a partial handshake message. Accumulate into the reassembly
           -- buffer, then frame and process one complete message, keeping any tail for
           -- the next record. An over-large buffer is a resource-exhaustion failure.
-          let buf := s.handshakeReasm ++ body
-          if buf.size > maxHandshakeReasmBytes then
-            recordFailAlert s (alertForParseError .oversizedRecord) (.parse .oversizedRecord)
-          else
-            match frameHandshakeMessage buf with
-            | none =>
-                -- Incomplete message: buffer it and ask the interpreter for more bytes.
-                .ok ({ s with handshakeReasm := buf }, [OutputAction.readTransport s.connId])
-            | some (msg, rest) =>
-                handshakeOnPlaintextRecord { s with handshakeReasm := rest } msg
+          -- RFC 037 §4: first charge the inbound handshake bytes against the cumulative
+          -- total-handshake-bytes budget *in the core* (proven in `Kroopt.Proofs.Budget`,
+          -- tested here) — distinct from the per-buffer reassembly cap below. Limits are
+          -- the standard RFC 019 ceilings; config-tunable limits are a later wiring step.
+          match chargeHandshakeBytes ResourceLimits.standard s.budgets body.size with
+          | .error e => recordFailAlert s (alertForResourceLimit e) (.resourceLimit e)
+          | .ok b' =>
+            let s := { s with budgets := b' }
+            let buf := s.handshakeReasm ++ body
+            if buf.size > maxHandshakeReasmBytes then
+              recordFailAlert s (alertForParseError .oversizedRecord) (.parse .oversizedRecord)
+            else
+              match frameHandshakeMessage buf with
+              | none =>
+                  -- Incomplete message: buffer it and ask the interpreter for more bytes.
+                  .ok ({ s with handshakeReasm := buf }, [OutputAction.readTransport s.connId])
+              | some (msg, rest) =>
+                  handshakeOnPlaintextRecord { s with handshakeReasm := rest } msg
       | .alert =>
           -- Minimal inbound-alert handling: begin close (full policy at M9).
           .ok ({ s with handshake := .closing, closeState := .receivedCloseNotify },
@@ -223,9 +232,12 @@ def handleCryptoResultCorrelated (s : State) (op : OperationId) (r : CryptoResul
             | .invalid =>
                 recordFailAlert s (alertForParseError .invalidContentType) (.parse .invalidContentType)
   | .aeadSealed ct =>
-      .ok ((s.clearOp op |> fun s =>
-            { s with outboundCiphertext := s.outboundCiphertext ++ ct }),
-           [OutputAction.writeTransport s.connId ct])
+      let s := { (s.clearOp op) with outboundCiphertext := (s.clearOp op).outboundCiphertext ++ ct }
+      -- RFC 037 §6: once a graceful close has begun, the only outstanding seal is the close_notify;
+      -- write it and then close. Otherwise this is an application-data record: write it.
+      let closeTail := if s.closeState = .sentCloseNotify
+                       then [OutputAction.closeTransport s.connId .graceful] else []
+      .ok (s, OutputAction.writeTransport s.connId ct :: closeTail)
   | .verifyFailed =>
       -- AEAD / Finished verification failure ⇒ fatal, never plaintext (RFC 004 §12).
       recordFailAlert s .badRecordMac (.crypto .authFailed)

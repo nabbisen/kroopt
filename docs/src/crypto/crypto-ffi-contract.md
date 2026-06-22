@@ -71,3 +71,20 @@ synthesises fallback entropy: `provisionRealConfig` fails closed with `entropyFa
 rather than emit a zero or partial key. Deterministic randomness is confined to the
 explicitly named fake/test provider; a `randomBytes` operation reaching the real provider
 is a typed error, so deterministic bytes can never masquerade as real randomness.
+
+## Sanitizer coverage (RFC 037 §7.5)
+
+`scripts/sanitizer-check.sh` compiles the `kroopt_ffi.c` shim and the HACL\* sources it
+calls under AddressSanitizer + UndefinedBehaviorSanitizer (system gcc — the Lean-bundled
+clang carries no ASan runtime) and runs `Kroopt/Native/kroopt_sanitizer_harness.c`. The
+harness links the Lean runtime so it hands the shim genuine `ByteArray`s, and checks two
+things: tight **buffer bounds**, via direct HACL calls on exact-size malloc-backed buffers
+(a deliberate one-byte under-allocation is caught as a heap-buffer-overflow — the negative
+control), and **UB plus fail-closed behaviour** on the actual `kroopt_ffi_*` entry points,
+with known-answer vectors (SHA-256, Ed25519 RFC 8032) confirming correct wiring and
+adversarial inputs (wrong-size keys, sub-tag ciphertext, tampered tag) confirming the
+length guards. A clean run partly discharges the FFI-boundary trust assumption (RFC
+009/024): the shim and the primitive calls it issues read and write in bounds and exhibit
+no undefined behaviour on key-schedule-shaped and adversarial inputs. Lean's own allocator
+places `ByteArray` data outside ASan's redzones, so the malloc-backed half is what provides
+the tight bounds coverage of the crypto I/O.

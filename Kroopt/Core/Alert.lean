@@ -20,7 +20,7 @@ Two safety facts about this mapping are proved in `Kroopt.Proofs.Closure`:
 
 namespace Kroopt.Core
 
-open Kroopt (AlertDescription AlertLevel ProtocolError ParseError CryptoError)
+open Kroopt (AlertDescription AlertLevel ProtocolError ParseError CryptoError ResourceLimitError)
 
 /-- The level of an alert. In TLS 1.3 only `closeNotify` (and the rarely used
 `userCanceled`) are warnings; every other alert is fatal. -/
@@ -70,5 +70,12 @@ def alertForCryptoFailure : CryptoError → Option AlertDescription
 is not currently needed to choose the alert, but the signature documents the
 intent and leaves room for refinement. -/
 def alertForUnexpectedMessage : AlertDescription := .unexpectedMessage
+
+/-- Map a resource-budget exhaustion to an alert (RFC 013 §4, external design §13.4).
+Budget exhaustion is attacker-induced rather than a protocol-negotiation outcome; the
+alert is uniformly the generic `internalError` so it leaks neither which budget was hit
+nor any high-resolution detail (consistent with `sequenceOverflow`). Always fatal. -/
+def alertForResourceLimit : ResourceLimitError → AlertDescription
+  | _ => .internalError
 
 end Kroopt.Core

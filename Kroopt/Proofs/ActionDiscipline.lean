@@ -52,8 +52,16 @@ theorem no_plaintext_emit_unless_connected
     · -- appClose: per-mode close; no emit in any branch
       split at h
       · split at h
-        · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-          rw [← h.2] at hmem; simp only [List.mem_singleton, reduceCtorEq] at hmem
+        · split at h
+          · split at h
+            · simp only [failAlert, Except.ok.injEq, Prod.mk.injEq] at h
+              rw [← h.2] at hmem
+              simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil,
+                reduceCtorEq, or_self, or_false] at hmem
+            · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+              rw [← h.2] at hmem; simp only [List.mem_singleton, reduceCtorEq] at hmem
+          · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+            rw [← h.2] at hmem; simp only [List.mem_singleton, reduceCtorEq] at hmem
         · simp only [Except.ok.injEq, Prod.mk.injEq] at h
           rw [← h.2] at hmem
           simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil,
@@ -114,8 +122,16 @@ theorem accept_plaintext_only_connected
     · -- appClose: per-mode close; no accept in any branch
       split at h
       · split at h
-        · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-          rw [← h.2] at hmem; simp only [List.mem_singleton, reduceCtorEq] at hmem
+        · split at h
+          · split at h
+            · simp only [failAlert, Except.ok.injEq, Prod.mk.injEq] at h
+              rw [← h.2] at hmem
+              simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil,
+                reduceCtorEq, or_self, or_false] at hmem
+            · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+              rw [← h.2] at hmem; simp only [List.mem_singleton, reduceCtorEq] at hmem
+          · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+            rw [← h.2] at hmem; simp only [List.mem_singleton, reduceCtorEq] at hmem
         · simp only [Except.ok.injEq, Prod.mk.injEq] at h
           rw [← h.2] at hmem
           simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil,

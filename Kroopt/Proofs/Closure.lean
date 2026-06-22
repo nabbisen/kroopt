@@ -68,8 +68,16 @@ theorem appClose_no_emit (s s' : State) (conn : ConnId) (mode : CloseMode)
   · simp only [] at h
     split at h
     · split at h
-      · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-        rw [← h.2] at hmem; simp only [List.mem_singleton, reduceCtorEq] at hmem
+      · split at h
+        · split at h
+          · simp only [failAlert, Except.ok.injEq, Prod.mk.injEq] at h
+            rw [← h.2] at hmem
+            simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil,
+              reduceCtorEq, or_self, or_false] at hmem
+          · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+            rw [← h.2] at hmem; simp only [List.mem_singleton, reduceCtorEq] at hmem
+        · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+          rw [← h.2] at hmem; simp only [List.mem_singleton, reduceCtorEq] at hmem
       · simp only [Except.ok.injEq, Prod.mk.injEq] at h
         rw [← h.2] at hmem
         simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil,
@@ -89,6 +97,17 @@ theorem alertForParseError_is_fatal (e : ParseError) :
 mistaken by the peer for a clean close. -/
 theorem alertForParseError_not_closeNotify (e : ParseError) :
     alertForParseError e ≠ .closeNotify := by
+  cases e <;> decide
+
+/-- Every resource-budget exhaustion alert is fatal — budget exhaustion is a
+security failure, never a benign close (RFC 013 §4; RFC 037 §4). -/
+theorem alertForResourceLimit_is_fatal (e : Kroopt.ResourceLimitError) :
+    alertLevel (alertForResourceLimit e) = .fatal := by
+  cases e <;> rfl
+
+/-- A resource-budget exhaustion never maps to `closeNotify`. -/
+theorem alertForResourceLimit_not_closeNotify (e : Kroopt.ResourceLimitError) :
+    alertForResourceLimit e ≠ .closeNotify := by
   cases e <;> decide
 
 /-- A protocol error is fatal unless it is precisely "peer sent close_notify",

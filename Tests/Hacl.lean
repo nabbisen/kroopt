@@ -79,6 +79,10 @@ def main : IO UInt32 := do
   let sealed := chachaPolySeal key nonce aad pt
   let opened := chachaPolyOpen key nonce aad sealed
   let tampered := chachaPolyOpen key nonce aad (sealed.set! 0 ((sealed.get! 0) ^^^ 1))
+  -- RFC 037 §2: a malformed-length call must be rejected before the HACL call,
+  -- never truncated. With a wrong-size key or nonce the open fails closed (none).
+  let wrongKeyOpen := chachaPolyOpen (rep 31 0x2b) nonce aad sealed
+  let wrongNonceOpen := chachaPolyOpen key (rep 11 0x07) aad sealed
   -- Ed25519 round-trip (self-consistency — NOT a published vector; arbitrary key.
   -- The published RFC 8032 §7.1 Test 1 KAT lives in kroopt-provision-test via
   -- Tests/Vectors/Ed25519Rfc8032.lean.)
@@ -88,6 +92,20 @@ def main : IO UInt32 := do
   let sig := ed25519Sign edPriv msg
   let edOk := ed25519Verify edPub msg sig
   let edBad := ed25519Verify edPub (hexToBytes "deadbe00") sig
+  -- RFC 037 §2 length contracts on the remaining failure-channel primitives:
+  -- X25519 rejects a non-32-byte scalar (none); Ed25519 verify rejects a wrong-size
+  -- public key or signature (invalid), all before the HACL call.
+  let x25519BadPriv := x25519Shared (rep 31 0x01) (hexToBytes x25519_peer)
+  let x25519BadPeer := x25519Shared (hexToBytes x25519_priv) (rep 33 0x02)
+  let edBadPubLen := ed25519Verify (rep 31 0x11) msg sig
+  let edBadSigLen := ed25519Verify edPub msg (rep 63 0x00)
+  -- RFC 037 §2 on the no-failure-channel primitives: a length violation yields the empty
+  -- (zero-length) fail-closed sentinel, consistent with the CSPRNG convention.
+  let sealBadKey := chachaPolySeal (rep 31 0x2b) nonce aad pt
+  let sealBadNonce := chachaPolySeal key (rep 11 0x07) aad pt
+  let signBadPriv := ed25519Sign (rep 31 0x11) msg
+  let edPubBadPriv := ed25519Public (rep 31 0x11)
+  let x25519PubBadPriv := x25519Public (rep 33 0x01)
   -- random
   let r1 ← (do match ← randomBytes 32 with | .bytes b => pure b | .error _ => pure ByteArray.empty)
   let r2 ← (do match ← randomBytes 32 with | .bytes b => pure b | .error _ => pure ByteArray.empty)
@@ -108,6 +126,28 @@ def main : IO UInt32 := do
       , ok := (match opened with | some p => bytesEq p pt | none => false) }
     , { name := "ChaCha20-Poly1305 rejects a tampered ciphertext"
       , ok := tampered.isNone }
+    , { name := "ChaCha20-Poly1305 open rejects a wrong-size key, fails closed (RFC 037 §2)"
+      , ok := wrongKeyOpen.isNone }
+    , { name := "ChaCha20-Poly1305 open rejects a wrong-size nonce, fails closed (RFC 037 §2)"
+      , ok := wrongNonceOpen.isNone }
+    , { name := "X25519 rejects a wrong-size private scalar, fails closed (RFC 037 §2)"
+      , ok := x25519BadPriv.isNone }
+    , { name := "X25519 rejects a wrong-size peer point, fails closed (RFC 037 §2)"
+      , ok := x25519BadPeer.isNone }
+    , { name := "Ed25519 verify rejects a wrong-size public key (RFC 037 §2)"
+      , ok := !edBadPubLen }
+    , { name := "Ed25519 verify rejects a wrong-size signature (RFC 037 §2)"
+      , ok := !edBadSigLen }
+    , { name := "ChaCha20-Poly1305 seal rejects a wrong-size key, empty result (RFC 037 §2)"
+      , ok := sealBadKey.size == 0 }
+    , { name := "ChaCha20-Poly1305 seal rejects a wrong-size nonce, empty result (RFC 037 §2)"
+      , ok := sealBadNonce.size == 0 }
+    , { name := "Ed25519 sign rejects a wrong-size private key, empty result (RFC 037 §2)"
+      , ok := signBadPriv.size == 0 }
+    , { name := "Ed25519 public derivation rejects a wrong-size private key (RFC 037 §2)"
+      , ok := edPubBadPriv.size == 0 }
+    , { name := "X25519 public derivation rejects a wrong-size private key (RFC 037 §2)"
+      , ok := x25519PubBadPriv.size == 0 }
     , { name := "ChaCha20-Poly1305 output is plaintext+16 (tag) bytes"
       , ok := sealed.size == pt.size + 16 }
     , { name := "HKDF-Extract(SHA-256) matches RFC 5869 TC1"

@@ -3,6 +3,7 @@ import Kroopt.Crypto.Real
 import Kroopt.Crypto.KeySchedule
 import Kroopt.Core.Record
 import Kroopt.Parse.Wire
+import Kroopt.Error
 
 /-!
 # Kroopt.Conn.Record13 — real TLS 1.3 record protection (interpreter zone)
@@ -33,15 +34,28 @@ def innerPlaintext (content : ByteArray) (ctype : ContentType) (pad : Nat) : Byt
 def recordAAD (ciphertextLen : Nat) : ByteArray :=
   ByteArray.mk #[(0x17 : UInt8), 0x03, 0x03] ++ Wire.be16 ciphertextLen.toUInt16
 
-/-- Seal a TLS 1.3 protected record: frame the inner plaintext, derive the
-per-record nonce, ChaCha20-Poly1305-seal under the header AAD, and wrap as a
-`TLSCiphertext` (outer type `application_data`). -/
+/-- The TLS 1.3 maximum `TLSPlaintext.fragment` length (RFC 8446 §5.1): 2^14 octets. -/
+def maxRecordPlaintext : Nat := 16384
+
+/-- Seal one record. RFC 037 §5: enforce the 2^14 content bound *before* sealing, rather
+than letting an oversize length silently truncate through the `UInt16` record-length cast —
+oversize input is rejected with a typed `resourceLimit` error so no caller (now or later) can
+emit a malformed or truncated record. -/
 def sealRecord (key iv : ByteArray) (seq : UInt64) (content : ByteArray)
+    (ctype : ContentType) (pad : Nat := 0) : Except Kroopt.ResourceLimitError ByteArray :=
+  if content.size > maxRecordPlaintext then .error .recordSize
+  else
+    let inner := innerPlaintext content ctype pad
+    let ctLen := inner.size + 16                       -- + Poly1305 tag
+    let sealed := Hacl.chachaPolySeal key (Real.nonce iv seq) (recordAAD ctLen) inner
+    .ok (ByteArray.mk #[(0x17 : UInt8), 0x03, 0x03] ++ Wire.be16 ctLen.toUInt16 ++ sealed)
+
+/-- Test/diagnostic convenience: seal a record whose content is known to be within the
+2^14 bound, returning the bytes directly. Panics on oversize, so it is only for known-small
+fixtures in tests — never the production path, which uses `sealRecord` and handles the error. -/
+def sealRecord! (key iv : ByteArray) (seq : UInt64) (content : ByteArray)
     (ctype : ContentType) (pad : Nat := 0) : ByteArray :=
-  let inner := innerPlaintext content ctype pad
-  let ctLen := inner.size + 16                       -- + Poly1305 tag
-  let sealed := Hacl.chachaPolySeal key (Real.nonce iv seq) (recordAAD ctLen) inner
-  ByteArray.mk #[(0x17 : UInt8), 0x03, 0x03] ++ Wire.be16 ctLen.toUInt16 ++ sealed
+  (sealRecord key iv seq content ctype pad).toOption.get!
 
 /-- Strip TLSInnerPlaintext zero padding: the last non-zero octet is the inner
 content type; everything before it is the content. -/

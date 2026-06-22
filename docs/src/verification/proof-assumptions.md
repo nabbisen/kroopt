@@ -76,11 +76,21 @@ discovered:
   and sanitizer runs, not by Lean proof.
 * **FFI boundary faithfulness (M6, RFC 009/024).** The C shim is assumed to honour
   the documented ownership and result-correlation contract. Justified by tests
-  and sanitizers, not proof.
+  and sanitizers, not proof. As of RFC 037 §7.5 this is partly discharged:
+  `scripts/sanitizer-check.sh` runs the shim and the HACL\* calls it issues under
+  ASan/UBSan on KAT and adversarial inputs with no out-of-bounds access or UB
+  (buffer bounds checked tightly via malloc-backed direct calls, since Lean's
+  allocator hides `ByteArray` data from ASan).
 * **Interpreter faithfulness (M7, RFC 010).** The interpreter is assumed to
   execute each `OutputAction` exactly as specified and to feed back only
   correctly-correlated events. Justified by the deterministic harness comparing
   interpreter behaviour against the action stream (RFC 014).
+* **Secret-memory zeroization (RFC 013 §13.4, RFC 037 §3).** The verified core
+  never names key bytes, and the interpreter's pure `SecretArena` drops every
+  secret reference on each terminal path (tested). It does **not** guarantee the
+  underlying memory is overwritten — that requires the C-owned zeroizing arena,
+  which is the fixed target. Until it lands, secret zeroization is *best-effort,
+  tested, and not guaranteed*, and no production zeroization guarantee is made.
 
 Each deferred item will get its own dated entry here when the corresponding code
 is introduced, including how the assumption is discharged or bounded.

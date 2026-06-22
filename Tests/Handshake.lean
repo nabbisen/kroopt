@@ -80,6 +80,18 @@ def checks : List Check :=
     , ok := (match runHandshake with
              | .ok (s, _, _) => s.handshake == .connected
              | .error _ => false) }
+    -- RFC 037 §4: a ClientHello whose wire bytes exceed the ClientHello budget (16384) is
+    -- rejected in the core by the proven `chargeClientHelloBytes`, failing the handshake
+    -- terminally with the generic internal_error alert (no budget detail leaks).
+  , { name := "an oversized ClientHello is rejected by the ClientHello-bytes budget (RFC 037 §4)"
+    , ok := (match onClientHello s0 vch (bytes (List.replicate 20000 0)) with
+             | .ok (s', _) => (match s'.handshake with | .failed .internalError => true | _ => false)
+             | .error _ => false) }
+    -- positive control: the normal ClientHello is under budget and advances the handshake.
+  , { name := "a normal ClientHello is under the ClientHello-bytes budget"
+    , ok := (match onClientHello s0 vch chWire with
+             | .ok (s', _) => (match s'.handshake with | .failed _ => false | _ => true)
+             | .error _ => false) }
   , { name := "handshake phases follow the legal server-flight order"
     , ok := (match runHandshake with
              | .ok (_, _, phases) =>

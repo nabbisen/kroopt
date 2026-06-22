@@ -204,6 +204,92 @@ external interop (RFC 015/026) are **frozen** until these gates pass, in this or
 - **post-M38 — browser-grade crypto surface (RFC 035).** AES-GCM/P-256/ECDSA/RSA and a
   practical public-certificate story, only after the above are green.
 
+*M37 RFC 037 slice 8 — ASan/UBSan sanitizer target (§7.5, closes RFC 009/024), M37 band COMPLETE → 0.48.0-dev:*
+`scripts/sanitizer-check.sh` + `Kroopt/Native/kroopt_sanitizer_harness.c` build the real `kroopt_ffi.c` shim +
+the HACL* sources it calls under `-fsanitize=address,undefined` (system gcc; the Lean-bundled clang has no
+ASan runtime), linking the Lean runtime so the harness hands genuine `ByteArray`s to the shim. Two halves:
+tight ASan buffer-bounds via direct HACL calls on exact-size malloc buffers (negative-control-verified: a
+1-byte AEAD-output under-allocation triggers a heap-buffer-overflow), plus UBSan + KAT + fail-closed boundary
+checks on the actual shim entry points. Closes the M37 native-hardening band; cut as **0.48.0-dev**. Deferred
+(logged): C zeroizing arena, §4.1 crypto-op bounds + config-sourced limits, inbound alert level/desc parsing.
+
+*M37 RFC 037 slice 7 (unreleased) — graceful close seals + sends an encrypted close_notify (§6):* the
+server previously sent no close_notify (a graceful close dropped the transport in the clear, looking like
+truncation to a peer). A graceful close from `connected` now seals a close_notify (warning, 0) under the
+application write epoch via the same AEAD-seal action as application data; the `.aeadSealed` handler, seeing
+a graceful close in flight (`closeState = .sentCloseNotify`), writes the record then closes. Proofs
+(`appClose_no_emit`, ActionDiscipline/RecordPath cryptoResult cases) repaired for the new nested matches —
+all stay true (a close_notify is callCrypto/writeTransport/closeTransport, never plaintext). 94 theorems.
+`Tests/Correspondence.lean` (33 checks): core-level (inner `[1,0,alert]`) + end-to-end (sealed record,
+outer 0x17, written before close). Inbound alert level/description parsing remains deferred. 4 gates + 23
+suites + fuzz 40000 + both interop green.
+
+*M37 RFC 037 slice 6 (unreleased) — secret-arena classification + terminal-path leak tests (§3):* closed a
+live gap where nothing dropped a connection's secrets on teardown (`releaseSecret` was a no-op). A
+`terminate` helper now drops every live secret reference via `SecretArena.bumpGeneration` on each terminal
+path (`closeTransport` all modes, `failWithAlert`, `reportError`, the wrong-kind guard, oversize-record
+failures); `releaseSecret` now honours the action. `Tests/Correspondence.lean` (31 checks) adds five
+leak checks (graceful/fatal/abortive close, fatal alert, reported error → `liveCount == 0`). The trust
+matrix (`threat-model.md`, `proof-assumptions.md`) classifies secret-memory handling honestly as
+TESTED/best-effort/not-zeroization-guaranteed; the C zeroizing arena remains the deferred target and no
+production zeroization guarantee is claimed. 4 gates + 23 suites + fuzz 40000 + both interop green.
+
+*M37 RFC 037 slice 5 (unreleased) — `sealRecord` enforces the 2^14 record bound (§5):* `Record13.sealRecord`
+rejected nothing and let an oversize fragment wrap through a truncating `UInt16` length cast. It now
+rejects content above `maxRecordPlaintext` (2^14) before sealing, returning `Except ResourceLimitError
+ByteArray`. Propagated without weakening security: `sealHandshakeRecord` returns `Except _ (Option
+ByteArray)` (sealed / no-key-cleartext / oversize), `handshakeWire` keeps the keyless cleartext fallback
+but turns oversize into a typed error, and the interpreter's `writeHandshake`/`writeCertificate` arms fail
+the connection — an oversize message can no longer leak via the cleartext path. `sealRecord!` added for
+known-small test fixtures; `Tests/Record13.lean` (13 checks) covers oversize-rejected + at-limit-seals.
+Acceptance §7.4 met. Legit records unaffected; 4 gates + 23 suites + fuzz 40000 + both interop green.
+
+*M37 RFC 037 slice 4 (unreleased) — ClientHello-bytes budget charged in the core (§4):* `onClientHello`
+charges the ClientHello wire bytes against the ClientHello budget (16384) via the proven
+`chargeClientHelloBytes` before negotiating — tighter than slice 3's cumulative total. Exhaustion fails
+terminally with `internal_error`, no plaintext. The five proofs unfolding `onClientHello` (legal-edge,
+no-emit/accept/aeadOpen, pending-plaintext) updated for the nested charge `match` (charge-error routes
+via the already-proven `hsFail`); still 94 theorems, no `sorry`. `Tests/Handshake.lean` (12 checks):
+oversized CH rejected (`failed internal_error`), normal CH under budget. Legit handshakes far under
+budget; 4 gates + 23 suites + fuzz 40000 + both interop green. §4 remaining: extension-count (needs
+parser to surface it), decrypted inner-handshake bytes, pending-ciphertext, §4.1 crypto-op bounds,
+config-sourced limits.
+
+*M37 RFC 037 slice 3 (unreleased) — resource budgets charged in the core: total handshake bytes (§4):*
+`Core/Budget.lean`'s proven charge functions were never invoked by `step`. This wires the first in:
+`RecordPath` charges inbound handshake-record bytes against the cumulative total-handshake-bytes budget
+via `chargeHandshakeBytes` (limits = `ResourceLimits.standard`), threading `BudgetState`; exhaustion is
+a terminal typed `resourceLimit` failure emitting no plaintext, firing before the per-buffer cap.
+`Alert.lean` gains `alertForResourceLimit` (→ generic `internal_error`, non-leaky); `Proofs/Closure`
+proves it fatal + not-closeNotify (94 theorems). `Tests/Correspondence` (26 checks) shows the over-large
+input now fails via the core budget (`failed internal_error`). Scope: plaintext handshake path
+(ClientHello + fragmentation); decrypted inner-handshake bytes, ClientHello/extension/pending-ciphertext
+budgets, §4.1 crypto-op bounds, and config-sourced limits remain. Legit handshake unaffected; 4 gates +
+23 suites + fuzz 40000 + both interop green.
+
+*M37 RFC 037 slice 2 (unreleased) — §2 FFI length contracts complete:* extends validation to the
+no-failure-channel primitives, which now return the empty fail-closed sentinel (the CSPRNG convention)
+on a length violation instead of casting a bad length to `uint32_t`: `aead_seal` (key=32, nonce=12,
+AAD/pt ≤ U32), `ed25519_sign`/`ed25519_public`/`x25519_public` (priv=32, msg ≤ U32),
+`hkdf_extract`/`hkdf_expand`/`hmac256`/`sha256-512` (inputs ≤ U32, via a `len_u32_ok` helper). Guards
+are unreachable for well-formed inputs — defense-in-depth at the trust boundary. `Tests/Hacl.lean`
+(26 checks) adds five fixed-size negative cases. **§2 complete** (acceptance §7.1): every primitive
+validates lengths and rejects violations — status-tagged (slice 1) or empty-sentinel (slice 2). KATs +
+both interop unaffected. Remaining RFC 037: §3 arena classification, §4 core budget charging, §5
+`sealRecord` size enforcement, §6 close/alert polish, §7.5 sanitizers. Proofs untouched (92).
+
+*M37 RFC 037 slice 1 (unreleased) — FFI length contracts on the failure-channel primitives (§2):*
+opens the native-hardening band that gates live-client interop. The shim cast every length straight to
+the `uint32_t` HACL parameter; §2 requires validating before each call and rejecting (never truncating)
+sizes that violate the fixed shape or the `uint32_t` bound. This slice covers the three attacker-facing
+primitives with an existing failure channel — additive, fails closed: `aead_open` (key=32, nonce=12,
+AAD/msg ≤ `UINT32_MAX` → status 1 → `none`), `x25519_shared` (scalar/point = 32 → status 1),
+`ed25519_verify` (pub=32, sig=64, msg ≤ `UINT32_MAX` → invalid). `Tests/Hacl.lean` (21 checks) adds six
+negative-length cases. KATs, tamper rejection, and both interop scripts unaffected. Next §2 slice: the
+no-failure-channel primitives (`aead_seal`, `ed25519_sign`, HKDF/HMAC/SHA, `*_public`) need a
+status-tagged return or caller-side pre-check. Proofs untouched (92 theorems). 4 gates + 23 suites +
+fuzz 40000 + both interop green.
+
 *M36 RFC 031 MILESTONE (0.47.0-dev) — `RealHandshake` retired; the production interpreter owns the
 real handshake:* the bespoke `Tests/RealHandshake.lean` RD driver (own flight assembly, transcript
 substitution, record sealing — 461 lines) is **deleted**, along with its `kroopt-realhandshake-test`

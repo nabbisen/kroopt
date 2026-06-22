@@ -42,8 +42,8 @@ def main : IO Unit := do
   -- A handshake message (EncryptedExtensions) at seq 0, and application data at seq 1.
   let ee  := hx "08 00 00 02 00 00"
   let app := String.toUTF8 "GET / HTTP/1.1\r\nHost: kroopt.test\r\n\r\n"
-  let rec0 := Record13.sealRecord key iv 0 ee  .handshake 0
-  let rec1 := Record13.sealRecord key iv 1 app .applicationData 0
+  let rec0 := Record13.sealRecord! key iv 0 ee  .handshake 0
+  let rec1 := Record13.sealRecord! key iv 1 app .applicationData 0
   IO.println s!"SECRET {toHex secret}"
   IO.println s!"REC handshake 0 {toHex ee} {toHex rec0}"
   IO.println s!"REC applicationData 1 {toHex app} {toHex rec1}"

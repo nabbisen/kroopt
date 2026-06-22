@@ -31,25 +31,33 @@ static inline uint8_t *ba_ptr(b_lean_obj_arg a) { return lean_sarray_cptr(a); }
 static inline size_t   ba_len(b_lean_obj_arg a) { return lean_sarray_size(a); }
 static inline lean_object *mk_ba(size_t n) { return lean_alloc_sarray(1, n, n); }
 
+/* RFC 037 §2: a variable-length input must fit the uint32_t HACL parameter; a length
+   that does not is rejected (empty result), never truncated. */
+static inline bool len_u32_ok(b_lean_obj_arg a) { return ba_len(a) <= (size_t)UINT32_MAX; }
+
 LEAN_EXPORT lean_object *kroopt_ffi_sha256(b_lean_obj_arg input) {
+  if (!len_u32_ok(input)) return mk_ba(0);
   lean_object *r = mk_ba(32);
   Hacl_Hash_SHA2_hash_256(ba_ptr(input), (uint32_t)ba_len(input), lean_sarray_cptr(r));
   return r;
 }
 
 LEAN_EXPORT lean_object *kroopt_ffi_sha384(b_lean_obj_arg input) {
+  if (!len_u32_ok(input)) return mk_ba(0);
   lean_object *r = mk_ba(48);
   Hacl_Hash_SHA2_hash_384(ba_ptr(input), (uint32_t)ba_len(input), lean_sarray_cptr(r));
   return r;
 }
 
 LEAN_EXPORT lean_object *kroopt_ffi_sha512(b_lean_obj_arg input) {
+  if (!len_u32_ok(input)) return mk_ba(0);
   lean_object *r = mk_ba(64);
   Hacl_Hash_SHA2_hash_512(ba_ptr(input), (uint32_t)ba_len(input), lean_sarray_cptr(r));
   return r;
 }
 
 LEAN_EXPORT lean_object *kroopt_ffi_x25519_public(b_lean_obj_arg priv) {
+  if (ba_len(priv) != 32) return mk_ba(0);
   lean_object *r = mk_ba(32);
   Hacl_Curve25519_51_secret_to_public(lean_sarray_cptr(r), ba_ptr(priv));
   return r;
@@ -59,16 +67,25 @@ LEAN_EXPORT lean_object *kroopt_ffi_x25519_public(b_lean_obj_arg priv) {
 LEAN_EXPORT lean_object *kroopt_ffi_x25519_shared(b_lean_obj_arg priv, b_lean_obj_arg peer) {
   lean_object *r = mk_ba(33);
   uint8_t *q = lean_sarray_cptr(r);
+  /* RFC 037 §2: X25519 requires 32-byte scalars; reject (status 1), never read OOB. */
+  if (ba_len(priv) != 32 || ba_len(peer) != 32) { q[0] = 1; memset(q + 1, 0, 32); return r; }
   bool ok = Hacl_Curve25519_51_ecdh(q + 1, ba_ptr(priv), ba_ptr(peer));
   q[0] = ok ? 0 : 1;
   if (!ok) memset(q + 1, 0, 32);
   return r;
 }
 
-/* returns ciphertext(mlen)++tag(16). */
+/* returns ciphertext(mlen)++tag(16); empty ByteArray on a length violation (reject). */
 LEAN_EXPORT lean_object *kroopt_ffi_aead_seal(b_lean_obj_arg key, b_lean_obj_arg nonce,
                                               b_lean_obj_arg aad, b_lean_obj_arg pt) {
   size_t mlen = ba_len(pt);
+  /* RFC 037 §2: validate before the HACL call; reject (empty result, the random-style
+     fail-closed sentinel), never truncate. key=32, nonce=12; AAD and plaintext lengths
+     must fit the uint32_t HACL parameters. Unreachable for well-formed kroopt inputs. */
+  if (ba_len(key) != 32 || ba_len(nonce) != 12 ||
+      ba_len(aad) > UINT32_MAX || mlen > UINT32_MAX) {
+    return mk_ba(0);
+  }
   lean_object *r = mk_ba(mlen + 16);
   uint8_t *out = lean_sarray_cptr(r);
   Hacl_Chacha20Poly1305_32_aead_encrypt(ba_ptr(key), ba_ptr(nonce),
@@ -81,7 +98,15 @@ LEAN_EXPORT lean_object *kroopt_ffi_aead_seal(b_lean_obj_arg key, b_lean_obj_arg
 LEAN_EXPORT lean_object *kroopt_ffi_aead_open(b_lean_obj_arg key, b_lean_obj_arg nonce,
                                               b_lean_obj_arg aad, b_lean_obj_arg ctTag) {
   size_t ctlen = ba_len(ctTag);
-  if (ctlen < 16) { lean_object *r = mk_ba(1); lean_sarray_cptr(r)[0] = 1; return r; }
+  /* RFC 037 §2: validate every length before the HACL call and reject (status 1),
+     never truncate. ChaCha20-Poly1305 requires key=32 and nonce=12; the AAD and
+     message lengths must fit the uint32_t HACL parameters. Fails closed — a length
+     violation is indistinguishable to the caller from an authentication failure
+     (Option none), so no plaintext is ever emitted on a malformed call. */
+  if (ba_len(key) != 32 || ba_len(nonce) != 12 ||
+      ba_len(aad) > UINT32_MAX || ctlen < 16 || (ctlen - 16) > UINT32_MAX) {
+    lean_object *r = mk_ba(1); lean_sarray_cptr(r)[0] = 1; return r;
+  }
   size_t mlen = ctlen - 16;
   lean_object *r = mk_ba(1 + mlen);
   uint8_t *out = lean_sarray_cptr(r);
@@ -95,6 +120,7 @@ LEAN_EXPORT lean_object *kroopt_ffi_aead_open(b_lean_obj_arg key, b_lean_obj_arg
 }
 
 LEAN_EXPORT lean_object *kroopt_ffi_hkdf_extract256(b_lean_obj_arg salt, b_lean_obj_arg ikm) {
+  if (!len_u32_ok(salt) || !len_u32_ok(ikm)) return mk_ba(0);
   lean_object *r = mk_ba(32);
   Hacl_HKDF_extract_sha2_256(lean_sarray_cptr(r), ba_ptr(salt), (uint32_t)ba_len(salt),
                              ba_ptr(ikm), (uint32_t)ba_len(ikm));
@@ -103,6 +129,7 @@ LEAN_EXPORT lean_object *kroopt_ffi_hkdf_extract256(b_lean_obj_arg salt, b_lean_
 
 LEAN_EXPORT lean_object *kroopt_ffi_hkdf_expand256(b_lean_obj_arg prk, b_lean_obj_arg info,
                                                    uint32_t len) {
+  if (!len_u32_ok(prk) || !len_u32_ok(info)) return mk_ba(0);
   lean_object *r = mk_ba(len);
   Hacl_HKDF_expand_sha2_256(lean_sarray_cptr(r), ba_ptr(prk), (uint32_t)ba_len(prk),
                             ba_ptr(info), (uint32_t)ba_len(info), len);
@@ -110,6 +137,7 @@ LEAN_EXPORT lean_object *kroopt_ffi_hkdf_expand256(b_lean_obj_arg prk, b_lean_ob
 }
 
 LEAN_EXPORT lean_object *kroopt_ffi_hmac256(b_lean_obj_arg key, b_lean_obj_arg msg) {
+  if (!len_u32_ok(key) || !len_u32_ok(msg)) return mk_ba(0);
   lean_object *r = mk_ba(32);
   Hacl_HMAC_compute_sha2_256(lean_sarray_cptr(r), ba_ptr(key), (uint32_t)ba_len(key),
                              ba_ptr(msg), (uint32_t)ba_len(msg));
@@ -117,12 +145,14 @@ LEAN_EXPORT lean_object *kroopt_ffi_hmac256(b_lean_obj_arg key, b_lean_obj_arg m
 }
 
 LEAN_EXPORT lean_object *kroopt_ffi_ed25519_public(b_lean_obj_arg priv) {
+  if (ba_len(priv) != 32) return mk_ba(0);
   lean_object *r = mk_ba(32);
   Hacl_Ed25519_secret_to_public(lean_sarray_cptr(r), ba_ptr(priv));
   return r;
 }
 
 LEAN_EXPORT lean_object *kroopt_ffi_ed25519_sign(b_lean_obj_arg priv, b_lean_obj_arg msg) {
+  if (ba_len(priv) != 32 || !len_u32_ok(msg)) return mk_ba(0);
   lean_object *r = mk_ba(64);
   Hacl_Ed25519_sign(lean_sarray_cptr(r), ba_ptr(priv), (uint32_t)ba_len(msg), ba_ptr(msg));
   return r;
@@ -132,6 +162,12 @@ LEAN_EXPORT lean_object *kroopt_ffi_ed25519_sign(b_lean_obj_arg priv, b_lean_obj
 LEAN_EXPORT lean_object *kroopt_ffi_ed25519_verify(b_lean_obj_arg pub, b_lean_obj_arg msg,
                                                    b_lean_obj_arg sig) {
   lean_object *r = mk_ba(1);
+  /* RFC 037 §2: Ed25519 requires a 32-byte public key and 64-byte signature; the
+     message length must fit the uint32_t HACL parameter. Any violation is rejected
+     as invalid (result 0) before the HACL call — fails closed, never reads OOB. */
+  if (ba_len(pub) != 32 || ba_len(sig) != 64 || ba_len(msg) > UINT32_MAX) {
+    lean_sarray_cptr(r)[0] = 0; return r;
+  }
   bool ok = Hacl_Ed25519_verify(ba_ptr(pub), (uint32_t)ba_len(msg), ba_ptr(msg), ba_ptr(sig));
   lean_sarray_cptr(r)[0] = ok ? 1 : 0;
   return r;

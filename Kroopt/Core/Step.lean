@@ -90,11 +90,31 @@ def step (s : State) (ev : InputEvent) : StepResult :=
       if s.closeState = .open then
         match mode with
         | .graceful =>
-            -- Send close_notify (best-effort via the interpreter), then close.
-            .ok ({ s with handshake := .closing
-                          closeState := .sentCloseNotify
-                          pendingPlainOut := none },
-                 [OutputAction.closeTransport s.connId .graceful])
+            -- RFC 8446 §6.1 / RFC 037 §6: a graceful close from `connected` seals an encrypted
+            -- close_notify (level warning = 1, description close_notify = 0) under the application
+            -- write epoch and sends it before closing. The seal reuses the application-data AEAD-seal
+            -- action; when its result returns (state `.closing`, closeState `.sentCloseNotify`) the
+            -- record is written and the transport closed. Before `connected` there is no application
+            -- epoch to seal under, so the transport is closed directly.
+            match s.handshake with
+            | .connected =>
+                match s.writeEpoch.seq.next with
+                | none => failAlert s .internalError (.protocol .sequenceOverflow)
+                | some sq =>
+                    let inner := ByteArray.mk #[(1 : UInt8), 0, ContentType.alert.toByte]
+                    let sealMeta := writeMeta s
+                    let (oid, s) := s.allocOp .aeadSeal .application (some .write)
+                    let s := { s with writeEpoch := { s.writeEpoch with seq := sq }
+                                      handshake := .closing
+                                      closeState := .sentCloseNotify
+                                      pendingPlainOut := none }
+                    .ok (s, [OutputAction.callCrypto s.connId oid
+                               (CryptoOp.aeadSeal sealMeta (ByteArray.mk #[]) inner)])
+            | _ =>
+                .ok ({ s with handshake := .closing
+                              closeState := .sentCloseNotify
+                              pendingPlainOut := none },
+                     [OutputAction.closeTransport s.connId .graceful])
         | .fatal a =>
             -- Local fatal close: the optional fatal alert is the only post-failure
             -- transport write permitted (RFC 013 §7).

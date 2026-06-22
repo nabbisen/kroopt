@@ -112,7 +112,9 @@ private theorem handleTransportBytes_no_emit
     | (simp only [Except.ok.injEq, Prod.mk.injEq] at h
        obtain ⟨-, rfl⟩ := h
        simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
-         or_self, or_false, false_or] at hmem))
+         or_self, or_false, false_or] at hmem
+       <;> (split at hmem <;>
+            simp only [List.mem_singleton, List.not_mem_nil, reduceCtorEq] at hmem)))
 
 /-- `handleCryptoResult` never emits application plaintext — decrypted content is
 buffered, not emitted (RFC 004 §5.7). -/
@@ -140,7 +142,9 @@ private theorem handleCryptoResult_no_emit
     | (simp only [Except.ok.injEq, Prod.mk.injEq] at h
        obtain ⟨-, rfl⟩ := h
        simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
-         or_self, or_false, false_or] at hmem))
+         or_self, or_false, false_or] at hmem
+       <;> (split at hmem <;>
+            simp only [List.mem_singleton, List.not_mem_nil, reduceCtorEq] at hmem)))
 
 /-- `handleAppSend` never emits application plaintext (it requests a seal and
 acknowledges ownership). -/
@@ -168,7 +172,9 @@ private theorem handleAppSend_no_emit
     | (simp only [Except.ok.injEq, Prod.mk.injEq] at h
        obtain ⟨-, rfl⟩ := h
        simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
-         or_self, or_false, false_or] at hmem))
+         or_self, or_false, false_or] at hmem
+       <;> (split at hmem <;>
+            simp only [List.mem_singleton, List.not_mem_nil, reduceCtorEq] at hmem)))
 
 private theorem handleTransportBytes_no_accept'
     (s s' : State) (b : ByteArray) (acts : List OutputAction)
@@ -194,7 +200,9 @@ private theorem handleTransportBytes_no_accept'
     | (simp only [Except.ok.injEq, Prod.mk.injEq] at h
        obtain ⟨-, rfl⟩ := h
        simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
-         or_self, or_false, false_or] at hmem))
+         or_self, or_false, false_or] at hmem
+       <;> (split at hmem <;>
+            simp only [List.mem_singleton, List.not_mem_nil, reduceCtorEq] at hmem)))
 
 private theorem handleCryptoResult_no_accept'
     (s s' : State) (op : OperationId) (r : CryptoResult) (acts : List OutputAction)
@@ -220,7 +228,9 @@ private theorem handleCryptoResult_no_accept'
     | (simp only [Except.ok.injEq, Prod.mk.injEq] at h
        obtain ⟨-, rfl⟩ := h
        simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
-         or_self, or_false, false_or] at hmem))
+         or_self, or_false, false_or] at hmem
+       <;> (split at hmem <;>
+            simp only [List.mem_singleton, List.not_mem_nil, reduceCtorEq] at hmem)))
 
 /-- The three handlers, packaged for `ActionDiscipline`: none emits plaintext. -/
 theorem handleTransportBytes_no_plaintext
@@ -318,8 +328,11 @@ theorem onClientHello_pp
     s'.pendingPlainOut = s.pendingPlainOut ∨ s'.pendingPlainOut = none := by
   unfold onClientHello hsFail at h
   split at h
-  · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-    obtain ⟨rfl, -⟩ := h; left; rfl
+  · split at h
+    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h; right; rfl
+    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h; left; rfl
   · simp only [Except.ok.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h; right; rfl
 

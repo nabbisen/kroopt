@@ -127,7 +127,7 @@ def clientFinishedSealed : ByteArray :=
   let verifyData := Hacl.hmac256 (Kroopt.Crypto.KeySchedule.finishedKey cHsSecret) hCHSF
   let cKey := Kroopt.Crypto.KeySchedule.trafficKey .chacha20Poly1305Sha256 cHsSecret
   let cIv  := Kroopt.Crypto.KeySchedule.trafficIv cHsSecret
-  Record13.sealRecord cKey cIv 0 (Kroopt.Parse.Wire.finished verifyData) .handshake 0
+  Record13.sealRecord! cKey cIv 0 (Kroopt.Parse.Wire.finished verifyData) .handshake 0
 
 /-- Phase 2: feed the sealed client Finished; the core emits `aeadOpen .handshake`, the real
 provider opens it, `verifyFinished` checks the MAC, and the handshake reaches `connected`. -/
@@ -144,7 +144,7 @@ def badClientFinishedSealed : ByteArray :=
   let cKey := Kroopt.Crypto.KeySchedule.trafficKey .chacha20Poly1305Sha256 cHsSecret
   let cIv  := Kroopt.Crypto.KeySchedule.trafficIv cHsSecret
   let badVerifyData := ByteArray.mk (Array.mkArray 32 (0 : UInt8))
-  Record13.sealRecord cKey cIv 0 (Kroopt.Parse.Wire.finished badVerifyData) .handshake 0
+  Record13.sealRecord! cKey cIv 0 (Kroopt.Parse.Wire.finished badVerifyData) .handshake 0
 
 def reachedBad : State × RuntimeState × FakeTransport :=
   let (core1, rt1, tr1) := phase1
@@ -235,7 +235,7 @@ def checks : List Check :=
     -- opens, under the same installed key, back to exactly the plaintext message.
   , { name := "handshake-epoch flight message is sealed into a record that opens to the plaintext"
     , ok := (let plain := serializeHandshakeOut eeMsg
-             let wire := handshakeWire keyedArena .handshake 0 plain
+             let wire := (handshakeWire keyedArena .handshake 0 plain).toOption.get!
              (wire.size > 0 && wire.get! 0 == 0x17)
              && (match Record13.openRecord hsKey hsIv 0 wire with
                  | some (content, _) => eqB content plain
@@ -244,7 +244,7 @@ def checks : List Check :=
     -- but not at seq 0 (the nonce is a function of the sequence number).
   , { name := "the sealed record uses the core-authorized sequence number"
     , ok := (let plain := serializeHandshakeOut cvMsg
-             let wire := handshakeWire keyedArena .handshake 3 plain
+             let wire := (handshakeWire keyedArena .handshake 3 plain).toOption.get!
              (match Record13.openRecord hsKey hsIv 3 wire with
               | some (content, _) => eqB content plain | none => false)
              && (match Record13.openRecord hsKey hsIv 0 wire with
@@ -253,12 +253,12 @@ def checks : List Check :=
     -- handshake record (outer type 22) — the transitional keyless path, never a crash.
   , { name := "without an installed key the seal path falls back to a cleartext record"
     , ok := (let plain := serializeHandshakeOut eeMsg
-             let wire := handshakeWire SecretArena.empty .handshake 0 plain
+             let wire := (handshakeWire SecretArena.empty .handshake 0 plain).toOption.get!
              wire.size > 0 && wire.get! 0 == 22) }
     -- (10) the plaintext ServerHello epoch is never sealed — it is a cleartext record.
   , { name := "the .initial-epoch ServerHello is written as a cleartext record"
     , ok := (let plain := serializeHandshakeOut shMsg
-             let wire := handshakeWire keyedArena .initial 0 plain
+             let wire := (handshakeWire keyedArena .initial 0 plain).toOption.get!
              wire.size > 0 && wire.get! 0 == 22) }
     -- (11) the core carries the *full* committed transcript prefix in a transcript-bound op:
     -- the CertificateVerify input begins with the inbound ClientHello and extends past it
@@ -375,6 +375,58 @@ def checks : List Check :=
     -- Ed25519 CertificateVerify signing path is gated cross-library by `scripts/ed25519-interop.sh`.
   , { name := "the certificate fixture is a well-formed Ed25519 X.509 DER object"
     , ok := certDer.size == 351 && certDer.get! 0 == 0x30 && certDer.get! 1 == 0x82 }
+    -- (26) RFC 037 §4: the over-large handshake input is now rejected by the cumulative
+    -- total-handshake-bytes budget charged *in the core* (proven in Kroopt.Proofs.Budget),
+    -- which fires before the per-buffer reassembly cap and maps to the generic internal_error
+    -- alert (no budget detail leaks).
+  , { name := "an over-large handshake input fails via the core resource-budget (RFC 037 §4)"
+    , ok := (match oversizedReach.1.handshake with | .failed .internalError => true | _ => false) }
+    -- (RFC 037 §3) secret-leak: every terminal interpreter path drops the connection's live secret
+    -- references. `keyedArena` holds a stored secret (liveCount > 0); after a terminal action the
+    -- runtime arena has no live secret material. This is the Lean-side *best-effort* release
+    -- (bumpGeneration drops bytes and invalidates handles), NOT guaranteed zeroization — the C-owned
+    -- zeroizing arena is that target. No production zeroization guarantee is claimed.
+  , { name := "graceful close drops every live secret reference (RFC 037 §3)"
+    , ok := (let (rt, _, _) := execAction realishProvider ({ arena := keyedArena } : RuntimeState) tr0
+                                 (OutputAction.closeTransport conn0 .graceful)
+             keyedArena.liveCount > 0 && rt.arena.liveCount == 0) }
+  , { name := "fatal close drops every live secret reference (RFC 037 §3)"
+    , ok := (let (rt, _, _) := execAction realishProvider ({ arena := keyedArena } : RuntimeState) tr0
+                                 (OutputAction.closeTransport conn0 (.fatal .internalError))
+             rt.arena.liveCount == 0) }
+  , { name := "abortive close drops every live secret reference (RFC 037 §3)"
+    , ok := (let (rt, _, _) := execAction realishProvider ({ arena := keyedArena } : RuntimeState) tr0
+                                 (OutputAction.closeTransport conn0 .abortive)
+             rt.arena.liveCount == 0) }
+  , { name := "a fatal alert drops every live secret reference (RFC 037 §3)"
+    , ok := (let (rt, _, _) := execAction realishProvider ({ arena := keyedArena } : RuntimeState) tr0
+                                 (OutputAction.failWithAlert conn0 .internalError)
+             rt.arena.liveCount == 0) }
+  , { name := "a reported error drops every live secret reference (RFC 037 §3)"
+    , ok := (let (rt, _, _) := execAction realishProvider ({ arena := keyedArena } : RuntimeState) tr0
+                                 (OutputAction.reportError conn0 .closed)
+             rt.arena.liveCount == 0) }
+    -- (RFC 037 §6) a graceful close from `connected` seals an encrypted close_notify (warning = 1,
+    -- close_notify = 0) under the application write epoch — reusing the application-data AEAD-seal
+    -- action — rather than tearing down the transport in the clear.
+  , { name := "a graceful close from `connected` seals an encrypted close_notify (RFC 037 §6)"
+    , ok := (match Kroopt.Core.step reached.1 (.appClose conn0 .graceful) with
+             | .ok (s, [OutputAction.callCrypto _ _ (CryptoOp.aeadSeal _ _ inner)]) =>
+                 eqB inner (ByteArray.mk #[1, 0, ContentType.alert.toByte])
+                 && (match s.closeState with | .sentCloseNotify => true | _ => false)
+                 && (match s.handshake with | .closing => true | _ => false)
+             | _ => false) }
+    -- (RFC 037 §6) end-to-end through the production interpreter: the close_notify is sealed and
+    -- written as a TLS 1.3 record (outer type 0x17, application_data) before the transport closes.
+  , { name := "a graceful close writes a sealed close_notify record before closing (RFC 037 §6)"
+    , ok := (let before := (FakeTransport.writtenBytes reached.2.2).size
+             let (s, _, tr') := driveEvents realishProvider 64 reached.1 reached.2.1 reached.2.2
+                                  [InputEvent.appClose conn0 .graceful]
+             let allW := FakeTransport.writtenBytes tr'
+             allW.size > before
+             && (match recordTypes 8 (allW.extract before allW.size) with
+                 | 0x17 :: _ => true | _ => false)
+             && (match s.handshake with | .closing => true | _ => false)) }
   ]
 
 def main : IO UInt32 := do
