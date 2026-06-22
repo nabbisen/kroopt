@@ -41,3 +41,4 @@
 - [Threat model and abuse cases](verification/threat-model.md)
 - [Resource budgets and DoS defense](verification/resource-budgets.md)
 - [Deferred features and scope control](verification/deferred-scope.md)
+- [Security review checklist](security-review-checklist.md)

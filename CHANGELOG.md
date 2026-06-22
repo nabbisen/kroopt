@@ -5,6 +5,29 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.86.0-dev] — RFC 028: security review and vulnerability process (→ `done/`) — 2026-06-15
+
+Establishes kroopt's security process as a concrete deliverable rather than an intention. No
+code or proofs changed; this is a governance/documentation increment. RFC 028 meets all of its
+§7 acceptance criteria and moves `proposed/ → done/`.
+
+### Added
+- **`SECURITY.md`** (repo root): the honest PROVEN / ASSUMED / TESTED / OUTSCOPE scope statement
+  (so a report is judged against what kroopt actually claims — e.g. "server does not validate the
+  peer chain" is documented scope, not a bug), supported-version policy (pre-1.0: latest `0.x`-dev
+  / `main` only), the private report channel (GitHub security advisories), and the rule that a
+  security fix is incomplete without a regression test or theorem.
+- **`docs/src/security-review-checklist.md`**: the per-milestone review checkpoints (M0–v0.4), the
+  ten release blockers each mapped to its enforcement (most are CI-enforced — the no-early /
+  no-unauthenticated-plaintext, nonce-uniqueness, fatal-overflow, transcript, and parser-bounds
+  proofs via `lake build` + `check-axioms.sh`; parser fuzzing; the ASan/UBSan sanitizer job;
+  hygiene for unprintable secrets), the Critical/High/Medium/Low classification, and the triage
+  workflow. Added to the mdbook `SUMMARY.md`.
+
+### RFC lifecycle
+- RFC 028 → `done/` with `**Status.** Implemented (0.86.0-dev)`; `rfcs/README.md` index updated
+  (Proposed → Done; remaining-proposed count eleven → ten).
+
 ## [0.85.0-dev] — RFC 037 §4.1: crypto-op budget enforcement — 2026-06-15
 
 Crypto-op allocation is brought into the same budget-enforced `Except` idiom as every other
