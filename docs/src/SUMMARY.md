@@ -34,6 +34,10 @@
 - [Vendored crypto: provenance and licensing](crypto/third-party.md)
 - [Postmortem — the Ed25519 false positive](crypto/postmortem-ed25519.md)
 
+# Interoperability
+
+- [Constrained vs browser-grade interop](interop/constrained-vs-browser-grade.md)
+
 # Verification
 
 - [Theorem inventory](verification/theorem-inventory.md)

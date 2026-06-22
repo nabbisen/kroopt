@@ -205,10 +205,13 @@ external interop (RFC 015/026) are **frozen** until these gates pass, in this or
   `uint32_t` params; secret arena native-zeroizing or truthfully classified; parse/
   handshake + crypto-op budgets charged in the core; record-size guards; sanitizer
   target; `close_notify` sealed.
-- **M38 — constrained external interop (RFC 015/026/036).** Captured-ClientHello replay
-  fixtures and a no-secrets trace harness; constrained `openssl s_client`/`curl`
-  handshake green with archived traces; iotakt adapter begins only after M36 and M37 are
-  green. Documented as a **constrained** profile, not browser-grade.
+- **M38 — constrained external interop (RFC 015/026/036).** The RFC 036 substance is **locked
+  (Implemented, 0.96.0-dev)**: captured-ClientHello replay fixtures (constrained + broad + malformed),
+  the no-secrets `debug_trace` harness, and three-client live interop (`openssl s_client` / Python /
+  `curl`) green across handshake, app data, graceful close, and rejection. M38's remaining deliverable
+  is **durable transcript archival** — committed kroopt-side secret-free canonical traces + normalized
+  summaries, with ephemeral raw client witnesses (RFC 036 §8). Documented as a **constrained** profile,
+  not browser-grade (`docs/src/interop/constrained-vs-browser-grade.md`).
 - **post-M38 — browser-grade crypto surface (RFC 035).** AES-GCM/P-256/ECDSA/RSA and a
   practical public-certificate story, only after the above are green.
 
@@ -220,9 +223,18 @@ landed), and the §5 correspondence ledger plus the async §4 refinements
 where async crypto results first occur. RFC 031 must not be cited for async-result behavior; RFC 040
 is mandatory before any production/stable native-secret or async-result claim. Approved post-lock
 order: **headline track** RFC 010 (socket adapter — **locked Implemented 0.91.0-dev**) → RFC 036
-(replay + trace harness; §2/§3 first slices landed) → RFC 037 inbound-alert residue (done) → RFC
+(replay + trace harness — **locked Implemented 0.96.0-dev**) → RFC 037 inbound-alert residue (done) → RFC
 015/026 (live OpenSSL/curl + jemmet HTTPS E2E); **parallel governance** RFC 030/027/020;
 **stable/v1** RFC 040.
+
+*RFC 036 lock (architect review 2026-06-15).* RFC 036 is **locked for deterministic captured-client
+replay, secret-free tracing, and constrained-vs-browser-grade documentation** (0.96.0-dev → `done/`):
+criteria 1, 2, 4 met (replay corpus constrained+broad+malformed; default-off `debug_trace` facility;
+the interop docs page incl. tested RFC 8701 GREASE tolerance). Constrained live behaviour is tested
+across OpenSSL/Python/curl with explicit graceful close. Per the review, **durable live-transcript
+archival is relocated to M38** as CI/milestone infrastructure (committed kroopt-side canonical traces +
+ephemeral raw client witnesses, RFC 036 §8); RFC 036 must not be cited as evidence that durable
+archival exists.
 
 *v0.3 phase kickoff — RFC 010 (Implemented 0.91.0-dev): the verified core drives a handshake over a real OS socket.* RFC 010
 unfrozen after the M37 band landed and now locked. `Tests/SocketDriver.lean` (`kroopt-socketdriver-test`) runs the actual

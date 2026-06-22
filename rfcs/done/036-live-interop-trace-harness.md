@@ -1,7 +1,10 @@
 # RFC 036 — Live Interop Trace Harness and Captured-Client Replay
 
 **Project.** kroopt  
-**Status.** Proposed — **§3 trace facility (first slice) landed (0.89.0-dev):** a pure,
+**Status.** Implemented (0.96.0-dev) — **locked** for deterministic captured-client replay, secret-free
+tracing, and constrained-vs-browser-grade documentation (criteria 1, 2, 4); durable live-transcript
+*archival* is relocated to M38 as CI/milestone infrastructure (§8). The journey: **§3 trace facility
+(first slice) landed (0.89.0-dev):** a pure,
 secret-free-by-construction trace projection `Kroopt.Conn.traceOfAction : OutputAction → Option
 TraceEvent` plus `TraceEvent.render`, where every byte-bearing action projects to a *length* and
 every secret reference to a bare event, so no rendered line can carry plaintext, ciphertext, DER, a
@@ -15,12 +18,9 @@ suite) are *ignored* per RFC 8701 (x25519 / aes128GcmSha256 selected, full fligh
 prerequisite, now tested. **Live curl + graceful close added (0.95.0-dev):** the interop harness now
 drives a third independent client (curl HTTPS GET against the reactor `http` mode) and explicitly
 observes a graceful `close_notify` (RFC 8446 §6.1), so the constrained live set covers handshake +
-data + **close** + rejection across OpenSSL, Python, and curl. **Architect-approved close-out plan
-(B / committed-canonical / +close +curl / verify-GREASE):** RFC 036 locks on criteria 1, 2, and 4;
-durable live-transcript *archival* (committed kroopt-side secret-free canonical traces + ephemeral raw
-client witnesses) is relocated to M38 as CI/milestone infrastructure. Remaining before lock: the
-criterion-4 docs page (`docs/src/interop/constrained-vs-browser-grade.md`) and the in-RFC re-scope note
-recording the M38 relocation. **`debug_trace` interpreter wiring landed (0.93.0-dev):**
+data + **close** + rejection across OpenSSL, Python, and curl. **Locked (0.96.0-dev):** the criterion-4
+docs page (`docs/src/interop/constrained-vs-browser-grade.md`) and the in-RFC §8 re-scope note (durable
+archival → M38) landed, and this RFC moved to `done/`. **`debug_trace` interpreter wiring landed (0.93.0-dev):**
 the interpreter's action fold (`Conn.Interpreter.execActions`) now records a secret-free
 `TraceEvent` line per executed action into `RuntimeState.trace` when `traceEnabled` is set — off by
 default (never on in production), so a real handshake under the gate produces a populated trace
@@ -109,8 +109,9 @@ reported as browser compatibility.
    the pure/fake path with deterministic results.
 2. The no-secrets trace facility exists, is `debug_trace`-gated, and applies RFC 020
    redaction; no secrets appear in any default or CI artifact.
-3. M38 live runs capture and archive constrained OpenSSL/curl transcripts with the
-   expected handshake, data exchange, close, and rejection behaviors.
+3. Live constrained interop behaviour is tested by the harness (handshake, application data,
+   graceful close, and rejection, across OpenSSL, Python, and curl). **Durable** capture and
+   archival of those transcripts is relocated to M38 (see §8) as CI/milestone infrastructure.
 4. Documentation distinguishes constrained from browser-grade interop.
 
 ## 7. Risk
@@ -118,3 +119,44 @@ reported as browser compatibility.
 Live runs are timing- and environment-sensitive; the captured-replay bridge de-risks them
 by catching most negotiation/parsing failures offline first. Keep the corpus current as
 client behavior evolves.
+
+## 8. Lock and the M38 archival relocation (architect review 2026-06-15)
+
+RFC 036 is **locked for deterministic captured-client replay, secret-free tracing, and
+constrained-vs-browser-grade interop documentation.** The live harness already tests constrained
+handshake / data / graceful-close / rejection behaviour across OpenSSL, Python, and curl. Durable
+live-transcript **archival** is relocated to M38 as CI/milestone infrastructure; raw client
+transcripts are emitted as ephemeral artifacts, while committed canonical artifacts are kroopt-side
+secret-free traces plus normalized scenario summaries.
+
+This mirrors the RFC 031 decision: lock the library/deterministic substance, relocate the
+infrastructure tail to the milestone where it first matters. RFC 036 must not be cited as evidence
+that durable transcript archival exists — that is an M38 deliverable.
+
+### What this lock covers (met)
+
+- **Criterion 1** — the captured-CH corpus (constrained + broad + malformed) replays deterministically
+  (`Tests.Replay`, 18 checks; 0.92–0.95.0-dev).
+- **Criterion 2** — the secret-free, `debug_trace`-gated trace facility exists and is default-off
+  (`Tests.Trace`; interpreter wiring 0.93.0-dev).
+- **Criterion 4** — `docs/src/interop/constrained-vs-browser-grade.md` draws the line honestly,
+  including the tested GREASE shapes (named-group and cipher-suite alongside valid values, RFC 8701)
+  and the no-HRR caveat.
+- **Criterion 3 (behaviour)** — constrained live interop is tested across three clients with explicit
+  graceful close (0.95.0-dev). Only durable *archival* is deferred.
+
+### M38 archival acceptance criteria (relocated deliverable)
+
+M38 must deliver, as CI/milestone infrastructure:
+
+1. a per-scenario **committed canonical** artifact — kroopt-side secret-free trace projection plus a
+   normalized scenario summary (scenario id, client/server type, TLS version, cipher suite, named
+   group, signature scheme, ALPN, result category, close behaviour, rejection-reason category);
+2. **ephemeral** raw client transcripts (OpenSSL / curl / Python) emitted to an artifact directory,
+   **not** committed (brittle: randomness, timestamps, version banners, formatting);
+3. an explicit `close_notify` scenario;
+4. OpenSSL **and** curl scenarios;
+5. a rejection scenario;
+6. recorded environment/tool versions;
+7. **no secrets** in any committed artifact;
+8. stable normalization so committed diffs are meaningful.

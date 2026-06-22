@@ -39,9 +39,10 @@ connection-lifetime traffic secrets move onto the C-owned zeroizing arena via a 
 key* is already C-owned). iotakt binding (RFC 010) and external interop
 (RFC 015/026) were frozen until 031 locked; with **031 locked for synchronous correspondence
 (0.88.0-dev)** the real-wire band is **unfrozen** — RFC 010 (iotakt socket adapter) is **locked
-(Implemented, 0.91.0-dev)** with live OpenSSL/Python interop, with
-the RFC 037 inbound-alert residue and live OpenSSL/curl interop (RFC 015/026/036) the headline
-track; 031, 032, 033, 034 and 039 are done.
+(Implemented, 0.91.0-dev)** with live OpenSSL/Python interop, and RFC 036 (replay + trace harness) is
+**locked (Implemented, 0.96.0-dev)** with three-client live interop (OpenSSL/Python/curl) and the
+constrained-vs-browser-grade docs; the RFC 037 inbound-alert residue is done, leaving live jemmet
+HTTPS E2E + interop breadth (RFC 015/026) the headline track; 031, 032, 033, 034 and 039 are done.
 
 Read order: ROADMAP first, then RFCs 001–007 (pure verified core), 008–009
 (crypto integration), 010–015 (runtime integration and acceptance), 016 (scope
@@ -61,7 +62,6 @@ control), then 017–030 (cross-cutting security, lifecycle, and release governa
 | 029 | [Developer Documentation and Examples](proposed/029-developer-documentation-and-examples.md) | Tested/compile-checked API + progress-loop examples |
 | 030 | [Production Readiness and Release Runbook](proposed/030-production-readiness-and-release-runbook.md) | `docs/src/release-runbook.md` + release checklist |
 | 035 | [Browser-Grade Crypto Surface](proposed/035-browser-grade-crypto-surface.md) | Deferred — AES-GCM/P-256/ECDSA/RSA + cert-ecosystem story only after M36/M37/M38 green |
-| 036 | [Live Interop Trace Harness and Captured-Client Replay](proposed/036-live-interop-trace-harness.md) | Captured-CH replay fixtures; no-secrets trace facility; constrained-vs-browser-grade separation (M38; prep in M36) |
 | 037 | [Native FFI Safety, Secret Arena, and Resource-Budget Enforcement](proposed/037-native-safety-and-budget-enforcement.md) | FFI length contracts (all `uint32_t` params); native/classified secret arena; budget charging in the core; record-size guards; sanitizers (M37) |
 | 040 | [Native Traffic-Secret Arena and the IO Production Interpreter](proposed/040-native-traffic-secret-arena.md) | **Blocked on RFC 031.** Stable/v1 gate — migrate connection traffic secrets onto the C-owned zeroizing arena via a two-interpreter (pure model + IO production) architecture; records the D-now/A-later decision |
 
@@ -76,6 +76,7 @@ milestone where the work substantively landed (see CHANGELOG/ROADMAP for detail)
 | 039 | [Named-Group Policy and Selection Enforcement](done/039-named-group-policy-and-enforcement.md) | Implemented (0.81.0-dev) |
 | 031 | [Production Interpreter Correspondence](done/031-production-interpreter-correspondence.md) | Implemented (0.88.0-dev) — **synchronous** correspondence locked; async ledger + stale-result refinements relocated to RFC 040 |
 | 010 | [TlsConn API and Non-Blocking iotakt Interpreter](done/010-tlsconn-api-nonblocking-interpreter.md) | Implemented (0.91.0-dev) — TlsConn API + non-blocking interpreter + real-socket driver; live OpenSSL/Python interop. Live-interop breadth (026) / jemmet E2E (015) tracked separately |
+| 036 | [Live Interop Trace Harness and Captured-Client Replay](done/036-live-interop-trace-harness.md) | Implemented (0.96.0-dev) — deterministic captured-client replay (constrained+broad+malformed) + secret-free `debug_trace` facility + constrained-vs-browser-grade docs (incl. tested GREASE tolerance). Durable live-transcript archival relocated to M38 |
 | 028 | [Security Review and Vulnerability Process](done/028-security-review-and-vulnerability-process.md) | Implemented (0.86.0-dev) |
 | 032 | [Typed Handshake/Record Assembly Contract](done/032-typed-flight-assembly-contract.md) | Implemented (0.46.0-dev) |
 | 034 | [Provider Capability Honesty and Fail-Closed Entropy](done/034-provider-capability-honesty-and-entropy.md) | 0.36.0-dev (M36-prelude) |

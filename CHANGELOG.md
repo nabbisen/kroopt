@@ -5,6 +5,39 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.96.0-dev] — RFC 036 locked (criteria 1/2/4); durable archival relocated to M38 — 2026-06-15
+
+Completes the architect-approved close-out. RFC 036 moves to `done/`.
+
+### Added
+- **`docs/src/interop/constrained-vs-browser-grade.md`** (criterion 4) + a new **Interoperability**
+  section in `docs/src/SUMMARY.md`. The page draws the interop line honestly — *constrained, tested
+  today* (TLS 1.3 server, no HRR, supported-group keyshare required, three live clients
+  OpenSSL/Python/curl across handshake/data/graceful-close/rejection, and RFC 8701 GREASE tolerance
+  for named-group and cipher-suite values alongside valid ones) vs *browser-grade, not yet claimed*
+  (real browsers, edge CHs, h2 end-to-end, ticket/early-data decline, the no-HRR caveat) — claiming
+  exactly what is tested and nothing more.
+
+### Changed
+- **`rfcs/proposed/036` → `rfcs/done/036`.** Status flipped to **Implemented (0.96.0-dev)** with lock
+  framing. Acceptance criterion 3 rewritten: constrained live behaviour is *tested*; **durable
+  transcript archival is relocated to M38** as CI/milestone infrastructure. A new §8 records the lock
+  and the M38 archival acceptance criteria (committed kroopt-side secret-free canonical traces +
+  normalized summaries; ephemeral raw client witnesses; no committed secrets; stable normalization).
+- **`rfcs/README.md`** — 036 moved from Proposed to Done; headline-track prose updated (036 locked,
+  leaving RFC 015/026 the headline).
+- **`ROADMAP.md`** — M38 block updated (036 substance locked; archival is M38's remaining deliverable);
+  post-lock order line updated; an RFC 036 lock note added mirroring the RFC 031 lock note.
+
+### Scope note
+- This lock covers RFC 036's own scope (criteria 1, 2, 4 + tested constrained behaviour). RFC 036 must
+  not be cited as evidence that durable transcript archival exists — that is an M38 deliverable. Live
+  jemmet HTTPS E2E and interop breadth remain tracked under RFC 015/026.
+
+Gate: build green; `replay` 18 checks green; hygiene; axioms 102, no `sorryAx`; all SUMMARY links
+resolve; no stale `proposed/036` references. Docs/RFC-only change; no `Kroopt/` source, proofs, or
+pure-zone code touched (full 27-suite + interop sweep was green at 0.95.0-dev, the last code change).
+
 ## [0.95.0-dev] — RFC 036 close-out substantiation: GREASE tolerance + live curl + graceful close — 2026-06-15
 
 Per the architect's close-out review (plan **B / committed-canonical / +close +curl / verify-GREASE**),
