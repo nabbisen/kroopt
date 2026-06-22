@@ -5,6 +5,35 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.62.0-dev] — RFC (v0.4): cert / private-key compatibility lint — TESTED + LIVE — 2026-06-14
+
+A config-load lint that catches a leaf certificate whose public key does not match the configured
+private key — the classic "wrong key file" deployment slip that would otherwise surface only
+mid-handshake as a CertificateVerify the peer rejects (RFC 011 §11.2, RFC 012). This is a config
+**lint**, not peer-certificate path validation: no trust anchors, expiry, name, or revocation (those
+remain in the deferred client/mTLS RFC).
+
+- **New `Kroopt.Crypto.CertLint`.** Extracts the leaf SubjectPublicKeyInfo key directly from the DER
+  by anchoring on the algorithm's fixed SPKI header — Ed25519 (RFC 8410 §10.1, the 32-byte raw key)
+  and EC P-256 (RFC 5480, the 65-byte uncompressed point) — then compares it to the public key
+  derived from the private key via HACL* (`ed25519Public` / `p256Public`). `ed25519KeyMatches` and
+  `ecP256KeyMatches` return `false` on either a key mismatch or a wrong-algorithm certificate. The
+  byte-scan (`findSub`) is fuel-bounded; the module lives in the crypto trusted zone and is **TESTED,
+  not PROVEN** — it calls FFI derivation, so the verified core never depends on it and the 94-theorem
+  axiom profile is unchanged.
+- **Validated on real certificates.** 4 checks in the real-provider suite run against the
+  openssl-generated fixture leaves: Ed25519 and EC P-256 leaves match their configured keys; a
+  mismatched private key is rejected; an Ed25519 check against an EC certificate is rejected (no
+  Ed25519 SPKI present). Real-provider suite 19 → 23; full sweep 389.
+- **Wired into the driver.** `kroopt-iotakt` now lints the selected profile's cert/key pair at
+  startup and logs `CONFIG_LINT_OK` / `CONFIG_LINT_MISMATCH` / `CONFIG_LINT_SKIPPED`. Live: `ed25519`,
+  `ecdsa`, and `multi` (Ed25519 + EC P-256) all report OK against their real certs; `rsa` reports
+  SKIPPED.
+- **Deferred.** RSA leaves are not yet linted (variable-length INTEGER SPKI — a follow-up); the `rsa`
+  profile reports SKIPPED rather than a false OK.
+- **Trust posture unchanged.** Protocol PROVEN (94 theorems), crypto ASSUMED, this lint TESTED +
+  live. Hygiene/deps/axioms clean; fuzz 20000 clean.
+
 ## [0.61.0-dev] — RFC (v0.4): no-overlap handshake_failure — PROVEN + LIVE — 2026-06-14
 
 When a client's offered signature_algorithms don't intersect the schemes the selected certificate can

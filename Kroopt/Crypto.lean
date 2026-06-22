@@ -1,4 +1,5 @@
 import Kroopt.Crypto.Provider
+import Kroopt.Crypto.CertLint
 
 /-!
 # Kroopt.Crypto

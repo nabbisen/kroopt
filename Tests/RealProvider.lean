@@ -4,6 +4,7 @@ import Kroopt.Crypto.Provider
 import Kroopt.Crypto.Arena
 import Kroopt.Crypto.KeySchedule
 import Kroopt.Crypto.Hacl
+import Kroopt.Crypto.CertLint
 import Kroopt.Core.Crypto
 import Kroopt.Core.Record
 import Kroopt.Core.Id
@@ -185,6 +186,14 @@ def runChecks : Except Kroopt.CryptoError (List (String × Bool)) := do
     , ("CertificateVerify RSA-PSS signature verifies (round-trip)", rsaSigOk)
     , ("verifyFinished accepts the correct Finished MAC", finishedOk)
     , ("verifyFinished rejects a wrong Finished MAC", finishedRejects)
+    , ("cert-lint: Ed25519 leaf public key matches the configured seed (RFC 011 §11.2)",
+        Kroopt.Crypto.CertLint.ed25519KeyMatches Tests.RealFixtures.certDer Tests.RealFixtures.certSeed)
+    , ("cert-lint: EC P-256 leaf public point matches the configured scalar",
+        Kroopt.Crypto.CertLint.ecP256KeyMatches Tests.RealFixtures.ecdsaCertDer Tests.RealFixtures.ecdsaCertPriv)
+    , ("cert-lint: a mismatched Ed25519 private key is rejected",
+        !Kroopt.Crypto.CertLint.ed25519KeyMatches Tests.RealFixtures.certDer Tests.RealFixtures.ecdsaCertPriv)
+    , ("cert-lint: an Ed25519 check against an EC certificate is rejected (no Ed25519 SPKI)",
+        !Kroopt.Crypto.CertLint.ed25519KeyMatches Tests.RealFixtures.ecdsaCertDer Tests.RealFixtures.certSeed)
     ]
   return checks
 
