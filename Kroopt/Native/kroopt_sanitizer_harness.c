@@ -42,6 +42,11 @@ lean_object *kroopt_ffi_hmac256(b_lean_obj_arg, b_lean_obj_arg);
 lean_object *kroopt_ffi_ed25519_public(b_lean_obj_arg);
 lean_object *kroopt_ffi_ed25519_sign(b_lean_obj_arg, b_lean_obj_arg);
 lean_object *kroopt_ffi_ed25519_verify(b_lean_obj_arg, b_lean_obj_arg, b_lean_obj_arg);
+lean_object *kroopt_ffi_secret_alloc(b_lean_obj_arg, lean_object *);
+lean_object *kroopt_ffi_secret_read(uint64_t, lean_object *);
+lean_object *kroopt_ffi_secret_zeroize(uint64_t, lean_object *);
+lean_object *kroopt_ffi_secret_release(uint64_t, lean_object *);
+lean_object *kroopt_ffi_secret_live_count(lean_object *);
 
 static int failures = 0;
 
@@ -256,6 +261,54 @@ int main(void) {
     lean_object *r = kroopt_ffi_x25519_public(shortKey);
     check("x25519 public rejects wrong-size key", lean_sarray_size(r) == 0);
     lean_dec(r); lean_dec(shortKey);
+  }
+
+  /* C-owned zeroizing secret arena (RFC 037 §3): alloc/read/zeroize/release plus double-release
+   * and read-after-release. ASan flags any double-free or use-after-free of the arena's malloc'd
+   * buffers; live_count == 0 at the end is a functional no-leak check (these buffers are the shim's
+   * own mallocs, which ASan tracks, not Lean-runtime allocations). */
+  {
+    lean_object *w = lean_box(0);  /* world token is ignored by the arena externs */
+    uint8_t pat[48];
+    for (int i = 0; i < 48; i++) pat[i] = (uint8_t)(0xA0 + i);
+    uint64_t ids[16];
+    for (int i = 0; i < 16; i++) {
+      lean_object *b = mk(pat, 48);
+      lean_object *res = kroopt_ffi_secret_alloc(b, w);
+      ids[i] = lean_unbox_uint64(lean_io_result_get_value(res));
+      lean_dec(res); lean_dec(b);
+    }
+    int allAlloced = 1; for (int i = 0; i < 16; i++) if (ids[i] == 0) allAlloced = 0;
+    check("secret arena: 16 allocations all succeed", allAlloced);
+
+    lean_object *r0 = kroopt_ffi_secret_read(ids[0], w);
+    lean_object *v0 = lean_io_result_get_value(r0);
+    int rb = (lean_sarray_size(v0) == 48 && memcmp(lean_sarray_cptr(v0), pat, 48) == 0);
+    lean_dec(r0);
+    check("secret arena: read round-trips the stored bytes", rb);
+
+    lean_object *zr = kroopt_ffi_secret_zeroize(ids[0], w); lean_dec(zr);
+    lean_object *r0z = kroopt_ffi_secret_read(ids[0], w);
+    lean_object *v0z = lean_io_result_get_value(r0z);
+    int zeroed = (lean_sarray_size(v0z) == 48);
+    for (int i = 0; i < 48; i++) if (lean_sarray_cptr(v0z)[i] != 0) zeroed = 0;
+    lean_dec(r0z);
+    check("secret arena: zeroize wipes the live buffer", zeroed);
+
+    for (int i = 0; i < 16; i++) { lean_object *rr = kroopt_ffi_secret_release(ids[i], w); lean_dec(rr); }
+    /* double release of two ids — must be a safe no-op (no double-free under ASan) */
+    { lean_object *d = kroopt_ffi_secret_release(ids[0], w); lean_dec(d); }
+    { lean_object *d = kroopt_ffi_secret_release(ids[7], w); lean_dec(d); }
+    /* read after release — must not dereference freed memory (UAF under ASan) */
+    lean_object *ra = kroopt_ffi_secret_read(ids[3], w);
+    int gone = (lean_sarray_size(lean_io_result_get_value(ra)) == 0);
+    lean_dec(ra);
+    check("secret arena: read after release returns empty (no UAF)", gone);
+
+    lean_object *lc = kroopt_ffi_secret_live_count(w);
+    uint64_t live = lean_unbox_uint64(lean_io_result_get_value(lc));
+    lean_dec(lc);
+    check("secret arena: live count returns to zero (no leak)", live == 0);
   }
 
   if (failures == 0) {

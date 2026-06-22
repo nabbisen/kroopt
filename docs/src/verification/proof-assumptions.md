@@ -87,10 +87,19 @@ discovered:
   interpreter behaviour against the action stream (RFC 014).
 * **Secret-memory zeroization (RFC 013 §13.4, RFC 037 §3).** The verified core
   never names key bytes, and the interpreter's pure `SecretArena` drops every
-  secret reference on each terminal path (tested). It does **not** guarantee the
-  underlying memory is overwritten — that requires the C-owned zeroizing arena,
-  which is the fixed target. Until it lands, secret zeroization is *best-effort,
-  tested, and not guaranteed*, and no production zeroization guarantee is made.
+  secret reference on each terminal path (tested). The C-owned zeroizing arena
+  named as the fixed target now exists (`Kroopt.Crypto.NativeSecret` over the
+  native `kroopt_ffi_secret_*` store): secret bytes live in malloc'd C memory
+  addressed by a monotonic, never-reused id, and `release`/`zeroize` overwrite the
+  buffer through a volatile store before freeing it. The wipe is **observable** on
+  a live buffer (`Tests.NativeSecret`) and the store is leak/double-free/UAF-clean
+  under ASan/UBSan (`scripts/sanitizer-check.sh`). Wiring the production
+  interpreter's secret lifecycle onto it is the remaining step; until that lands,
+  the live handshake still routes secrets through the pure Lean arena, so the
+  end-to-end posture stays *best-effort, tested, and not zeroization-guaranteed*,
+  with no production zeroization guarantee — the difference now is that the
+  zeroizable home is built and proven to wipe, not merely specified. Ephemeral
+  bytes that transit Lean for a crypto op remain outside any wipe guarantee.
 
 Each deferred item will get its own dated entry here when the corresponding code
 is introduced, including how the assumption is discharged or bounded.

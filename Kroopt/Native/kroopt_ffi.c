@@ -362,3 +362,90 @@ LEAN_EXPORT lean_object *kroopt_ffi_rsapss_verify(b_lean_obj_arg nb, b_lean_obj_
   lean_sarray_cptr(r)[0] = ok ? 1 : 0;
   return r;
 }
+
+/* ===== C-owned zeroizing secret arena (RFC 037 §3, requirements §13) =====
+ * A process-global registry of malloc'd secret buffers addressed by a monotonic, never-reused
+ * u64 id. kroopt runs a single event loop with no kroopt-spawned threads, so the registry needs
+ * no locking. `release` (and a contents-only `zeroize`) overwrite the buffer through a volatile
+ * pointer before (release) freeing it, so the store is not dead-store-eliminated and a durable
+ * secret's home is wiped rather than left for the GC. Best-effort by nature: the C standard cannot
+ * guarantee that no spilled copy survives elsewhere, but this buffer is the canonical home and is
+ * never the Lean heap. Monotonic ids are never reused, so a freed id reads as absent — no ABA and
+ * no use-after-free of a recycled id. */
+
+#ifndef KROOPT_SECRET_SLOTS
+#define KROOPT_SECRET_SLOTS 4096
+#endif
+
+typedef struct { uint64_t id; uint8_t *ptr; size_t len; } kroopt_secret_slot;
+static kroopt_secret_slot kroopt_secret_table[KROOPT_SECRET_SLOTS];
+static uint64_t kroopt_secret_next_id = 1; /* 0 reserved for "none"/failure */
+
+/* Secure wipe that the optimizer may not elide (volatile store). */
+static void kroopt_wipe(uint8_t *p, size_t n) {
+  volatile uint8_t *vp = (volatile uint8_t *)p;
+  while (n--) *vp++ = 0;
+}
+
+static kroopt_secret_slot *kroopt_secret_find(uint64_t id) {
+  if (id == 0) return NULL;
+  for (int i = 0; i < KROOPT_SECRET_SLOTS; i++)
+    if (kroopt_secret_table[i].id == id && kroopt_secret_table[i].ptr)
+      return &kroopt_secret_table[i];
+  return NULL;
+}
+
+/* alloc: copy `bytes` into a fresh C-owned buffer; return its id (0 on OOM / table full). */
+LEAN_EXPORT lean_object *kroopt_ffi_secret_alloc(b_lean_obj_arg bytes, lean_object *w) {
+  (void)w;
+  size_t n = ba_len(bytes);
+  uint64_t id = 0;
+  int slot = -1;
+  for (int i = 0; i < KROOPT_SECRET_SLOTS; i++) if (!kroopt_secret_table[i].ptr) { slot = i; break; }
+  if (slot >= 0) {
+    uint8_t *buf = (uint8_t *)malloc(n ? n : 1);
+    if (buf) {
+      if (n) memcpy(buf, ba_ptr(bytes), n);
+      id = kroopt_secret_next_id++;
+      kroopt_secret_table[slot].id = id;
+      kroopt_secret_table[slot].ptr = buf;
+      kroopt_secret_table[slot].len = n;
+    }
+  }
+  return lean_io_result_mk_ok(lean_box_uint64(id));
+}
+
+/* read: a Lean ByteArray copy of the buffer, or empty if the id is absent (released/stale/0). */
+LEAN_EXPORT lean_object *kroopt_ffi_secret_read(uint64_t id, lean_object *w) {
+  (void)w;
+  kroopt_secret_slot *s = kroopt_secret_find(id);
+  lean_object *r;
+  if (s) { r = mk_ba(s->len); if (s->len) memcpy(lean_sarray_cptr(r), s->ptr, s->len); }
+  else r = mk_ba(0);
+  return lean_io_result_mk_ok(r);
+}
+
+/* zeroize: overwrite the buffer contents in place, keeping the slot allocated. */
+LEAN_EXPORT lean_object *kroopt_ffi_secret_zeroize(uint64_t id, lean_object *w) {
+  (void)w;
+  kroopt_secret_slot *s = kroopt_secret_find(id);
+  if (s) kroopt_wipe(s->ptr, s->len);
+  return lean_io_result_mk_ok(lean_box(0));
+}
+
+/* release: wipe then free; clears the slot. Idempotent — an absent id is a no-op, so a double
+ * release is safe. */
+LEAN_EXPORT lean_object *kroopt_ffi_secret_release(uint64_t id, lean_object *w) {
+  (void)w;
+  kroopt_secret_slot *s = kroopt_secret_find(id);
+  if (s) { kroopt_wipe(s->ptr, s->len); free(s->ptr); s->ptr = NULL; s->len = 0; s->id = 0; }
+  return lean_io_result_mk_ok(lean_box(0));
+}
+
+/* live count — for leak assertions in tests (number of un-released slots). */
+LEAN_EXPORT lean_object *kroopt_ffi_secret_live_count(lean_object *w) {
+  (void)w;
+  uint64_t live = 0;
+  for (int i = 0; i < KROOPT_SECRET_SLOTS; i++) if (kroopt_secret_table[i].ptr) live++;
+  return lean_io_result_mk_ok(lean_box_uint64(live));
+}

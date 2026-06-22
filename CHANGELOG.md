@@ -5,6 +5,51 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.73.0-dev] — C-owned zeroizing secret arena (native primitive) — 2026-06-14
+
+The first half of the one item gating an honest "production-ready" claim (RFC 037 §3): a real
+**C-owned zeroizable secret store**, where a secret's durable home is malloc'd C memory that is
+actually overwritten on release rather than left for the GC. The existing `SecretArena` is a pure
+Lean `List (UInt64 × ByteArray)` — ideal for determinism and proof visibility, but its bytes are
+never wiped. This lands the native store the requirements (§13) and RFC 037 name as the fixed target,
+following the project's primitive-then-integrate cadence: the store + its wipe proof + sanitizer
+coverage now; wiring the production interpreter's secret lifecycle onto it next.
+
+### Native store (`Kroopt/Native/kroopt_ffi.c`)
+- A process-global registry of malloc'd secret buffers addressed by a **monotonic, never-reused**
+  u64 id (so a freed id reads as absent — no ABA / use-after-free of a recycled id; single event
+  loop, no locking). `kroopt_ffi_secret_alloc/read/zeroize/release/live_count`. `release` and
+  `zeroize` overwrite the buffer through a **volatile** pointer (not dead-store-eliminated) before
+  `release` frees it. `release` is idempotent, so a double release is a safe no-op.
+
+### Lean binding (`Kroopt/Crypto/NativeSecret.lean`)
+- IO externs `alloc`/`read`/`zeroize`/`release`/`liveCount` over an opaque `SecretId`; the Lean side
+  holds only the id, never the bytes' durable home. Lives in the impure Crypto zone (dependency gate
+  clean — the pure verified core is untouched).
+
+### Tests
+- `kroopt-nativesecret-test` (new, **25th** suite, 7 checks): the decisive one is that `zeroize`
+  overwrites the live buffer with zeros — observable while the slot is still allocated, so the wipe
+  is *real*, not asserted. Plus round-trip, release-removes-slot, safe double release, never-reused
+  ids, and no-leak via `liveCount`.
+- `scripts/sanitizer-check.sh`: the harness now exercises the arena (alloc/read/zeroize/release,
+  double release, read-after-release) under ASan/UBSan — clean, with no double-free or UAF and
+  `live_count` back to zero.
+
+### Trust posture
+- `docs/.../proof-assumptions.md` updated: the zeroizable home is now built and proven to wipe (not
+  merely specified), but the live handshake still routes secrets through the pure Lean arena until
+  the lifecycle is wired, so the end-to-end posture stays *best-effort, tested, not
+  zeroization-guaranteed*, with no production zeroization guarantee yet. 94 theorems unchanged; all
+  25 suites green; parser fuzz clean.
+
+### Remaining for the production claim
+1. Replace the live-path arena's `ByteArray` storage with `NativeSecret` handles (resolving the
+   pure-`submit`/IO seam), so durable connection/config secrets — traffic secrets and the server
+   private key — are wiped on every terminal path end-to-end.
+2. The rest of RFC 037's production gate (config-sourced limits, crypto-op bounds) and the
+   process/maturity RFCs (security review, perf benchmarks, production runbook).
+
 ## [0.72.0-dev] — AES-256-GCM-SHA384 negotiated end-to-end + OpenSSL-validated — 2026-06-14
 
 `TLS_AES_256_GCM_SHA384` now negotiates and serves a full TLS 1.3 handshake plus application-data

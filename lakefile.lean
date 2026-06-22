@@ -185,6 +185,10 @@ lean_exe «kroopt-hacl-test» where
   root := `Tests.Hacl
   moreLinkArgs := #["-Wl,--gc-sections"]
 
+lean_exe «kroopt-nativesecret-test» where
+  root := `Tests.NativeSecret
+  moreLinkArgs := #["-Wl,--gc-sections"]
+
 /-- M13 provider-arena refactor: the real TLS 1.3 key schedule validated against
 RFC 8448 §3, plus the secret arena driving a real key into the AEAD. Links the
 HACL* FFI lib. -/
