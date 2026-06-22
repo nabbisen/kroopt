@@ -48,6 +48,15 @@ def replay (chunks : List ByteArray) : State × Nat :=
   let (core, _, tr) := driveEvents prov 4096 s0 ({} : RuntimeState) tr0 evs
   (core, (FakeTransport.writtenBytes tr).size)
 
+/-- Drive a capture with the `debug_trace` gate set to `enabled`; return the recorded trace
+(RFC 036 §3). With `enabled := false` (the default) the trace must stay empty. -/
+def traceOf (enabled : Bool) (ch : ByteArray) : List String :=
+  let (_, rt, _) := driveEvents prov 4096 s0 ({ traceEnabled := enabled } : RuntimeState) tr0
+                      [InputEvent.transportBytes conn0 ch]
+  rt.trace
+
+def hasSub (s sub : String) : Bool := (s.splitOn sub).length > 1
+
 /-- Build a ClientHello message (x25519 key_share fixed) from the offered suites and the
 supported_versions / supported_groups / signature_algorithms extensions. Mirrors the real wire
 layout (`RealFixtures.clientHelloMsg`). -/
@@ -181,6 +190,16 @@ def checks : List Check :=
   , { name := "real openssl capture in 3 fragments → identical negotiation + flight (reassembly)"
     , ok := suiteIs osslBroadFrag.1 .aes256GcmSha384 && groupIsX25519 osslBroadFrag.1
               && reachedFlight osslBroadFrag.1 && osslBroadFrag.2 == osslBroadR.2 }
+
+    -- ── debug_trace runtime wiring (RFC 036 §3) ──
+  , { name := "debug_trace OFF by default → no trace recorded (no production overhead/leak)"
+    , ok := (traceOf false osslBroadCapture).isEmpty }
+  , { name := "debug_trace ON → a real handshake records a non-empty trace with real action events"
+    , ok := let t := traceOf true osslBroadCapture
+            !t.isEmpty
+              && t.any (fun l => hasSub l "crypto-call")
+              && t.any (fun l => hasSub l "handshake-out")
+              && t.any (fun l => hasSub l "certificate-out") }
   ]
 
 def main : IO Unit := do

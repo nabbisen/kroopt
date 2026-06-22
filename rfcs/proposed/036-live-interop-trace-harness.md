@@ -6,8 +6,12 @@ secret-free-by-construction trace projection `Kroopt.Conn.traceOfAction : Output
 TraceEvent` plus `TraceEvent.render`, where every byte-bearing action projects to a *length* and
 every secret reference to a bare event, so no rendered line can carry plaintext, ciphertext, DER, a
 transcript digest, or a secret handle (`Tests.Trace`, 19 checks, including sentinel-leak negatives).
-Remaining: more malformed/edge captures, and wiring the trace projection into the interpreter
-behind the `debug_trace` build gate. **Committed real captures landed (0.92.0-dev):** genuine
+Remaining: more malformed/edge captures. **`debug_trace` interpreter wiring landed (0.93.0-dev):**
+the interpreter's action fold (`Conn.Interpreter.execActions`) now records a secret-free
+`TraceEvent` line per executed action into `RuntimeState.trace` when `traceEnabled` is set — off by
+default (never on in production), so a real handshake under the gate produces a populated trace
+(crypto-op / handshake-message / certificate events) and produces none when off; verified in
+`Tests.Replay`. **Committed real captures landed (0.92.0-dev):** genuine
 TLS 1.3 ClientHello records from `openssl s_client` (broad + a `-ciphersuites CHACHA20`-constrained
 one) and Python `ssl` (broad, carrying SNI `example.com`) are committed to `Tests.Replay` and
 replayed through the verified path with deterministic assertions — the broad captures negotiate

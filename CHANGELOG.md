@@ -5,6 +5,31 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.93.0-dev] — RFC 036 §3 debug_trace interpreter wiring — 2026-06-15
+
+Makes the no-secrets trace facility (0.89.0-dev) usable at runtime, completing the §3 slice: a real
+handshake can now emit a secret-free diagnostic trace, gated off by default.
+
+### Changed
+- **`Kroopt/Conn/Interpreter.lean`** — `RuntimeState` gains `traceEnabled : Bool := false` and
+  `trace : List String := []` (both defaulted, off by default). The action fold `execActions` now
+  appends `(traceOfAction a).map render` to `RuntimeState.trace` for each executed action **when the
+  gate is set** — a passive observation sink that makes no protocol decision and leaves the action
+  stream and core transitions untouched (correspondence suite unaffected). Secret-freedom carries
+  from the projection: every traced action was already proven to expose only lengths/ids/kinds/codes,
+  never secret bytes.
+
+### Added
+- **`Tests/Replay.lean`** debug_trace checks (now 13 total): with the gate **off** (the default) a real
+  openssl-capture handshake records an **empty** trace (no overhead/leak); with the gate **on** it
+  records a non-empty trace carrying real `crypto-call`, `handshake-out`, and `certificate-out` events.
+- **`docs/src/architecture/trace-facility.md`** updated: the wiring and gating posture are now in place
+  rather than "downstream."
+
+Gate: full build green; 27 suites green (incl. `correspondence`, `interop`); hygiene; deps 37
+pure-zone clean; axioms 102, no `sorryAx`; fuzz 20000; sanitizer clean; live OpenSSL/Python interop
+green. No proofs or pure-zone code changed.
+
 ## [0.92.0-dev] — RFC 036 §2 committed real-client capture corpus — 2026-06-15
 
 Extends the replay bridge with genuine ClientHello captures, so the verified path is exercised

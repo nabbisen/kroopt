@@ -40,7 +40,11 @@ compact, secret-free line per event; `traceActions` renders a whole action strea
 
 ## Scope and gating
 
-This slice is the pure projection and its tests. Emission is opt-in: wiring `traceActions` into the
-interpreter behind the `debug_trace` build gate — never on by default, matching the production
-`LogPolicy` that keeps raw handshake data and transcript digests out of production logs — is a
-downstream step, as is the captured-client replay bridge (RFC 036 §2).
+The projection and its tests landed first; the interpreter wiring followed. The interpreter's action
+fold (`Conn.Interpreter.execActions`) now records one secret-free line per executed action into
+`RuntimeState.trace` when `RuntimeState.traceEnabled` is set — **off by default**, matching the
+production `LogPolicy` that keeps raw handshake data and transcript digests out of production logs. A
+real handshake driven with the gate on produces a populated trace (crypto-op, handshake-message, and
+certificate events); with the gate off it produces none and adds no overhead. The captured-client
+replay bridge (RFC 036 §2) and the remaining malformed/edge capture corpus round out the live-interop
+diagnostics.

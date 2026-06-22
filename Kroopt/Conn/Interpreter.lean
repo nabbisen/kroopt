@@ -5,6 +5,7 @@ import Kroopt.Crypto.KeySchedule
 import Kroopt.Conn.Transport
 import Kroopt.Conn.Flight
 import Kroopt.Conn.Record13
+import Kroopt.Conn.Trace
 import Kroopt.Parse.Wire
 
 /-!
@@ -45,6 +46,10 @@ structure RuntimeState where
   lastError      : Option TlsError := none
   terminal       : Bool := false
   arena          : SecretArena := SecretArena.empty
+  /-- `debug_trace` gate (RFC 036 §3): off by default, never on in production. When set, the
+  interpreter records a secret-free `TraceEvent` line per executed action into `trace`. -/
+  traceEnabled   : Bool := false
+  trace          : List String := []
   deriving Inhabited
 
 /-- Try to push the pending ciphertext queue toward the transport, honouring
@@ -240,6 +245,9 @@ def execActions {τ : Type} [Transport τ] (prov : CryptoProvider) (rt : Runtime
   acts.foldl
     (fun (acc : RuntimeState × τ × List InputEvent) a =>
       let (rt', tr', evs) := execAction prov acc.1 acc.2.1 a
+      let rt' := if rt'.traceEnabled then
+                   { rt' with trace := rt'.trace ++ ((traceOfAction a).map TraceEvent.render).toList }
+                 else rt'
       (rt', tr', acc.2.2 ++ evs))
     (rt, tr, [])
 
