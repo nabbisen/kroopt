@@ -115,6 +115,71 @@ theorem ecdhe_op_matches_selected_group
     simp only [List.mem_cons, List.not_mem_nil, or_false, OutputAction.callCrypto.injEq,
       reduceCtorEq, or_self] at hmem
 
+/-- The core records only an endpoint-allowed group. When `onClientHello` succeeds into
+`requestedServerRandom`, the `selectedGroup` it stored is `some g` with `g` in the resolved
+endpoint's policy — the selectedGroup half of RFC 039 §5.2's non-event (a disallowed group
+never reaches `selectedGroup`). -/
+theorem onClientHello_selectedGroup_allowed
+    (s s' : State) (vch : ValidClientHello) (w : ByteArray) (acts : List OutputAction)
+    (allowed : List NamedGroup)
+    (hep : (Option.map (fun e => e.namedGroups) (selectEndpoint s.serverConfig vch.sni)).getD [] = allowed)
+    (h : onClientHello s vch w = .ok (s', acts))
+    (hsucc : s'.handshake = .requestedServerRandom) :
+    ∃ g, s'.negotiated.selectedGroup = some g ∧ g ∈ allowed := by
+  unfold onClientHello at h
+  split at h
+  · split at h
+    · unfold hsFail at h
+      simp only [Except.ok.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      simp only [reduceCtorEq] at hsucc
+    · split at h
+      · unfold hsFail at h
+        simp only [Except.ok.injEq, Prod.mk.injEq] at h
+        obtain ⟨rfl, -⟩ := h
+        simp only [reduceCtorEq] at hsucc
+      · cases hsel : selectGroup vch.offeredShares
+            ((Option.map (fun x => x.namedGroups) (selectEndpoint s.serverConfig vch.sni)).getD []) with
+        | none =>
+          unfold hsFail at h
+          simp only [hsel, Except.ok.injEq, Prod.mk.injEq] at h
+          obtain ⟨rfl, -⟩ := h
+          simp only [reduceCtorEq] at hsucc
+        | some gp =>
+          obtain ⟨selGroup, selShare⟩ := gp
+          simp only [hsel, State.allocOp, Except.ok.injEq, Prod.mk.injEq] at h
+          obtain ⟨rfl, -⟩ := h
+          refine ⟨selGroup, rfl, ?_⟩
+          have ha := (selectGroup_authorized hsel).1
+          rw [hep] at ha
+          exact ha
+  · unfold hsFail at h
+    simp only [Except.ok.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    simp only [reduceCtorEq] at hsucc
+
+/-- RFC 039 §5.2 `no_disallowed_group_crypto_op` (the P-256 case, which is the only one the
+two supported groups can violate): if secp256r1 is not in the endpoint's policy, then no
+P-256 ECDHE crypto op is ever emitted on the `onClientHello → onServerRandomDone` path. The
+disallowed group reaches neither `selectedGroup` (by `onClientHello_selectedGroup_allowed`)
+nor a crypto op (by `ecdhe_op_matches_selected_group`). -/
+theorem no_disallowed_group_crypto_op
+    (s s1 s2 : State) (vch : ValidClientHello) (w random : ByteArray)
+    (acts1 acts2 : List OutputAction) (allowed : List NamedGroup)
+    (c : ConnId) (oid : OperationId) (peer : ByteArray)
+    (hep : (Option.map (fun e => e.namedGroups) (selectEndpoint s.serverConfig vch.sni)).getD [] = allowed)
+    (hch : onClientHello s vch w = .ok (s1, acts1))
+    (hsucc : s1.handshake = .requestedServerRandom)
+    (hsr : onServerRandomDone s1 random = .ok (s2, acts2))
+    (hdis : NamedGroup.secp256r1 ∉ allowed)
+    (hmem : OutputAction.callCrypto c oid (CryptoOp.ecdheP256 peer) ∈ acts2) : False := by
+  have hsel := ecdhe_op_matches_selected_group s1 s2 random acts2 c oid peer hsr hmem
+  obtain ⟨g, hg, hga⟩ := onClientHello_selectedGroup_allowed s s1 vch w acts1 allowed hep hch hsucc
+  rw [hsel] at hg
+  simp only [Option.some.injEq] at hg
+  subst hg
+  exact hdis hga
+
 /-- `onClientHello` moves along a legal edge (RFC 006 §9). -/
 theorem onClientHello_legal
     (s s' : State) (vch : ValidClientHello) (w : ByteArray) (acts : List OutputAction)

@@ -5,6 +5,31 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.79.0-dev] — RFC 039 §5.2 completion (no-disallowed-group proof) + selection-test breadth — 2026-06-14
+
+Completes the verification dimension of RFC 039 (acceptance item #17): all three §5
+theorems now build clean within the axiom allowlist.
+
+### Proofs (RFC 039 §5.2)
+- `onClientHello_selectedGroup_allowed`: when `onClientHello` succeeds into
+  `requestedServerRandom`, the recorded `selectedGroup` is `some g` with `g` in the resolved
+  endpoint's policy — the selectedGroup half of the §5.2 non-event.
+- `no_disallowed_group_crypto_op` (the P-256 case, the only one two groups can violate):
+  with secp256r1 outside the endpoint policy, no `ecdheP256` op is ever emitted on the
+  `onClientHello → onServerRandomDone` path. Composes `onClientHello_selectedGroup_allowed`
+  (group never reaches `selectedGroup`) with `ecdhe_op_matches_selected_group` (op matches the
+  recorded group). Axiom audit now covers **98** public theorems.
+
+### Tests (RFC 039 §8)
+- `kroopt-e2e-test` (**20**, +2): unknown group dropped while the recognized secp256r1 share
+  is selected (§8.9); duplicate secp256r1 `key_share` rejected as malformed (§8.10, the P-256
+  companion to the x25519 duplicate case).
+
+### Remaining for RFC 039 → done/
+supported_groups/key_share consistency (§4.6, a parser feature), safe negotiation tracing
+(§4.9), the P-256 off-curve provider test and alert-determinism test (§8.12/§8.14), the
+x25519-only-listener interop run (§8.16), and the doc refresh (§9).
+
 ## [0.78.0-dev] — RFC 039 Stages 4–5 (core group selection + authorization proofs) — 2026-06-14
 
 This closes the live gap left after Stages 2–3: the endpoint `namedGroups` policy was

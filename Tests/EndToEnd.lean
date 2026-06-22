@@ -92,6 +92,32 @@ def chMsgDup : List UInt8 :=
   [1] ++ [0, (chBodyDup.length / 256).toUInt8, (chBodyDup.length % 256).toUInt8] ++ chBodyDup
 def chRecordDup : ByteArray := record chMsgDup
 
+/-! ## An unknown-group + secp256r1 ClientHello (RFC 039 §8.9: unrecognized groups are
+dropped, the recognized P-256 share remains), and a DUPLICATE secp256r1 ClientHello. -/
+
+def keyShareEntryUnknown : List UInt8 := [0x01, 0x00, 0, 4] ++ [1, 2, 3, 4]  -- group 0x0100, 4-byte share
+def keyShareEntryUnkP256 : List UInt8 := keyShareEntryUnknown ++ keyShareEntryP256
+def extKeyShareUnkP256 : List UInt8 :=
+  [0, 51] ++ u16be (keyShareEntryUnkP256.length + 2) ++ u16be keyShareEntryUnkP256.length ++ keyShareEntryUnkP256
+def extsBodyUnkP256 : List UInt8 := extSupVer ++ extKeyShareUnkP256 ++ extSigAlgs
+def chBodyUnkP256 : List UInt8 :=
+  [0x03, 0x03] ++ (List.replicate 32 0xAA) ++ [0] ++
+  [0, 2, 0x13, 0x03] ++ [1, 0] ++ (u16be extsBodyUnkP256.length ++ extsBodyUnkP256)
+def chMsgUnkP256 : List UInt8 :=
+  [1] ++ [0, (chBodyUnkP256.length / 256).toUInt8, (chBodyUnkP256.length % 256).toUInt8] ++ chBodyUnkP256
+def chRecordUnkP256 : ByteArray := record chMsgUnkP256
+
+def keyShareEntryDupP256 : List UInt8 := keyShareEntryP256 ++ keyShareEntryP256
+def extKeyShareDupP256 : List UInt8 :=
+  [0, 51] ++ u16be (keyShareEntryDupP256.length + 2) ++ u16be keyShareEntryDupP256.length ++ keyShareEntryDupP256
+def extsBodyDupP256 : List UInt8 := extSupVer ++ extKeyShareDupP256 ++ extSigAlgs
+def chBodyDupP256 : List UInt8 :=
+  [0x03, 0x03] ++ (List.replicate 32 0xAA) ++ [0] ++
+  [0, 2, 0x13, 0x03] ++ [1, 0] ++ (u16be extsBodyDupP256.length ++ extsBodyDupP256)
+def chMsgDupP256 : List UInt8 :=
+  [1] ++ [0, (chBodyDupP256.length / 256).toUInt8, (chBodyDupP256.length % 256).toUInt8] ++ chBodyDupP256
+def chRecordDupP256 : ByteArray := record chMsgDupP256
+
 /-! ## Fake crypto provider (deterministic, purpose-aware) -/
 
 def fakeCrypto : CryptoOp → CryptoResult
@@ -193,6 +219,17 @@ finds no group both allowed and offered and fails with `handshake_failure` (RFC 
 def runP256ClientX25519OnlyServer : Driver :=
   driveFuel 64 freshX25519Only [InputEvent.transportBytes ⟨0, 0⟩ chRecordP256]
 
+/-- Unknown group dropped, recognized secp256r1 share kept and selected against a both-allowed
+endpoint (RFC 039 §8.9). -/
+def runUnkP256 : Driver :=
+  driveFuel 256 fresh
+    [InputEvent.transportBytes ⟨0, 0⟩ chRecordUnkP256,
+     InputEvent.transportBytes ⟨0, 0⟩ clientFinishedRecord]
+
+/-- Duplicate secp256r1 key_share → malformed, never connected (RFC 039 §8.10). -/
+def runDupP256 : Driver :=
+  driveFuel 16 fresh [InputEvent.transportBytes ⟨0, 0⟩ chRecordDupP256]
+
 /-! ## Negative scenarios -/
 
 def malformedChRecord : ByteArray := record [1, 0, 0, 4, 0x03, 0x03, 0, 0]  -- complete header (len24=4), body too short for a CH
@@ -261,6 +298,10 @@ def checks : List Check :=
             && runP256ClientX25519OnlyServer.st.handshake.isTerminal }
   , { name := "RFC 039: that refusal never negotiated P-256 (no unauthorized group)"
     , ok := runP256ClientX25519OnlyServer.st.negotiated.selectedGroup == none }
+  , { name := "RFC 039: unknown group dropped, secp256r1 share selected"
+    , ok := runUnkP256.st.negotiated.selectedGroup == some .secp256r1 && runUnkP256.st.handshake == .connected }
+  , { name := "RFC 039: duplicate secp256r1 key_share rejected, never connected"
+    , ok := runDupP256.st.handshake != .connected && runDupP256.st.handshake.isTerminal }
     -- negatives
   , { name := "malformed ClientHello fails, not connected"
     , ok := runMalformedCH.st.handshake.isTerminal && runMalformedCH.st.handshake != .connected }
