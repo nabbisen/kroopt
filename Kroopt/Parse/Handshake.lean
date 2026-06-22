@@ -118,12 +118,14 @@ def selectSuite (offered : List UInt16) : Option CipherSuite :=
   offered.foldl (fun acc c => acc.orElse (fun _ => suiteOfU16 c)) none
 
 /-- Map a `signature_algorithms` code to a scheme kroopt can *present*. The current profile can
-present Ed25519 (0x0807) and ECDSA-P256/SHA-256 (0x0403); RSA offers are not presentable yet and
-map to `none` (skipped by the overlap selection). The *actual* scheme is chosen in the core against
-the selected certificate (RFC 033 §3, RFC 8446 §4.2.3). -/
+present Ed25519 (0x0807), ECDSA-P256/SHA-256 (0x0403), and RSA-PSS/SHA-256 (rsa_pss_rsae_sha256,
+0x0804); other RSA variants are not presentable yet and map to `none` (skipped by overlap
+selection). The *actual* scheme is chosen in the core against the selected certificate (RFC 033 §3,
+RFC 8446 §4.2.3). -/
 def sigSchemeOfU16 : UInt16 → Option SignatureScheme
   | 0x0807 => some .ed25519
   | 0x0403 => some .ecdsaSecp256r1Sha256
+  | 0x0804 => some .rsaPssRsaeSha256
   | _      => none
 
 /-- The recognized signature schemes the client offered, in client order (overlap candidates). -/

@@ -120,4 +120,12 @@ def rsaCfg : RealCryptoConfig :=
   { ephemeralPrivate := serverPriv, certPrivate := ByteArray.empty, certPublic := ByteArray.empty
     rsaN := rsaN, rsaE := rsaE, rsaD := rsaD }
 
+/-- A validated server config presenting the RSA-2048 leaf. The endpoint advertises
+`rsaPssRsaeSha256` only, so the core selects RSA-PSS when the client offers it (RFC 8446 §4.2.3). -/
+def rsaServerConfig : Kroopt.Core.ValidatedServerConfig :=
+  { (default : Kroopt.Core.ValidatedServerConfig) with
+    defaultEndpoint := some
+      { (default : Kroopt.Core.EndpointConfig) with
+        der := rsaCertDer, signatureSchemes := [.rsaPssRsaeSha256] } }
+
 end Tests.RealFixtures

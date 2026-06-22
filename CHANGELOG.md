@@ -5,6 +5,31 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.57.0-dev] — RFC (v0.4 breadth): RSA-PSS LIVE — server-auth triad complete — 2026-06-14
+
+Turns RSA-PSS on for live handshakes, completing the TLS 1.3 server-auth triad: **Ed25519, ECDSA-P256,
+and RSA-PSS are all negotiated cert-aware and interop-validated** against OpenSSL and curl. Additive —
+94 theorems and the axiom profile unchanged; the cert-aware selection from 0.55.0-dev did the heavy
+lifting, so this step was a parser code point + config + driver wiring.
+
+- **Parser.** `sigSchemeOfU16` recognizes `rsa_pss_rsae_sha256` (0x0804) alongside Ed25519 and
+  ECDSA-P256. A ClientHello offering only a non-presentable scheme (e.g. rsa_pss_pss_sha256) is still
+  rejected.
+- **RSA endpoint + driver.** `rsaServerConfig` advertises `rsaPssRsaeSha256` over the RSA-2048 leaf;
+  the kroopt-iotakt driver's `cert` profile is now three-way (`ed25519` | `ecdsa` | `rsa`), drawing a
+  fresh per-connection nonce/salt for the ECDSA nonce or PSS salt as appropriate.
+- **Live validation (all three, one server each):**
+  - Ed25519 → `Peer signature type: Ed25519`, HTTP 200
+  - ECDSA-P256 (`-sigalgs ecdsa_secp256r1_sha256`) → `Peer signature type: ECDSA`, HTTP 200
+  - RSA-PSS (`-sigalgs rsa_pss_rsae_sha256`) → `Peer signature type: RSA-PSS`, `Peer signing digest:
+    SHA256`, HTTP 200; curl over the RSA server → HTTP 200.
+- **Tests.** Hardening updated for the widened capability (RSA-PSS now presentable; rsa_pss_pss_sha256
+  is the unpresentable case). All 24 suites green (377 checks); fuzz clean; all gates green.
+
+Crypto remains ASSUMED (vendored HACL\*), protocol PROVEN (94 theorems), wire TESTED + interop-validated
+across all three server-auth schemes. The key-exchange dimension spans x25519 + secp256r1; server-auth
+spans Ed25519 + ECDSA-P256 + RSA-PSS — all live.
+
 ## [0.56.0-dev] — RFC (v0.4 breadth): RSA-PSS/SHA-256 server-auth signing — crypto + provider path — 2026-06-14
 
 Third v0.4 server-auth scheme: kroopt can now **produce RSA-PSS (rsa_pss_rsae_sha256) CertificateVerify
