@@ -2,6 +2,7 @@ import Kroopt.Conn.Transport
 import Kroopt.Conn.Interpreter
 import Kroopt.Conn.TlsConn
 import Kroopt.Conn.Uniform
+import Kroopt.Conn.Trace
 
 /-!
 # Kroopt.Conn

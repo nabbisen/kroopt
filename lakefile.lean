@@ -103,6 +103,11 @@ lean_exe «kroopt-close-test» where
   root := `Tests.Close
   moreLinkArgs := #["-Wl,--gc-sections"]
 
+/-- No-secrets trace facility tests (RFC 036 §3). -/
+lean_exe «kroopt-trace-test» where
+  root := `Tests.Trace
+  moreLinkArgs := #["-Wl,--gc-sections"]
+
 /-- jemmet integration + end-to-end HTTPS acceptance tests (RFC 015). -/
 @[default_target]
 lean_exe «kroopt-https-test» where

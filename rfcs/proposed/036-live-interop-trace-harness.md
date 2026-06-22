@@ -1,7 +1,14 @@
 # RFC 036 — Live Interop Trace Harness and Captured-Client Replay
 
 **Project.** kroopt  
-**Status.** Proposed  
+**Status.** Proposed — **§3 trace facility (first slice) landed (0.89.0-dev):** a pure,
+secret-free-by-construction trace projection `Kroopt.Conn.traceOfAction : OutputAction → Option
+TraceEvent` plus `TraceEvent.render`, where every byte-bearing action projects to a *length* and
+every secret reference to a bare event, so no rendered line can carry plaintext, ciphertext, DER, a
+transcript digest, or a secret handle (`Tests.Trace`, 19 checks, including sentinel-leak negatives).
+Remaining: §2 captured-client replay bridge (sanitized openssl/curl ClientHello fixtures → pure
+parser + fake-transport replay with deterministic negotiation/alert assertions), and wiring the
+projection into the interpreter behind the `debug_trace` build gate.
 **Type.** Implementation RFC  
 **Target milestone.** M38 (prep starts during M36 via captured-CH fixtures)  
 **Depends on.** RFC 033 (real-client handshake), RFC 020 (observability/redaction), RFC 026 (interop matrix), RFC 015 (E2E acceptance)  

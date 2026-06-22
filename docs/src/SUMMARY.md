@@ -20,6 +20,7 @@
 - [TlsConn API and the interpreter](architecture/tlsconn-interpreter.md)
 - [SNI/ALPN config and certificate presentation](architecture/config-cert.md)
 - [Alerts, close_notify, and terminal policy](architecture/alerts-close.md)
+- [No-secrets trace facility](architecture/trace-facility.md)
 - [jemmet integration and end-to-end HTTPS](architecture/jemmet-integration.md)
 
 # Cryptography and the trust boundary

@@ -5,6 +5,40 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.89.0-dev] — RFC 036 §3 no-secrets trace facility (first slice) — 2026-06-15
+
+First forward increment on the unfrozen real-wire band: the diagnostic backbone of the live-interop
+milestone (RFC 036 §3). Pure, verification-first, and self-contained.
+
+### Added
+- **`Kroopt/Conn/Trace.lean`** — the no-secrets trace facility. `TraceEvent` carries only public
+  protocol data (connection/op ids, crypto-op kinds, byte *lengths*, wire code points, alert
+  descriptions, close/error *categories*); the pure projection `traceOfAction : OutputAction →
+  Option TraceEvent` maps every byte-bearing action to a length and every secret reference to a bare
+  event, so **no rendered trace line can carry plaintext, ciphertext, certificate DER, a transcript
+  digest, or a secret handle** — secret-freedom is a property of the type's shape, not of a
+  redaction pass. `TraceEvent.render` / `traceActions` produce compact secret-free diagnostic lines.
+- **`Tests/Trace.lean`** (`kroopt-trace-test`, 19 checks) — per-variant projection/render coverage
+  plus the no-secrets centerpiece: a `SECRET` sentinel embedded in `emitPlaintext`, `writeTransport`,
+  `writeCertificate`, and a secret-carrying `callCrypto` is shown to never appear in the rendered
+  trace, individually and across a mixed action stream.
+- **`docs/src/architecture/trace-facility.md`** (+ SUMMARY entry) — the secret-freedom-by-construction
+  rationale, what a trace records, and the `debug_trace` gating posture (opt-in, never default).
+
+### Changed
+- **RFC 036 status**: §3 trace facility (first slice) recorded as landed; §2 captured-client replay
+  bridge and the interpreter `debug_trace` wiring remain.
+- **RFC 037 §6 reconciled**: the inbound-alert residue (deterministic alert level/description parsing
+  into the close state machine) was already implemented and tested — `Core.RecordPath.onInboundAlert`
+  with `Tests.Close` coverage (close_notify → graceful; every other alert → fatal/abortive, no
+  response alert; malformed → decode error; no plaintext) — so its status is corrected from
+  "deferred" to done. This satisfies the headline-track "037 inbound-alert residue before live
+  external-client claims" gate.
+
+Gate: full build green; 26 suites (incl. `trace`) green; hygiene; deps 37 pure-zone clean; axioms
+102 public theorems, no `sorryAx`; parser fuzz 20000; sanitizer clean; live OpenSSL/Python interop
+green. No proofs or pure-zone code changed.
+
 ## [0.88.0-dev] — RFC 031 locked for synchronous correspondence (→ `done/`); async ledger relocated to RFC 040 — 2026-06-15
 
 Cuts the RFC 031 ↔ RFC 040 scheduling knot per architect review. No code or proofs changed; this is
