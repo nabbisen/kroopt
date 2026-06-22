@@ -5,6 +5,31 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.94.0-dev] — RFC 036 §2 malformed/edge capture corpus — 2026-06-15
+
+Completes RFC 036 acceptance criterion 1: the committed captured-ClientHello corpus now spans
+constrained + broad + **malformed**, all replaying deterministically through the pure/fake path.
+
+### Added
+- **`Tests/Replay.lean`** (now 16 checks): a `buildExts` builder (full extension blob verbatim) and
+  three committed malformed/edge captures, each asserting deterministic rejection
+  (`failed illegal_parameter`, **no partial flight**):
+  - ClientHello with **no `key_share`** extension;
+  - ClientHello with a **duplicated `supported_versions`** extension;
+  - ClientHello offering **only an unsupported group** (0xfafa, no x25519).
+  Real clients do not emit malformed handshakes, so these are built deterministically rather than
+  packet-captured; the existing real openssl/Python captures remain raw committed hex.
+
+### Notes
+- RFC 036 acceptance criterion 1 (constrained + broad + malformed corpus, deterministic) is now met.
+  The RFC stays Proposed pending criterion 3 (M38 live runs must *archive* OpenSSL/curl transcripts —
+  interop runs live and green but does not yet persist artifacts) and criterion 4 (a docs page
+  distinguishing constrained from browser-grade interop).
+
+Gate: build green; 27 suites green (incl. `replay`, `correspondence`, `interop`); hygiene; axioms
+102, no `sorryAx`; fuzz 20000; live OpenSSL/Python interop green. Tests-only change; no `Kroopt/`
+source, proofs, or pure-zone code touched.
+
 ## [0.93.0-dev] — RFC 036 §3 debug_trace interpreter wiring — 2026-06-15
 
 Makes the no-secrets trace facility (0.89.0-dev) usable at runtime, completing the §3 slice: a real

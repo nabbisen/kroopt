@@ -70,17 +70,34 @@ def buildCH (suites supVer supGrp sigAlg : ByteArray) : ByteArray :=
       ++ Wire.u16Len exts
   Wire.handshake 0x01 body
 
--- extension fixtures
+/-- Like `buildCH`, but takes the entire extension blob verbatim — used to commit *malformed/edge*
+captures (missing key_share, duplicated extension, only-unsupported group) for the rejection corpus.
+Real clients do not emit these, so they are built deterministically rather than packet-captured. -/
+def buildExts (suites exts : ByteArray) : ByteArray :=
+  let random : ByteArray := ByteArray.mk (Array.mkArray 32 (0xAB : UInt8))
+  let body : ByteArray :=
+    Wire.be16 0x0303 ++ random ++ Wire.u8Len ByteArray.empty
+      ++ Wire.u16Len suites ++ Wire.u8Len (ByteArray.mk #[(0x00 : UInt8)])
+      ++ Wire.u16Len exts
+  Wire.handshake 0x01 body
 def extTls13   : ByteArray := hx "00 2b 00 03 02 03 04"           -- supported_versions: TLS 1.3
 def extTls12   : ByteArray := hx "00 2b 00 03 02 03 03"           -- supported_versions: TLS 1.2 only
 def grpX25519  : ByteArray := hx "00 0a 00 04 00 02 00 1d"        -- groups: x25519
 def grpBroad   : ByteArray := hx "00 0a 00 06 00 04 00 17 00 1d"  -- groups: secp256r1, x25519
 def sigEd25519 : ByteArray := hx "00 0d 00 04 00 02 08 07"        -- sig_algs: ed25519
+def grpUnknown : ByteArray := hx "00 0a 00 04 00 02 fa fa"        -- groups: only unknown 0xfafa
+def ksX25519   : ByteArray := Wire.extension 0x0033 (Wire.u16Len (Wire.keyShareEntry 0x001d clientShare))
 
 -- captures (record-wrapped, ready for the wire)
 def constrainedCH : ByteArray := recordWrap clientHelloMsg                                  -- 1301,1303 / x25519
 def broadCH       : ByteArray := recordWrap (buildCH (hx "13 02 13 01 13 03") extTls13 grpX25519 sigEd25519)
 def noTls13CH     : ByteArray := recordWrap (buildCH (hx "13 01 13 03") extTls12 grpX25519 sigEd25519)
+
+-- ── committed malformed / edge captures (RFC 036 §2) — each must reject deterministically ──
+def mfSuites      : ByteArray := hx "13 01 13 03"
+def noKeyShareCH  : ByteArray := recordWrap (buildExts mfSuites (extTls13 ++ grpX25519 ++ sigEd25519))
+def dupExtCH      : ByteArray := recordWrap (buildExts mfSuites (extTls13 ++ extTls13 ++ grpX25519 ++ sigEd25519 ++ ksX25519))
+def unknownGrpCH  : ByteArray := recordWrap (buildExts mfSuites (extTls13 ++ grpUnknown ++ sigEd25519 ++ ksX25519))
 
 -- ── committed real-client captures (RFC 036 §2) ──
 -- Genuine TLS 1.3 ClientHello records captured from `openssl s_client` and Python `ssl` (OpenSSL).
@@ -127,6 +144,8 @@ def groupIsX25519 (s : State) : Bool :=
   match s.negotiated.selectedGroup with | some .x25519 => true | _ => false
 def reachedFlight (s : State) : Bool :=
   match s.handshake with | .sentServerFinished => true | _ => false
+def failedIllegal (s : State) : Bool :=
+  match s.handshake with | .failed .illegalParameter => true | _ => false
 
 -- reference result from the whole constrained capture
 def whole : State × Nat := replay [constrainedCH]
@@ -190,6 +209,14 @@ def checks : List Check :=
   , { name := "real openssl capture in 3 fragments → identical negotiation + flight (reassembly)"
     , ok := suiteIs osslBroadFrag.1 .aes256GcmSha384 && groupIsX25519 osslBroadFrag.1
               && reachedFlight osslBroadFrag.1 && osslBroadFrag.2 == osslBroadR.2 }
+
+    -- ── malformed / edge captures (RFC 036 §2): deterministic rejection, no partial flight ──
+  , { name := "malformed: ClientHello with no key_share → deterministic reject (illegal_parameter, no flight)"
+    , ok := let r := replay [noKeyShareCH]; failedIllegal r.1 && r.2 == 0 }
+  , { name := "malformed: duplicate supported_versions extension → deterministic reject (illegal_parameter)"
+    , ok := let r := replay [dupExtCH]; failedIllegal r.1 && r.2 == 0 }
+  , { name := "edge: ClientHello offering only an unsupported group → deterministic reject (illegal_parameter)"
+    , ok := let r := replay [unknownGrpCH]; failedIllegal r.1 && r.2 == 0 }
 
     -- ── debug_trace runtime wiring (RFC 036 §3) ──
   , { name := "debug_trace OFF by default → no trace recorded (no production overhead/leak)"

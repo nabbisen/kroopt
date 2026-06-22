@@ -6,7 +6,13 @@ secret-free-by-construction trace projection `Kroopt.Conn.traceOfAction : Output
 TraceEvent` plus `TraceEvent.render`, where every byte-bearing action projects to a *length* and
 every secret reference to a bare event, so no rendered line can carry plaintext, ciphertext, DER, a
 transcript digest, or a secret handle (`Tests.Trace`, 19 checks, including sentinel-leak negatives).
-Remaining: more malformed/edge captures. **`debug_trace` interpreter wiring landed (0.93.0-dev):**
+**Malformed/edge corpus landed (0.94.0-dev):** the captured-CH corpus now spans constrained + broad +
+malformed (no key_share, duplicated `supported_versions`, only-unsupported group), each replaying to a
+deterministic rejection (`failed illegal_parameter`, no partial flight) through the full pure/fake
+path — acceptance criterion 1 is met (`Tests.Replay`, 16 checks). Remaining before lock: M38 live runs
+must *archive* constrained OpenSSL/curl transcripts (criterion 3 — interop runs live and green today
+but does not yet persist artifacts), and a docs page must distinguish constrained from browser-grade
+interop (criterion 4). **`debug_trace` interpreter wiring landed (0.93.0-dev):**
 the interpreter's action fold (`Conn.Interpreter.execActions`) now records a secret-free
 `TraceEvent` line per executed action into `RuntimeState.trace` when `traceEnabled` is set — off by
 default (never on in production), so a real handshake under the gate produces a populated trace

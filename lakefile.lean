@@ -272,8 +272,3 @@ lean_exe «kroopt-realch-interop» where
 lean_exe «kroopt-capabilities-test» where
   root := `Tests.Capabilities
   moreLinkArgs := #["-Wl,--gc-sections"]
-
-
-
-
-
