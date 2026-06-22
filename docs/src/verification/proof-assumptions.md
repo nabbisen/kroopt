@@ -118,8 +118,10 @@ At M6 the crypto provider boundary lands (RFC 008 / 009). The operation-id
 correlation guard is *proved* in the core (`stale_crypto_result_rejected`), and
 Randomness is the OS CSPRNG only (ASSUMED), drawn through a fail-closed wrapper: an
 entropy failure aborts connection setup rather than proceeding with degraded entropy
-(RFC 034). The real provider advertises only the constrained profile it can perform; a
-config requiring AES-GCM/P-256/ECDSA/RSA is rejected at validation. capability validation is a total deterministic function. The native
+(RFC 034). The real provider advertises the AES-128/256-GCM and ChaCha20-Poly1305
+suites with SHA-256/384 over X25519 and secp256r1 (P-256), with Ed25519 signatures; a
+config requiring an out-of-profile signature scheme (ECDSA/RSA) is rejected at
+validation. capability validation is a total deterministic function. The native
 HACL\*/EverCrypt shim is **contracted** (`Kroopt/Native/kroopt.h`) but its build
 is deferred until HACL\* is vendored (Requirements Open Question 1); until then
 the deterministic `Kroopt.Crypto.fakeProvider` is used. This does not weaken any

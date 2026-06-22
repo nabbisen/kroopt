@@ -5,6 +5,71 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.76.0-dev] — secp256r1 capability honesty (review Stage 1 / Option B) — 2026-06-14
+
+Closes the immediate half of the secp256r1 capability-gap review (Option C, B-now):
+the advertised provider capability now matches actual P-256 negotiation behaviour, and
+the path is tested. The structural follow-up (endpoint group policy + a "selected group
+is authorized" proof) is captured as an RFC for Stage 2–5.
+
+### Capability advertisement (`Kroopt/Crypto/Provider.lean`)
+- `realCapabilities.groups` is now `[.x25519, .secp256r1]`. This is honest, not an
+  over-claim: the provider computes a real, NIST-CAVP-validated P-256 ECDH shared secret
+  (`Hacl_P256_ecp256dh_r` via `kroopt_ffi_p256_shared`), so the binary genuinely performs
+  both groups. (Whether a *listener* should restrict to a subset is the Stage 2 endpoint
+  policy decision, not a provider-capability question.)
+
+### Tests
+- `kroopt-e2e-test` (**14**): a secp256r1-only ClientHello (group 0x0017, 65-byte
+  uncompressed point) drives the full handshake — the core selects P-256, emits
+  `ecdheP256`, reaches `connected`, and records `selectedGroup = secp256r1`.
+- `scripts/tls-interop.sh`: forced `-groups P-256` OpenSSL scenario on both the blocking
+  and reactor drivers — full TLS 1.3 handshake + app-data round-trip — alongside the
+  existing x25519 runs. (`test_openssl` gained a groups parameter.)
+
+### Docs
+- `crypto-ffi-contract.md` / `proof-assumptions.md`: corrected to state X25519 **and
+  secp256r1** are advertised (the audit had documented the pre-Stage-1 x25519-only set).
+
+### Known follow-up (RFC, Stage 2–5)
+- `realCapabilities.groups` is still declarative: `requiredCryptoOfServerConfig` hardcodes
+  `groups := []`, `EndpointConfig` has no group field, and the parser selects the group
+  with no capability/policy gate. Making the group dimension load-bearing (endpoint
+  `namedGroups`, populated `req.groups`, core-level selection constrained to the allowed
+  set, and a proof that the selected group is authorized) is the next RFC. Per the review,
+  the core theorem proves `g ∈ clientOffered ∧ g ∈ endpointAllowed`; `endpointAllowed ⊆
+  providerCaps` is discharged at config validation, keeping the verified core
+  provider-agnostic. The parallel inert `hashAlgorithms := []` is folded into the same RFC.
+
+### Audit (5-dimension review) — 2026-06-14
+
+A review of (1) done-RFC fulfillment, (2) dead code, (3) tests vs requirements/design,
+(4) code vs tests, (5) docs vs code. No code behavior changed; documentation drift fixed.
+
+- **Dead code**: a definition-level scan flagged 10 single-reference defs; on inspection
+  all are planned/future/API surface (RFC 007 §5 transcript-bound-input makers; RFC 003
+  `BoundedBytes.ofBytes?`; RFC 020 observability `recordFailure`/`recordAlertSent`/
+  `redactedSummary`; the documented `alertForUnexpectedMessage`; `isPlaintextAccept` as the
+  accept-side companion to the proof-used `isPlaintextEmit`; `committedLength`/`isReleased`
+  introspection). **None removed** — none is actually useless.
+- **Docs fixed**: `crypto-ffi-contract.md` and `proof-assumptions.md` claimed the real
+  provider "never claims AES-GCM/SHA-384" and that an "AES-GCM … config is rejected" — both
+  false since the AES suites + SHA-384 landed; corrected (while keeping the still-true fact
+  that P-256/ECDSA/RSA are not advertised in the default profile). `key-schedule.md`
+  "SHA-256 suite" → hash-parameterized SHA-256/384. Stale theorem counts (87/78) → 94.
+- **Open finding (advertise-vs-behave gap)**: `realCapabilities.groups = [.x25519]`, but the
+  ClientHello parser accepts secp256r1 unconditionally (`x25519.orElse p256`) and the
+  handshake performs P-256 ECDHE for it — so the negotiable group set exceeds the advertised
+  one (safe direction, under-advertised), and no negotiation-level test pins the secp256r1
+  path. Resolve by either gating group selection on the advertised/config set or advertising
+  secp256r1 + adding a P-256 negotiation test. Left as a maintainer decision (changes
+  negotiation behavior). The ECDSA/RSA signature schemes are, by contrast, deliberately
+  rejected-and-tested (`Tests/Capabilities` asserts `realRejectsEcdsa`).
+- **Still outstanding (framing, not auto-fixed)**: `theorem-inventory.md` running totals stop
+  at ~52 (M9/M10) and don't reach 94; `handshake.md`/`native-crypto.md`/`third-party.md` still
+  frame crypto as the ChaCha20-only "constrained profile". A broader doc refresh, not a
+  one-line fix.
+
 ## [0.75.0-dev] — Sign-by-handle for all cert key types (ECDSA-P256, RSA-PSS) — 2026-06-14
 
 Completes the C-resident private-key mechanism for every certificate signature scheme: the

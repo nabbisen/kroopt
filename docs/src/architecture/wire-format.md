@@ -79,5 +79,5 @@ a real handshake, in order:
 3. **Real records** (encrypt the server flight) and a **real iotakt socket
    transport** (RFC 010), then **OpenSSL/curl interop** (RFC 015 / 026).
 
-The verified state machine is untouched by this increment: the 87 theorems and the
+The verified state machine is untouched by this increment: the 94 theorems and the
 existing suites are unchanged; `Wire` is a pure-zone module plus one test.

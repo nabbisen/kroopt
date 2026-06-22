@@ -62,7 +62,7 @@ The wire is now genuine TLS 1.3 records, but the seal/open still lives in the te
 driver rather than the production `Conn.Interpreter`, and the records are exchanged
 in memory rather than over a socket. Folding this into the production send/receive
 path and the iotakt socket transport (RFC 010) is next, after which OpenSSL/curl
-interop (RFC 015 / 026) becomes testable. The verified core and its 87 theorems are
+interop (RFC 015 / 026) becomes testable. The verified core and its 94 theorems are
 untouched; `Record13` and the driver wiring are impure-zone code.
 
 ## Opening the protected client Finished in-core (RFC 033, part 1)

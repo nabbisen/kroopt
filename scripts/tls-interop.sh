@@ -37,17 +37,18 @@ check() {  # $1 = label, $2 = condition result (0=ok)
   if [ "$2" -eq 0 ]; then echo "  $1: ok"; else echo "  $1: FAILED"; fail=$((fail+1)); fi
 }
 
-test_openssl() {  # $1 = exe, $2 = label, $3 = ciphersuite (default ChaCha20-Poly1305)
+test_openssl() {  # $1 = exe, $2 = label, $3 = ciphersuite (default ChaCha20-Poly1305), $4 = groups (default x25519)
   CS="${3:-TLS_CHACHA20_POLY1305_SHA256}"
+  GRP="${4:-x25519}"
   start_server "$1"
   OUT=$( (printf 'ping from openssl\n'; sleep 1) | timeout 15 openssl s_client -unix "$SOCK" -tls1_3 \
-           -ciphersuites "$CS" -groups x25519 2>&1 || true)
+           -ciphersuites "$CS" -groups "$GRP" 2>&1 || true)
   await_server
   echo "$OUT" | grep -q "New, TLSv1.3, Cipher is $CS" \
     && grep -q "HANDSHAKE_OK reached connected" "$SRVOUT"; hs=$?
   grep -q "APP_RECV .* decrypted from client" "$SRVOUT" && grep -q "APP_SENT" "$SRVOUT"; app=$?
-  check "OpenSSL [$2] TLS 1.3 handshake ($CS)" "$hs"
-  check "OpenSSL [$2] app-data received + response sealed ($CS)" "$app"
+  check "OpenSSL [$2] TLS 1.3 handshake ($CS / $GRP)" "$hs"
+  check "OpenSSL [$2] app-data received + response sealed ($CS / $GRP)" "$app"
   if [ "$hs" -ne 0 ] || [ "$app" -ne 0 ]; then echo "    --- server ---"; cat "$SRVOUT"; fi
 }
 
@@ -84,6 +85,7 @@ echo "=== Driver: blocking push (kroopt-live-server) ==="
 test_openssl kroopt-live-server "blocking" TLS_CHACHA20_POLY1305_SHA256
 test_openssl kroopt-live-server "blocking" TLS_AES_128_GCM_SHA256
 test_openssl kroopt-live-server "blocking" TLS_AES_256_GCM_SHA384
+test_openssl kroopt-live-server "blocking P-256" TLS_CHACHA20_POLY1305_SHA256 P-256
 test_python  kroopt-live-server "blocking"
 
 echo
@@ -91,6 +93,7 @@ echo "=== Driver: non-blocking readiness reactor (kroopt-live-server-nb) ==="
 test_openssl kroopt-live-server-nb "reactor" TLS_CHACHA20_POLY1305_SHA256
 test_openssl kroopt-live-server-nb "reactor" TLS_AES_128_GCM_SHA256
 test_openssl kroopt-live-server-nb "reactor" TLS_AES_256_GCM_SHA384
+test_openssl kroopt-live-server-nb "reactor P-256" TLS_CHACHA20_POLY1305_SHA256 P-256
 test_python  kroopt-live-server-nb "reactor"
 
 rm -f "$SOCK"

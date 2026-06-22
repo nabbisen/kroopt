@@ -58,11 +58,18 @@ is plugged in.
 ## Capability honesty and fail-closed entropy (RFC 034)
 
 The real provider advertises only what the vendored HACL\* subset can perform —
-`realCapabilities`: `TLS_CHACHA20_POLY1305_SHA256`, X25519, Ed25519, SHA-256, drawn
-from the OS CSPRNG. It never claims AES-GCM, SHA-384, P-256, ECDSA, or RSA. A
-`ServerConfig` requiring an out-of-profile suite or signature scheme is rejected at
-validation (`validateServerConfigCapabilities`) with a typed `CapabilityError` — never
-accepted and failed at runtime, and never silently downgraded.
+`realCapabilities`: all three TLS 1.3 AEAD suites (`TLS_AES_128_GCM_SHA256`,
+`TLS_AES_256_GCM_SHA384`, `TLS_CHACHA20_POLY1305_SHA256`), SHA-256 and SHA-384,
+X25519 **and secp256r1 (P-256)** key exchange, Ed25519, drawn from the OS CSPRNG. The
+secp256r1 group is real: the provider computes a NIST-CAVP-validated P-256 ECDH shared
+secret, and `scripts/tls-interop.sh` completes an OpenSSL `-groups P-256` handshake +
+app-data round-trip on both drivers. In this default profile it does **not** advertise
+ECDSA/RSA as signature schemes — even though the provider *implements* those primitives
+(used by other certificate profiles) — so a `ServerConfig` requiring an out-of-profile
+signature scheme is rejected at validation (`validateServerConfigCapabilities`) with a
+typed `CapabilityError` — never accepted and failed at runtime, never silently
+downgraded. (Group *policy* — restricting an endpoint to a subset of advertised groups —
+is the structural follow-up tracked in the secp256r1 capability-gap review.)
 
 Entropy fails **closed**. `Hacl.randomBytes` returns a typed `RandomResult`; the native
 `getrandom` wrapper, on any failure, returns a zero-length buffer (never a zero-filled

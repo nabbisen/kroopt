@@ -37,7 +37,7 @@ generation is rejected after `bumpGeneration` (the same stale-reference
 discipline the core proves for crypto *results*). The arena is a pure value
 threaded explicitly through the interpreter's `RuntimeState`, not a hidden
 `IORef`, so the seam stays deterministic. **Handle opacity is preserved** — the
-verified core still sees only `SecretKeyHandle`s, so its 78 theorems are
+verified core still sees only `SecretKeyHandle`s, so its 94 theorems are
 untouched. The fake provider now allocates real handles from the arena, so the
 existing handshake tests exercise arena allocation end-to-end.
 
@@ -46,7 +46,7 @@ existing handshake tests exercise arena allocation end-to-end.
 `Kroopt.Crypto.KeySchedule` implements the RFC 8446 §7.1 schedule on the HACL\*
 primitives: `HKDF-Expand-Label`, `Derive-Secret`, the early/handshake/master
 secret chain, the handshake and application traffic secrets, and the traffic
-key/IV and Finished-key expansions (SHA-256 suite).
+key/IV and Finished-key expansions, hash-parameterized over the negotiated suite (SHA-256 or SHA-384).
 
 `Tests.KeySchedule` (`kroopt-keyschedule-test`, 20 checks) validates the **entire
 chain against the RFC 8448 §3 "Simple 1-RTT Handshake" trace** — every published

@@ -54,7 +54,7 @@ core's transcript snapshots to these real hashes at the crypto seam. After that:
 real record encryption, the iotakt socket transport (RFC 010), and OpenSSL/curl
 interop (RFC 015 / 026).
 
-The verified state machine is untouched by this increment: the 87 theorems and the
+The verified state machine is untouched by this increment: the 94 theorems and the
 existing suites are unchanged; `Flight` is an impure-zone module plus one test.
 
 ## Typed handshake-output actions (RFC 032, in progress)

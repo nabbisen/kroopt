@@ -59,7 +59,7 @@ matched here. The certificate entry is an opaque placeholder DER (real certifica
 provisioning is separate); it does not affect the CertificateVerify, which signs
 the transcript hash.
 
-The verified state machine is unchanged by this milestone: the 87 theorems and the
+The verified state machine is unchanged by this milestone: the 94 theorems and the
 36 pure-zone files are untouched. `RealHandshake` is a driver in `Tests/` plus the
 `Flight` module; the substitution lives entirely in the impure driver, exactly
 where the production interpreter will host it.
@@ -77,7 +77,7 @@ with the **read (client)** handshake-traffic secret, so the secret arena now key
 base secrets by `(direction, epoch)` (matching how installed record keys are keyed)
 and `RealProvider.verifyFinished` looks up the read-direction handshake secret and
 extracts the verify_data from the Finished message body. This lives in the Crypto
-zone; the verified core and its 87 theorems are untouched.
+zone; the verified core and its 94 theorems are untouched.
 
 ## Remaining toward live interop
 

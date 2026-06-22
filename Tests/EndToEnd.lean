@@ -51,6 +51,20 @@ def record (body : List UInt8) : ByteArray :=
 def chRecord : ByteArray := record chMsg
 def clientFinishedRecord : ByteArray := record ([20] ++ [0, 0, 32] ++ List.replicate 32 0x55)
 
+/-! ## A secp256r1-only ClientHello (RFC 8446 §4.2.8.2: group 0x0017, 65-byte
+uncompressed point `0x04 ‖ X ‖ Y`). Identical to `chRecord` except the sole
+key_share is P-256 — exercising the secp256r1 negotiation path end-to-end. -/
+
+def keyShareEntryP256 : List UInt8 := [0x00, 0x17, 0, 65] ++ ([0x04] ++ List.replicate 64 0x07)
+def extKeyShareP256 : List UInt8 := [0, 51, 0, 71, 0, 69] ++ keyShareEntryP256
+def extsBodyP256 : List UInt8 := extSupVer ++ extKeyShareP256 ++ extSigAlgs
+def chBodyP256 : List UInt8 :=
+  [0x03, 0x03] ++ (List.replicate 32 0xAA) ++ [0] ++
+  [0, 2, 0x13, 0x03] ++ [1, 0] ++ (u16be extsBodyP256.length ++ extsBodyP256)
+def chMsgP256 : List UInt8 :=
+  [1] ++ [0, (chBodyP256.length / 256).toUInt8, (chBodyP256.length % 256).toUInt8] ++ chBodyP256
+def chRecordP256 : ByteArray := record chMsgP256
+
 /-! ## Fake crypto provider (deterministic, purpose-aware) -/
 
 def fakeCrypto : CryptoOp → CryptoResult
@@ -114,6 +128,13 @@ def runE2E : Driver :=
     [InputEvent.transportBytes ⟨0, 0⟩ chRecord,
      InputEvent.transportBytes ⟨0, 0⟩ clientFinishedRecord]
 
+/-- The same full handshake driven by a secp256r1-only ClientHello: the core must
+select P-256, emit `ecdheP256`, and reach `connected`. -/
+def runE2EP256 : Driver :=
+  driveFuel 256 fresh
+    [InputEvent.transportBytes ⟨0, 0⟩ chRecordP256,
+     InputEvent.transportBytes ⟨0, 0⟩ clientFinishedRecord]
+
 /-! ## Negative scenarios -/
 
 def malformedChRecord : ByteArray := record [1, 0, 0, 4, 0x03, 0x03, 0, 0]  -- complete header (len24=4), body too short for a CH
@@ -169,6 +190,10 @@ def checks : List Check :=
     , ok := runE2E.st.transcript.eventCount == 7 }
   , { name := "negotiated suite recorded (chacha20-poly1305, not the AES the client listed first)"
     , ok := runE2E.st.negotiated.selectedSuite == some .chacha20Poly1305Sha256 }
+  , { name := "secp256r1-only ClientHello reaches connected (P-256 ECDHE negotiated)"
+    , ok := runE2EP256.st.handshake == .connected }
+  , { name := "secp256r1 ClientHello records the P-256 group in negotiation state"
+    , ok := runE2EP256.st.negotiated.selectedGroup == some .secp256r1 }
     -- negatives
   , { name := "malformed ClientHello fails, not connected"
     , ok := runMalformedCH.st.handshake.isTerminal && runMalformedCH.st.handshake != .connected }

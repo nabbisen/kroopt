@@ -124,7 +124,7 @@ rather than negotiated and then failed at the record layer. -/
 def realCapabilities : CryptoCapabilities :=
   { suites := [.aes128GcmSha256, .aes256GcmSha384, .chacha20Poly1305Sha256]
     hashAlgorithms := [.sha256, .sha384]
-    groups := [.x25519]
+    groups := [.x25519, .secp256r1]
     signatureSchemes := [.ed25519]
     randomSource := .osCsprng
     supportsSecretHandles := true }
