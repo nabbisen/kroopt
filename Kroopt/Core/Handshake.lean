@@ -88,7 +88,10 @@ structure ValidClientHello where
   selectedSuite : CipherSuite
   selectedGroup : NamedGroup
   clientShare : ByteArray
-  selectedSigScheme : SignatureScheme
+  /-- The signature schemes the client offered that kroopt recognizes (RFC 8446 §4.2.3), in client
+  order. Non-empty (the parser rejects a ClientHello with no recognized scheme). The *presented*
+  scheme is chosen in the core against the selected certificate's capabilities. -/
+  offeredSigSchemes : List SignatureScheme
   sni : Option ByteArray
   alpn : List ByteArray
   /-- The client's `legacy_session_id` (RFC 8446 §4.1.2). The ServerHello MUST echo it verbatim
@@ -146,6 +149,13 @@ def onClientHello (s : State) (vch : ValidClientHello) (chWire : ByteArray) : Hs
     | .ok b' =>
     let s := { s with budgets := b' }
     let ep := selectEndpoint s.serverConfig vch.sni
+    -- RFC 8446 §4.4.2.2 / §4.2.3: present a signature scheme the *selected certificate* can produce
+    -- and that the client offered, preferring the endpoint's (server's) order. Total: with no
+    -- overlap, fall back to the certificate's primary scheme (the peer then rejects a scheme it did
+    -- not offer — fail-safe — rather than the server signing with an incompatible key).
+    let epSchemes := (ep.map (·.signatureSchemes)).getD []
+    let sigScheme := (epSchemes.find? (fun sc => vch.offeredSigSchemes.contains sc)).getD
+      (epSchemes.headD (vch.offeredSigSchemes.headD .ed25519))
     let alpn := ep.bind (fun e =>
       negotiateAlpn s.serverConfig.alpnMode (vch.alpn.map AlpnProtocol.mk) e.allowedAlpn)
     let cert := ep.map (·.chain)
@@ -153,7 +163,7 @@ def onClientHello (s : State) (vch : ValidClientHello) (chWire : ByteArray) : Hs
     let s := { s with
       negotiated := { selectedSuite := some vch.selectedSuite
                       selectedGroup := some vch.selectedGroup
-                      selectedSigScheme := some vch.selectedSigScheme
+                      selectedSigScheme := some sigScheme
                       selectedSni := vch.sni
                       selectedAlpn := alpn
                       selectedCert := cert

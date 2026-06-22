@@ -73,7 +73,33 @@ this default endpoint. -/
 def realServerConfig : Kroopt.Core.ValidatedServerConfig :=
   { (default : Kroopt.Core.ValidatedServerConfig) with
     defaultEndpoint := some
-      { (default : Kroopt.Core.EndpointConfig) with der := certDer } }
+      { (default : Kroopt.Core.EndpointConfig) with
+        der := certDer, signatureSchemes := [.ed25519] } }
 
 /-! ## Real-handshake driver -/
+
+/-- ECDSA-P256 leaf certificate (self-signed, CN=localhost) and its matching 32-byte private
+scalar. Generated with `openssl ecparam -name prime256v1`; the public point in `ecdsaCertDer`
+corresponds to `ecdsaCertPriv`, so a CertificateVerify signed with the scalar verifies against the
+presented certificate. Used to exercise the `ecdsa_secp256r1_sha256` server-auth path (RFC 8446
+§4.4.3) on a live handshake. -/
+def ecdsaCertDer : ByteArray := hx
+  "3082017c30820123a00302010202142b751004ada14f953a316aee989a9c35dfeefe2b300a06082a8648ce3d04030230143112301006035504030c096c6f63616c686f7374301e170d3236303631333233333934375a170d3336303631303233333934375a30143112301006035504030c096c6f63616c686f73743059301306072a8648ce3d020106082a8648ce3d03010703420004491ec5a776a32887a9818fe9c3c20e92a91761bd55c12044af2bda154806b474e1bf87d1674931e412bb5ed7b27b15e20dd0954191e408c1b14b04a4257a5ab3a3533051301d0603551d0e041604148e173513e35fbba213fbb3778c72e70a36d6533f301f0603551d230418301680148e173513e35fbba213fbb3778c72e70a36d6533f300f0603551d130101ff040530030101ff300a06082a8648ce3d040302034700304402206affdcf883c80ab467667cec409dd8e269a697b8524c452a1751af7242fb7a0d022018bce5b678d658246c0cdf0942258d844fb689648f355fade906838b36506657"
+
+def ecdsaCertPriv : ByteArray := hx
+  "f08236ae80a9ab48cf2fdb6c3b85d4d9b106f7d484e0b0d2bb606b7354cd528d"
+
+/-- Base crypto config for the ECDSA endpoint. `signNonce` is injected fresh per connection at the
+IO layer; `ephemeralPrivate` is overridden per connection. -/
+def ecdsaCfg : RealCryptoConfig :=
+  { ephemeralPrivate := serverPriv, certPrivate := ecdsaCertPriv, certPublic := ByteArray.empty }
+
+/-- A validated server config presenting the ECDSA-P256 leaf. The endpoint advertises
+`ecdsaSecp256r1Sha256` only, so the core selects ECDSA when the client offers it (RFC 8446 §4.2.3). -/
+def ecdsaServerConfig : Kroopt.Core.ValidatedServerConfig :=
+  { (default : Kroopt.Core.ValidatedServerConfig) with
+    defaultEndpoint := some
+      { (default : Kroopt.Core.EndpointConfig) with
+        der := ecdsaCertDer, signatureSchemes := [.ecdsaSecp256r1Sha256] } }
+
 end Tests.RealFixtures

@@ -5,6 +5,40 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.55.0-dev] — RFC (v0.4 breadth): cert-aware signature-scheme negotiation — ECDSA-P256 LIVE — 2026-06-14
+
+Turns ECDSA-P256 on for live handshakes by making the core present a signature scheme the *selected
+certificate* can produce. An ECDSA-cert server now negotiates `ecdsa_secp256r1_sha256` and is
+interop-validated against OpenSSL and curl; the Ed25519 path is unchanged. The 94 protocol theorems
+and the axiom profile are untouched — the selection is *total*, so `onClientHello`'s control flow (and
+thus every edge/discipline lemma over it) is identical to before.
+
+- **Cert-aware selection (core).** `onClientHello` now chooses the presented scheme as the first of
+  the selected endpoint's `signatureSchemes` that the client offered, preferring the server's order
+  (RFC 8446 §4.2.3 / §4.4.2.2). With no overlap it falls back to the certificate's primary scheme,
+  which the peer then rejects (fail-safe) rather than the server ever signing with an incompatible key.
+  A clean server-side `handshake_failure` on no-overlap is a noted future refinement (it would add a
+  branch to the proven negotiation surface and so warrants its own proof-careful change).
+- **`ValidClientHello` now carries `offeredSigSchemes`** (the recognized offered schemes, client
+  order, non-empty) instead of a single parser-chosen scheme — the cert-dependent choice belongs in
+  the core, not the config-free parser.
+- **Parser.** `sigSchemeOfU16` recognizes Ed25519 (0x0807) **and** ECDSA-P256 (0x0403);
+  `recognizedSigSchemes` returns the offered overlap; `parseClientHello` rejects a ClientHello that
+  offers no presentable scheme (e.g. RSA-PSS only).
+- **ECDSA endpoint + driver.** A self-signed ECDSA-P256 leaf fixture (`ecdsaServerConfig`,
+  `ecdsaCertDer`/`ecdsaCertPriv`, keypair-verified) advertises `ecdsaSecp256r1Sha256`. The
+  kroopt-iotakt driver gains a `cert` profile (`… [mode] [ed25519|ecdsa]`): on each connection it draws
+  a fresh 32-byte ECDSA signing nonce from OS entropy (never reused — one signature per handshake) and
+  selects the ECDSA config + server config.
+- **Live validation.** ECDSA server vs OpenSSL `s_client -sigalgs ecdsa_secp256r1_sha256` →
+  `Peer signature type: ECDSA`, `Peer signing digest: SHA256`, HTTP 200; vs curl (TLS 1.3) → HTTP 200
+  with the correct body. Ed25519 server → `Peer signature type: Ed25519`, HTTP 200 (regression-clean).
+- **Tests.** Hardening/Wire updated for the widened capability (ECDSA-P256 now presentable; RSA-PSS-only
+  is the unpresentable case). All 24 suites green (371 checks); fuzz clean; all gates green.
+
+Server-auth now spans Ed25519 + ECDSA-P256, both negotiated and live. Crypto remains ASSUMED (vendored
+HACL\*), protocol PROVEN (94 theorems), wire TESTED + interop-validated.
+
 ## [0.54.0-dev] — RFC (v0.4 breadth): ECDSA-P256 server-auth signing — crypto + provider path — 2026-06-14
 
 Second v0.4 algorithm-breadth step: kroopt can now **produce ECDSA-P256 / SHA-256 CertificateVerify

@@ -50,7 +50,7 @@ def hsIv  : ByteArray := Kroopt.Crypto.KeySchedule.trafficIv hsSecret
 -- authority). The flow mirrors Tests.Handshake's synthetic drive.
 def vch : ValidClientHello :=
   { selectedSuite := .chacha20Poly1305Sha256, selectedGroup := .x25519
-    clientShare := ByteArray.mk (Array.mkArray 32 0x07), selectedSigScheme := .ed25519
+    clientShare := ByteArray.mk (Array.mkArray 32 0x07), offeredSigSchemes := [.ed25519]
     sni := some (ByteArray.mk #[0x65, 0x78]), alpn := [ByteArray.mk #[0x68, 0x32]]
     sessionId := ByteArray.empty }
 def s0core : State := State.initial ⟨0, 0⟩ ⟨0⟩ .sha256

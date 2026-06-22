@@ -47,6 +47,6 @@ inductive SignatureScheme where
   | ed25519
   | ecdsaSecp256r1Sha256
   | rsaPssRsaeSha256
-  deriving DecidableEq, Repr, Inhabited
+  deriving DecidableEq, BEq, Repr, Inhabited
 
 end Kroopt.Core

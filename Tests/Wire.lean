@@ -104,15 +104,13 @@ def main : IO UInt32 := do
   -- and that the Finished message wraps exactly that verify_data
   let finWraps := eqB (Wire.finished verifyData) rfcFinished
 
-  -- ── the constrained profile rejects the RFC 8448 §3 ClientHello ──
-  -- It is structurally valid and offers an x25519 key_share, but its
-  -- signature_algorithms lists only RSA-PSS/ECDSA (its CertificateVerify is
-  -- RSA-PSS), never Ed25519 (0x0807) — the only scheme kroopt presents — so there
-  -- is no overlap and the handshake cannot authenticate (RFC 033 §3 overlap
-  -- selection). The Ed25519 accept-path is covered end-to-end by the realhandshake
-  -- suite; here the byte-level KATs above stand on the raw bytes regardless.
+  -- ── the RFC 8448 §3 ClientHello now parses (ECDSA-P256 is presentable) ──
+  -- It offers ecdsa_secp256r1_sha256 (0x0403) among its signature_algorithms; since v0.4 kroopt
+  -- presents ECDSA-P256 as well as Ed25519, so this structurally-valid x25519 ClientHello now has a
+  -- presentable overlap and parses. (The cert-compatible scheme is then chosen in the core against
+  -- the configured endpoint.)
   let parsed := Kroopt.Parse.parseClientHello rfcClientHello
-  let constrainedRejects := match parsed with | .ok _ => false | .error _ => true
+  let constrainedAccepts := match parsed with | .ok _ => true | .error _ => false
 
   let checks : List (String × Bool) :=
     [ ("ServerHello serializes byte-for-byte to RFC 8448 §3", shExact)
@@ -126,7 +124,7 @@ def main : IO UInt32 := do
     , ("finished_key = HKDF-Expand-Label(s hs traffic, finished) matches RFC 8448", finKeyOk)
     , ("server Finished verify_data = HMAC(finished_key, Transcript-Hash(CH‥CertVerify)) matches RFC 8448", verifyDataOk)
     , ("Finished message wraps the recomputed verify_data", finWraps)
-    , ("the constrained profile rejects the RSA/ECDSA-only RFC 8448 §3 ClientHello (no Ed25519 overlap)", constrainedRejects)
+    , ("the RFC 8448 §3 ClientHello now parses (ECDSA-P256 presentable)", constrainedAccepts)
     ]
 
   let mut failed := 0
