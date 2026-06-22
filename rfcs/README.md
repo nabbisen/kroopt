@@ -27,7 +27,10 @@ Certificate DER); **037**
 (M37) hardens the native boundary, secret arena, and resource budgets; **036** adds the
 captured-client replay + trace harness for **038** constrained OpenSSL/curl interop; and
 **035** records the decision to defer browser-grade crypto breadth until the constrained
-profile is proven against live clients. iotakt binding (RFC 010) and external interop
+profile is proven against live clients. **038** is reserved for that constrained-interop
+RFC (not yet written); **039** (added after the 0.76.0-dev secp256r1 capability-gap review)
+makes the key-exchange-group dimension load-bearing — endpoint group policy, capability
+enforcement, core-level selection, and a selection-authorization proof. iotakt binding (RFC 010) and external interop
 (RFC 015/026) are frozen until 031 (and, before live clients, 037) land; 032, 033 and 034 are done.
 
 Read order: ROADMAP first, then RFCs 001–007 (pure verified core), 008–009
@@ -53,6 +56,7 @@ control), then 017–030 (cross-cutting security, lifecycle, and release governa
 | 035 | [Browser-Grade Crypto Surface](proposed/035-browser-grade-crypto-surface.md) | Deferred — AES-GCM/P-256/ECDSA/RSA + cert-ecosystem story only after M36/M37/M38 green |
 | 036 | [Live Interop Trace Harness and Captured-Client Replay](proposed/036-live-interop-trace-harness.md) | Captured-CH replay fixtures; no-secrets trace facility; constrained-vs-browser-grade separation (M38; prep in M36) |
 | 037 | [Native FFI Safety, Secret Arena, and Resource-Budget Enforcement](proposed/037-native-safety-and-budget-enforcement.md) | FFI length contracts (all `uint32_t` params); native/classified secret arena; budget charging in the core; record-size guards; sanitizers (M37) |
+| 039 | [Named-Group Policy and Selection Enforcement](proposed/039-named-group-policy-and-enforcement.md) | Endpoint `namedGroups` policy + validation; core-level group selection; `group_selection_authorized` proof; hash-dimension cleanup (Stages 2–5 of the secp256r1 review; Stage 1 shipped 0.76.0-dev) |
 
 ## Done
 

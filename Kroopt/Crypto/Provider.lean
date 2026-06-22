@@ -67,6 +67,8 @@ inductive CapabilityError where
   | unsupportedGroup (g : NamedGroup)
   | unsupportedSignatureScheme (s : SignatureScheme)
   | unsupportedHash (h : HashAlgorithm)
+  | emptyGroupPolicy
+  | duplicateNamedGroup
   | noRandomSource
   deriving DecidableEq, Repr, Inhabited
 

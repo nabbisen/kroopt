@@ -27,6 +27,14 @@ def aes256Config : ServerConfig := cfgOf (ep .aes256GcmSha384 .ed25519)
 def ecdsaConfig : ServerConfig := cfgOf (ep .chacha20Poly1305Sha256 .ecdsaSecp256r1Sha256)
 def goodConfig  : ServerConfig := cfgOf (ep .chacha20Poly1305Sha256 .ed25519)
 
+-- RFC 039: endpoint named-group policy. `goodConfig` carries the default `[x25519, secp256r1]`.
+def epG (groups : List Kroopt.Core.NamedGroup) : EndpointConfig :=
+  { (default : EndpointConfig) with cipherSuites := [.chacha20Poly1305Sha256], signatureSchemes := [.ed25519], namedGroups := groups }
+def x25519OnlyCaps : CryptoCapabilities := { realCapabilities with groups := [.x25519] }
+def p256OnlyGroupsConfig : ServerConfig := cfgOf (epG [.secp256r1])
+def emptyGroupsConfig    : ServerConfig := cfgOf (epG [])
+def dupGroupsConfig      : ServerConfig := cfgOf (epG [.x25519, .x25519])
+
 def seed : ByteArray := ByteArray.mk (Array.mkArray 32 (0x07 : UInt8))
 def testCfg : RealCryptoConfig :=
   { ephemeralPrivate := seed, certPrivate := seed, certPublic := Hacl.ed25519Public seed }
@@ -62,6 +70,23 @@ def main : IO Unit := do
   let ent ← Hacl.randomBytes 32
   let entropyTypedOk := match ent with | .bytes b => b.size == 32 | .error _ => false
 
+  -- RFC 039 §4.2/§4.5: named-group policy is now load-bearing at config validation.
+  let configRejectsUnsupportedGroup :=
+    match validateServerConfigCapabilities x25519OnlyCaps p256OnlyGroupsConfig with
+    | .error (.unsupportedGroup _) => true | _ => false
+  let configRejectsEmptyGroupPolicy :=
+    match validateServerConfigCapabilities realCapabilities emptyGroupsConfig with
+    | .error .emptyGroupPolicy => true | _ => false
+  let configRejectsDuplicateNamedGroups :=
+    match validateServerConfigCapabilities realCapabilities dupGroupsConfig with
+    | .error .duplicateNamedGroup => true | _ => false
+  let bothGroupsConfigAccepted :=
+    match validateServerConfigCapabilities realCapabilities goodConfig with
+    | .ok () => true | _ => false
+  let defaultEndpointRejectedByX25519OnlyProvider :=
+    match validateServerConfigCapabilities x25519OnlyCaps goodConfig with
+    | .error (.unsupportedGroup _) => true | _ => false
+
   let checks : List (String × Bool) :=
     [ ("real profile accepts TLS_AES_128_GCM_SHA256 (seal path suite-aware, SHA-256 schedule)", realAcceptsAes128)
     , ("real profile now accepts TLS_AES_256_GCM_SHA384 (SHA-384 schedule landed)", realAcceptsAes256)
@@ -71,7 +96,12 @@ def main : IO Unit := do
     , ("the real profile's random source is the OS CSPRNG", realIsOsCsprng)
     , ("mkRealProvider advertises AES-256-GCM-SHA384 (accepts AES-256)", provAcceptsAes256)
     , ("a randomBytes op reaching the real provider is an error, not zeros", provRandErrors)
-    , ("Hacl.randomBytes is fail-closed and typed (32-byte success)", entropyTypedOk) ]
+    , ("Hacl.randomBytes is fail-closed and typed (32-byte success)", entropyTypedOk)
+    , ("RFC 039: an unsupported endpoint group is rejected at config validation", configRejectsUnsupportedGroup)
+    , ("RFC 039: an empty endpoint group policy is rejected (empty ≠ any)", configRejectsEmptyGroupPolicy)
+    , ("RFC 039: a duplicate endpoint group policy is rejected", configRejectsDuplicateNamedGroups)
+    , ("RFC 039: the default [x25519, secp256r1] endpoint validates against the real provider", bothGroupsConfigAccepted)
+    , ("RFC 039: the default [x25519, secp256r1] endpoint is rejected by an x25519-only provider (endpoint ⊆ caps is load-bearing)", defaultEndpointRejectedByX25519OnlyProvider) ]
   let mut passed := 0
   for (name, ok) in checks do
     IO.println s!"  {if ok then "PASS" else "FAIL"}  {name}"

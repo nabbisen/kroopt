@@ -5,6 +5,46 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.77.0-dev] — RFC 039 finalized + Stages 2–3 (endpoint group policy + validation) — 2026-06-14
+
+RFC 039 (Named-Group Policy and Selection Enforcement) is approved-for-implementation
+after two review rounds; this ships its first implementation increment — the
+configuration-side, staying entirely out of the verified core and parser. The group
+dimension of the capability model is now load-bearing.
+
+### RFC
+- `rfcs/proposed/039-…` revised to **rev-3**: incorporates the architect's rev-2 review
+  (normalization/duplicate policy, supported_groups consistency, P-256 validation contract,
+  alert mapping, safe tracing, crypto-op-consistency proofs, derive-and-enforce hash) and
+  the two merge clarifications (total `selectGroup` with no `get!`; explicit
+  absent-`supported_groups` compatibility-policy note) plus the error-taxonomy fix.
+
+### Config policy + validation (Stages 2–3)
+- `EndpointConfig.namedGroups : List NamedGroup := [.x25519, .secp256r1]` (RFC 039 §4.1).
+  `Inhabited` is now hand-written so `(default : EndpointConfig)` — and every
+  `{ default with … }` site — gets the real non-empty default rather than the `[]` that
+  `deriving` would supply.
+- `CapabilityError` gains `.emptyGroupPolicy` and `.duplicateNamedGroup`.
+- `ConfigCheck`: `requiredCryptoOfServerConfig` now populates `groups` from each endpoint's
+  `namedGroups` and **derives** `hashAlgorithms` from the configured suites
+  (`deriveHashesFromSuites`); `validateServerConfigCapabilities` first normalizes each
+  endpoint's group policy (`normalizeNamedGroups` — reject empty/duplicate) and then runs
+  the four-dimension capability subset check. The previously inert `groups := []` /
+  `hashAlgorithms := []` are gone; all four dimensions are enforced.
+
+### Tests
+- `kroopt-capabilities-test` (**14**): unsupported endpoint group → `.unsupportedGroup`;
+  empty policy → `.emptyGroupPolicy`; duplicate policy → `.duplicateNamedGroup`; the default
+  `[x25519, secp256r1]` endpoint validates against the real provider **and** is rejected by
+  an x25519-only provider (proving endpoint-policy ⊆ provider-capability is load-bearing).
+
+### Behaviour unchanged this increment
+- Selection still happens in the parser; the `namedGroups` *policy gate on selection* and
+  the selection-authorization proofs are the next increment (RFC 039 §4.3/§5, Stages 4–5).
+  Existing configs/fixtures/live servers pick up the `[both]` default and continue to
+  validate and negotiate exactly as before (94 theorems, 25 suites, fuzz, and interop —
+  including the forced P-256 runs — all green).
+
 ## [0.76.0-dev] — secp256r1 capability honesty (review Stage 1 / Option B) — 2026-06-14
 
 Closes the immediate half of the secp256r1 capability-gap review (Option C, B-now):

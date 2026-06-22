@@ -48,10 +48,22 @@ structure EndpointConfig where
   allowedAlpn      : List AlpnProtocol
   signatureSchemes : List SignatureScheme
   cipherSuites     : List CipherSuite
+  /-- Allowed named-group SET for this endpoint (RFC 039). Order is ignored for selection
+  preference (fixed by the core, `groupPreference`); the set must be non-empty and
+  duplicate-free (enforced at config validation). Default `[x25519, secp256r1]`; set
+  `[.x25519]` for a hardened x25519-only endpoint. -/
+  namedGroups      : List NamedGroup := [.x25519, .secp256r1]
   /-- The public certificate-chain DER presented on the wire (RFC 012). Public, not secret —
   the private key stays behind `key`'s handle. Empty until a chain is configured. -/
   der              : ByteArray := ByteArray.empty
-  deriving Inhabited
+
+/-- `Inhabited` is written by hand (not `deriving`) so that `(default : EndpointConfig)`
+picks up the field-level `namedGroups` default `[x25519, secp256r1]` rather than the
+`Inhabited (List _) = []` that `deriving` would supply — every `{ default with … }`
+construction site then gets the intended non-empty group policy. -/
+instance : Inhabited EndpointConfig where
+  default := { chain := default, key := default, allowedAlpn := [],
+               signatureSchemes := [], cipherSuites := [] }
 
 structure SniRoute where
   pattern  : ServerNamePattern

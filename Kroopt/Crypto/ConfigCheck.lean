@@ -14,24 +14,49 @@ ECDSA/RSA signature scheme.
 
 namespace Kroopt.Crypto
 
-open Kroopt.Core (ServerConfig EndpointConfig)
+open Kroopt.Core (ServerConfig EndpointConfig CipherSuite NamedGroup HashAlgorithm)
 
-/-- The crypto a `ServerConfig` requires: the union of every endpoint's configured
-cipher suites and signature schemes (`defaultEndpoint` plus every SNI route). In the
-constrained TLS 1.3 profile, groups/hashes are implied by the suites, so only suites
-and signature schemes are checked against provider capabilities. -/
+/-- Order-preserving de-duplication using only `DecidableEq` (no `BEq`/Mathlib). -/
+private def dedup {α : Type} [DecidableEq α] (xs : List α) : List α :=
+  xs.foldr (fun x acc => if x ∈ acc then acc else x :: acc) []
+
+/-- The hash algorithms the configured suites require (RFC 039 §4.4, derive-and-enforce).
+In TLS 1.3 each suite pins its transcript/HKDF hash, so this is a total function of the
+suite list; it is validated against provider capability like the other dimensions. -/
+def deriveHashesFromSuites (ss : List CipherSuite) : List HashAlgorithm :=
+  dedup (ss.map (·.hashAlg))
+
+/-- Normalize an endpoint's named-group policy (RFC 039 §4.5): a group policy must be
+non-empty and duplicate-free. Endpoint-policy faults are `CapabilityError` (a configuration
+failure); client-side faults live in the TLS handshake taxonomy, not here. -/
+def normalizeNamedGroups (gs : List NamedGroup) : Except CapabilityError (List NamedGroup) :=
+  if gs.isEmpty then .error .emptyGroupPolicy
+  else if (dedup gs).length != gs.length then .error .duplicateNamedGroup
+  else .ok gs
+
+/-- The crypto a `ServerConfig` requires (RFC 039 §4.2): the union over every endpoint
+(`defaultEndpoint` plus every SNI route) of cipher suites, **named groups**, and signature
+schemes, with hash algorithms **derived** from the suites. All four dimensions are now
+load-bearing against provider capabilities. -/
 def requiredCryptoOfServerConfig (cfg : ServerConfig) : RequiredCrypto :=
   let eps : List EndpointConfig :=
     cfg.defaultEndpoint.toList ++ cfg.sniRoutes.map (·.endpoint)
-  { suites           := eps.foldr (fun e acc => e.cipherSuites ++ acc) []
-    groups           := []
+  let suites := eps.foldr (fun e acc => e.cipherSuites ++ acc) []
+  { suites           := suites
+    groups           := eps.foldr (fun e acc => e.namedGroups ++ acc) []
     signatureSchemes := eps.foldr (fun e acc => e.signatureSchemes ++ acc) []
-    hashAlgorithms   := [] }
+    hashAlgorithms   := deriveHashesFromSuites suites }
 
-/-- Reject, at config/listener startup, a configuration requiring crypto the
-provider cannot perform (RFC 034 §2). Deterministic, total, no IO. -/
+/-- Reject, at config/listener startup, a configuration requiring crypto the provider
+cannot perform, or an ill-formed endpoint group policy (RFC 034 §2, RFC 039 §4.2/§4.5).
+Deterministic, total, no IO. -/
 def validateServerConfigCapabilities
-    (caps : CryptoCapabilities) (cfg : ServerConfig) : Except CapabilityError Unit :=
+    (caps : CryptoCapabilities) (cfg : ServerConfig) : Except CapabilityError Unit := do
+  let eps : List EndpointConfig :=
+    cfg.defaultEndpoint.toList ++ cfg.sniRoutes.map (·.endpoint)
+  -- per-endpoint group-policy well-formedness (empty / duplicate) first
+  eps.forM (fun e => do let _ ← normalizeNamedGroups e.namedGroups; pure ())
+  -- then capability subset check across all four dimensions
   validateCapabilities caps (requiredCryptoOfServerConfig cfg)
 
 end Kroopt.Crypto
