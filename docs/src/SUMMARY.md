@@ -38,6 +38,10 @@
 
 - [Constrained vs browser-grade interop](interop/constrained-vs-browser-grade.md)
 
+# Operations
+
+- [Operator event and metric reference](operations/event-and-metric-reference.md)
+
 # Verification
 
 - [Theorem inventory](verification/theorem-inventory.md)

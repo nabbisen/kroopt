@@ -5,6 +5,30 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.97.0-dev] — RFC 020 criterion 5: operator event and metric reference — 2026-06-15
+
+Parallel-governance increment building on the trace facility. Documents the operator-facing surface.
+
+### Added
+- **`docs/src/operations/event-and-metric-reference.md`** + a new **Operations** section in
+  `docs/src/SUMMARY.md`. The reference covers, honestly separating built from planned:
+  - the **events emitted today** — the `debug_trace`-gated, secret-free `TraceEvent` taxonomy
+    (13 variants), each with when it fires and what it carries (lengths/ids/kinds/categories only);
+  - the **redaction guarantee** — what no event can ever contain, enforced structurally;
+  - the typed public **error categories** jemmet consumes;
+  - the **planned (not-yet-emitted)** metric catalogue, explicitly marked as design so the names are
+    stable when they land — kroopt emits no operational counters today.
+
+### Notes
+- RFC 020 criterion 5 (operator event/metric reference) is met; the event taxonomy (§3) and redaction
+  (§4) are satisfied by the trace facility (`Tests.Trace` CI negatives), and secret-bearing types are
+  unprintable by construction (criterion 4). RFC 020 is **not** locked: the §5 public-event-API scope
+  (a subscribable structured event stream vs today's diagnostic trace) and actual metric emission
+  remain open and want an architect ruling.
+
+Gate: build green; `trace` 19 checks green; hygiene; axioms 102; all SUMMARY links resolve.
+Docs/RFC-only change; no `Kroopt/` source, proofs, or pure-zone code touched.
+
 ## [0.96.0-dev] — RFC 036 locked (criteria 1/2/4); durable archival relocated to M38 — 2026-06-15
 
 Completes the architect-approved close-out. RFC 036 moves to `done/`.

@@ -1,7 +1,15 @@
 # RFC 020 — Observability, Audit Logging, and Redaction
 
 **Project.** kroopt  
-**Status.** Proposed  
+**Status.** Proposed — **criterion 5 (operator reference) landed (0.97.0-dev):**
+`docs/src/operations/event-and-metric-reference.md` documents the event surface emitted today (the
+`debug_trace`-gated, secret-free `TraceEvent` taxonomy from RFC 036 §3), the redaction guarantee, the
+typed public error categories, and the *planned* (not-yet-emitted) metric catalogue — honestly
+separating the two. The event taxonomy (§3) and redaction (§4) are satisfied by the trace facility and
+its CI negatives (`Tests.Trace`); secret-bearing types are unprintable by construction (criterion 4).
+**Not yet locked:** the §5 public-event-API scope (a structured event stream consumers subscribe to,
+vs today's diagnostic trace) and actual metric *emission* remain open and want an architect ruling
+before a lock.
 **Type.** Implementation RFC  
 **Target milestone.** v0.3; v0.4  
 **Depends on.** RFC 010, RFC 011, RFC 012, RFC 013, RFC 017, RFC 018  
