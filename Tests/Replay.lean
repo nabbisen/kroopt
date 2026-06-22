@@ -7,12 +7,12 @@ import Kroopt.Parse.Wire
 /-!
 # Tests.Replay — captured-client replay bridge (RFC 036 §2)
 
-Replays real-shaped ClientHello captures through the **pure parser + production interpreter over
-the fake transport** — the same path live sockets use, minus the syscalls — and asserts
-deterministic negotiation and rejection. This exercises real client-byte diversity (multiple
-offered suites/groups, fragmentation/coalescing, version rejection) on the verified path *before*
-the socket, isolating "does a real ClientHello negotiate deterministically?" from socket
-orchestration.
+Replays ClientHello captures — both synthetic (built from the wire helpers) and **genuine records
+captured from `openssl s_client` and Python `ssl`** — through the **pure parser + production
+interpreter over the fake transport** — the same path live sockets use, minus the syscalls — and
+asserts deterministic negotiation and rejection. This exercises real client-byte diversity (multiple
+offered suites/groups, real extension sets incl. SNI, fragmentation/coalescing, version rejection)
+on the verified path *before* the socket.
 
 Captures here are sanitized and committed: a ClientHello's random and key_share are public
 handshake values, and nothing secret is stored. The server ephemeral is pinned (RFC 8448 random)
@@ -73,6 +73,45 @@ def constrainedCH : ByteArray := recordWrap clientHelloMsg                      
 def broadCH       : ByteArray := recordWrap (buildCH (hx "13 02 13 01 13 03") extTls13 grpX25519 sigEd25519)
 def noTls13CH     : ByteArray := recordWrap (buildCH (hx "13 01 13 03") extTls12 grpX25519 sigEd25519)
 
+-- ── committed real-client captures (RFC 036 §2) ──
+-- Genuine TLS 1.3 ClientHello records captured from `openssl s_client` and Python `ssl` (OpenSSL).
+-- Already full records (outer `16 03 01`); sanitized — client random + key_share are public.
+-- `osslBroad`/`pyBroad` offer the default suite/group breadth; `osslConstrained` was captured with
+-- `-ciphersuites TLS_CHACHA20_POLY1305_SHA256 -groups X25519`; `pyBroad` also carries SNI example.com.
+def osslBroadCapture : ByteArray :=
+  hx "16 03 01 00 dc 01 00 00 d8 03 03 3a e0 78 2e 10 7c 00 38 ce 2c 2a f0 aa"
+  ++ hx "b7 d8 72 a1 61 b6 36 09 40 c9 a1 de 27 cc 70 54 53 0c 8c 20 9c 9b 15 c5"
+  ++ hx "9a 62 ee 1b 67 0b 94 46 c6 d1 3a 4d 60 91 57 83 01 4e de dc df e9 2e 28"
+  ++ hx "73 0b a0 6f 00 08 13 02 13 03 13 01 00 ff 01 00 00 87 00 0b 00 04 03 00"
+  ++ hx "01 02 00 0a 00 16 00 14 00 1d 00 17 00 1e 00 19 00 18 01 00 01 01 01 02"
+  ++ hx "01 03 01 04 00 23 00 00 00 16 00 00 00 17 00 00 00 0d 00 1e 00 1c 04 03"
+  ++ hx "05 03 06 03 08 07 08 08 08 09 08 0a 08 0b 08 04 08 05 08 06 04 01 05 01"
+  ++ hx "06 01 00 2b 00 03 02 03 04 00 2d 00 02 01 01 00 33 00 26 00 24 00 1d 00"
+  ++ hx "20 6d 83 81 31 96 de 10 1b c6 3e 7d e2 f7 dd 67 97 6a de 1d 91 de b4 d2"
+  ++ hx "43 f1 fd 42 24 36 ba 0e 0a"
+def osslConstrainedCapture : ByteArray :=
+  hx "16 03 01 00 c6 01 00 00 c2 03 03 91 1d 54 25 83 f5 fc f7 5f 01 9a 5f b2"
+  ++ hx "c5 6a 87 5f 3e a4 a0 89 fb a4 be 77 a9 7c 48 2c 3f 11 4c 20 ab 13 4a ba"
+  ++ hx "82 e4 48 1a 6b 46 2c e3 8e f7 2c 08 f2 de 6e 29 72 68 43 61 a5 5c e3 6c"
+  ++ hx "54 f7 e3 e1 00 04 13 03 00 ff 01 00 00 75 00 0b 00 04 03 00 01 02 00 0a"
+  ++ hx "00 04 00 02 00 1d 00 23 00 00 00 16 00 00 00 17 00 00 00 0d 00 1e 00 1c"
+  ++ hx "04 03 05 03 06 03 08 07 08 08 08 09 08 0a 08 0b 08 04 08 05 08 06 04 01"
+  ++ hx "05 01 06 01 00 2b 00 03 02 03 04 00 2d 00 02 01 01 00 33 00 26 00 24 00"
+  ++ hx "1d 00 20 a4 ac 6e 1a cb 4e 92 eb 9a 9e 24 8d 90 64 86 3c 51 a7 68 64 85"
+  ++ hx "fe 4c a3 fc ad 27 d9 01 97 99 4e"
+def pyBroadCapture : ByteArray :=
+  hx "16 03 01 00 f0 01 00 00 ec 03 03 07 7f ad 5a e8 a0 2b 8b ec 11 10 01 9e"
+  ++ hx "70 1e d1 17 64 e2 73 af 20 3f 2a 0f 1d ad e5 ea 9e c0 20 20 bf 91 09 0f"
+  ++ hx "c2 48 86 0c 75 ca ab e5 4f e3 cc 81 93 f1 63 44 ae df 75 ed 1b f4 df 91"
+  ++ hx "ea 66 15 65 00 08 13 02 13 03 13 01 00 ff 01 00 00 9b 00 00 00 10 00 0e"
+  ++ hx "00 00 0b 65 78 61 6d 70 6c 65 2e 63 6f 6d 00 0b 00 04 03 00 01 02 00 0a"
+  ++ hx "00 16 00 14 00 1d 00 17 00 1e 00 19 00 18 01 00 01 01 01 02 01 03 01 04"
+  ++ hx "00 23 00 00 00 16 00 00 00 17 00 00 00 0d 00 1e 00 1c 04 03 05 03 06 03"
+  ++ hx "08 07 08 08 08 09 08 0a 08 0b 08 04 08 05 08 06 04 01 05 01 06 01 00 2b"
+  ++ hx "00 03 02 03 04 00 2d 00 02 01 01 00 33 00 26 00 24 00 1d 00 20 c2 ac a3"
+  ++ hx "8a e8 f7 80 94 a6 b0 6a 9f d7 f4 01 96 c3 37 70 da 58 31 53 1d 69 df fc"
+  ++ hx "f3 b7 0d c8 1c"
+
 def suiteIs (s : State) (c : CipherSuite) : Bool :=
   match s.negotiated.selectedSuite with | some c' => c' == c | none => false
 def groupIsX25519 (s : State) : Bool :=
@@ -90,6 +129,13 @@ def frag2 : State × Nat :=
   replay [ch.extract 0 (n/2), ch.extract (n/2) n]
 def broad : State × Nat := replay [broadCH]
 def rejected : State × Nat := replay [noTls13CH]
+
+def osslBroadR : State × Nat := replay [osslBroadCapture]
+def osslConstR : State × Nat := replay [osslConstrainedCapture]
+def pyBroadR   : State × Nat := replay [pyBroadCapture]
+def osslBroadFrag : State × Nat :=
+  let ch := osslBroadCapture; let n := ch.size
+  replay [ch.extract 0 (n/3), ch.extract (n/3) (2*n/3), ch.extract (2*n/3) n]
 
 def checks : List Check :=
   [ -- constrained capture negotiates deterministically and produces a flight
@@ -121,6 +167,20 @@ def checks : List Check :=
              | .connected => false
              | .sentServerFinished => false
              | _ => true) }
+
+    -- ── committed real-client captures (openssl s_client / Python ssl) ──
+  , { name := "real openssl broad CH → aes256GcmSha384 / x25519, server flight produced"
+    , ok := suiteIs osslBroadR.1 .aes256GcmSha384 && groupIsX25519 osslBroadR.1
+              && reachedFlight osslBroadR.1 && osslBroadR.2 > 0 }
+  , { name := "real openssl constrained CH (-CHACHA20) → chacha20Poly1305Sha256 / x25519 (client constraint honored)"
+    , ok := suiteIs osslConstR.1 .chacha20Poly1305Sha256 && groupIsX25519 osslConstR.1
+              && reachedFlight osslConstR.1 && osslConstR.2 > 0 }
+  , { name := "real Python ssl broad CH (carries SNI example.com) → aes256GcmSha384 / x25519, flight"
+    , ok := suiteIs pyBroadR.1 .aes256GcmSha384 && groupIsX25519 pyBroadR.1
+              && reachedFlight pyBroadR.1 && pyBroadR.2 > 0 }
+  , { name := "real openssl capture in 3 fragments → identical negotiation + flight (reassembly)"
+    , ok := suiteIs osslBroadFrag.1 .aes256GcmSha384 && groupIsX25519 osslBroadFrag.1
+              && reachedFlight osslBroadFrag.1 && osslBroadFrag.2 == osslBroadR.2 }
   ]
 
 def main : IO Unit := do

@@ -5,6 +5,31 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.92.0-dev] — RFC 036 §2 committed real-client capture corpus — 2026-06-15
+
+Extends the replay bridge with genuine ClientHello captures, so the verified path is exercised
+against real client-byte diversity (not just synthetic fixtures) before live sockets.
+
+### Added
+- **Committed real captures in `Tests/Replay.lean`** (`kroopt-replay-test` now 11 checks): genuine
+  TLS 1.3 ClientHello records captured from `openssl s_client` (a broad default offer, and a
+  `-ciphersuites TLS_CHACHA20_POLY1305_SHA256 -groups X25519`-constrained one) and Python `ssl` (a
+  broad offer carrying SNI `example.com`), replayed through the pure parser + production interpreter
+  with deterministic assertions:
+  - the broad openssl/Python captures negotiate aes256GcmSha384 / x25519 and produce a server flight;
+  - the constrained openssl capture honors the client's CHACHA20 constraint
+    (chacha20Poly1305Sha256 / x25519) — real evidence the negotiation tracks the client's offer;
+  - a real openssl capture split into 3 fragments reproduces an identical negotiation + flight
+    (record reassembly on genuine wire bytes incl. the real extension set and SNI).
+  Captures are sanitized (client random/key_share are public handshake values) and committed as hex.
+
+### Changed
+- **RFC 036 status**: the committed real-capture corpus is recorded against §2. Remaining for the
+  RFC: more malformed/edge captures and the interpreter `debug_trace` wiring.
+
+Gate: full build green; 27 suites green; hygiene; deps 37 pure-zone clean; axioms 102, no `sorryAx`;
+fuzz 20000; sanitizer clean; live OpenSSL/Python interop green. No proofs or pure-zone code changed.
+
 ## [0.91.0-dev] — RFC 010 locked (ACTIVE → Implemented, → `done/`) — 2026-06-15
 
 Resolves the headline real-socket RFC. No code or proofs changed; this is an RFC-lifecycle

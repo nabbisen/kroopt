@@ -6,9 +6,14 @@ secret-free-by-construction trace projection `Kroopt.Conn.traceOfAction : Output
 TraceEvent` plus `TraceEvent.render`, where every byte-bearing action projects to a *length* and
 every secret reference to a bare event, so no rendered line can carry plaintext, ciphertext, DER, a
 transcript digest, or a secret handle (`Tests.Trace`, 19 checks, including sentinel-leak negatives).
-Remaining: a fuller capture corpus (committed real `openssl s_client`/`curl` captures + more
-malformed/edge cases) and wiring the trace projection into the interpreter behind the `debug_trace`
-build gate.
+Remaining: more malformed/edge captures, and wiring the trace projection into the interpreter
+behind the `debug_trace` build gate. **Committed real captures landed (0.92.0-dev):** genuine
+TLS 1.3 ClientHello records from `openssl s_client` (broad + a `-ciphersuites CHACHA20`-constrained
+one) and Python `ssl` (broad, carrying SNI `example.com`) are committed to `Tests.Replay` and
+replayed through the verified path with deterministic assertions — the broad captures negotiate
+aes256GcmSha384/x25519, the constrained capture honors the client's CHACHA20 constraint
+(chacha20Poly1305Sha256/x25519), and a fragmented replay of a real capture reproduces the same
+negotiation and flight.
 
 ### §2 captured-client replay bridge — first slice landed (0.90.0-dev)
 
