@@ -69,6 +69,21 @@ opaque chachaPolySeal (key nonce aad pt : ByteArray) : ByteArray
 @[extern "kroopt_ffi_aead_open"]
 opaque chachaPolyOpenRaw (key nonce aad ctTag : ByteArray) : ByteArray
 
+/-- AES-128-GCM seal via HACL*/EverCrypt Vale assembly. `key`=16, `nonce`=12; returns
+`ciphertext ++ tag(16)`, or an empty array (fail-closed) on a malformed-length call. -/
+@[extern "kroopt_ffi_aes128_gcm_seal"]
+opaque aes128GcmSeal (key nonce aad pt : ByteArray) : ByteArray
+
+@[extern "kroopt_ffi_aes128_gcm_open"]
+opaque aes128GcmOpenRaw (key nonce aad ctTag : ByteArray) : ByteArray
+
+/-- AES-256-GCM seal via HACL*/EverCrypt Vale assembly. `key`=32, `nonce`=12. -/
+@[extern "kroopt_ffi_aes256_gcm_seal"]
+opaque aes256GcmSeal (key nonce aad pt : ByteArray) : ByteArray
+
+@[extern "kroopt_ffi_aes256_gcm_open"]
+opaque aes256GcmOpenRaw (key nonce aad ctTag : ByteArray) : ByteArray
+
 @[extern "kroopt_ffi_hkdf_extract256"]
 opaque hkdfExtract256 (salt ikm : ByteArray) : ByteArray
 
@@ -168,6 +183,16 @@ def rsapssVerify (n e : ByteArray) (saltLen : UInt32) (sgnt msg : ByteArray) : B
 returned on failure). -/
 def chachaPolyOpen (key nonce aad ctTag : ByteArray) : Option ByteArray :=
   let r := chachaPolyOpenRaw key nonce aad ctTag
+  if r.size ≥ 1 ∧ r.get! 0 == 0 then some (r.extract 1 r.size) else none
+
+/-- AES-128-GCM open. `none` on authentication failure (no plaintext returned on failure). -/
+def aes128GcmOpen (key nonce aad ctTag : ByteArray) : Option ByteArray :=
+  let r := aes128GcmOpenRaw key nonce aad ctTag
+  if r.size ≥ 1 ∧ r.get! 0 == 0 then some (r.extract 1 r.size) else none
+
+/-- AES-256-GCM open. `none` on authentication failure. -/
+def aes256GcmOpen (key nonce aad ctTag : ByteArray) : Option ByteArray :=
+  let r := aes256GcmOpenRaw key nonce aad ctTag
   if r.size ≥ 1 ∧ r.get! 0 == 0 then some (r.extract 1 r.size) else none
 
 /-- Ed25519 verification. -/

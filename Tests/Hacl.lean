@@ -183,6 +183,30 @@ def main : IO UInt32 := do
     | some s => rsapssVerify rsa_n rsa_e 32 s (rsa_msg.push 0x00) | none => false
   let rsa_signBadKey := rsapssSignRaw ByteArray.empty rsa_e rsa_d rsa_salt rsa_msg
 
+  -- AES-GCM (HACL*/EverCrypt Vale verified assembly), NIST GCM Test Case 4.
+  let aes_iv   := hexToBytes "cafebabefacedbaddecaf888"
+  let aes_aad  := hexToBytes "feedfacedeadbeeffeedfacedeadbeefabaddad2"
+  let aes_pt   := hexToBytes ("d9313225f88406e5a55909c5aff5269a86a7a9531534f7da2e4c303d8a318a72" ++
+                              "1c3c0c95956809532fcf0e2449a6b525b16aedf5aa0de657ba637b39")
+  let aes128_key := hexToBytes "feffe9928665731c6d6a8f9467308308"
+  let aes128_exp := hexToBytes ("42831ec2217774244b7221b784d0d49ce3aa212f2c02a4e035c17e2329aca12e" ++
+                                "21d514b25466931c7d8f6a5aac84aa051ba30b396a0aac973d58e091" ++
+                                "5bc94fbc3221a5db94fae95ae7121a47")           -- ciphertext ++ tag
+  let aes128_sealed := aes128GcmSeal aes128_key aes_iv aes_aad aes_pt
+  let aes128_opened := aes128GcmOpen aes128_key aes_iv aes_aad aes128_sealed
+  let aes128_tamper := aes128GcmOpen aes128_key aes_iv aes_aad
+                         (aes128_sealed.set! 0 ((aes128_sealed.get! 0) ^^^ 1))
+  let aes128_badKey := aes128GcmOpen (rep 15 0x00) aes_iv aes_aad aes128_sealed
+  let aes256_key := hexToBytes "feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308"
+  let aes256_exp := hexToBytes ("522dc1f099567d07f47f37a32a84427d643a8cdcbfe5c0c97598a2bd2555d1aa" ++
+                                "8cb08e48590dbb3da7b08b1056828838c5f61e6393ba7a0abcc9f662" ++
+                                "76fc6ece0f4e1768cddf8853bb2d551b")           -- ciphertext ++ tag
+  let aes256_sealed := aes256GcmSeal aes256_key aes_iv aes_aad aes_pt
+  let aes256_opened := aes256GcmOpen aes256_key aes_iv aes_aad aes256_sealed
+  let aes256_tamper := aes256GcmOpen aes256_key aes_iv aes_aad
+                         (aes256_sealed.set! 0 ((aes256_sealed.get! 0) ^^^ 1))
+  let aes256_badKey := aes256GcmOpen (rep 31 0x00) aes_iv aes_aad aes256_sealed
+
   let checks : List Check :=
     [ { name := "SHA-256(\"abc\") matches FIPS 180-4 vector"
       , ok := bytesEq (sha256 "abc".toUTF8) (hexToBytes sha256_abc) }
@@ -270,6 +294,24 @@ def main : IO UInt32 := do
       , ok := r1.size == 32 ∧ r2.size == 32 }
     , { name := "OS CSPRNG is non-constant across calls"
       , ok := !bytesEq r1 r2 }
+    , { name := "AES-128-GCM seal matches NIST GCM Test Case 4 (ciphertext ++ tag)"
+      , ok := bytesEq aes128_sealed aes128_exp }
+    , { name := "AES-128-GCM seal/open round-trips"
+      , ok := (match aes128_opened with | some p => bytesEq p aes_pt | none => false) }
+    , { name := "AES-128-GCM rejects a tampered ciphertext, fails closed"
+      , ok := aes128_tamper.isNone }
+    , { name := "AES-128-GCM open rejects a wrong-size key, fails closed (RFC 037 §2)"
+      , ok := aes128_badKey.isNone }
+    , { name := "AES-128-GCM output is plaintext+16 (tag) bytes"
+      , ok := aes128_sealed.size == aes_pt.size + 16 }
+    , { name := "AES-256-GCM seal matches NIST GCM Test Case 4 (ciphertext ++ tag)"
+      , ok := bytesEq aes256_sealed aes256_exp }
+    , { name := "AES-256-GCM seal/open round-trips"
+      , ok := (match aes256_opened with | some p => bytesEq p aes_pt | none => false) }
+    , { name := "AES-256-GCM rejects a tampered ciphertext, fails closed"
+      , ok := aes256_tamper.isNone }
+    , { name := "AES-256-GCM open rejects a wrong-size key, fails closed (RFC 037 §2)"
+      , ok := aes256_badKey.isNone }
     ]
 
   let mut failures := 0

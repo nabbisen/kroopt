@@ -5,6 +5,52 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.66.0-dev] — AES-GCM bound + KAT'd via HACL* Vale verified assembly — 2026-06-14
+
+**Corrects a standing error.** Earlier releases (through 0.65.0-dev) described AES-128/256-GCM as
+"environment-blocked." That was wrong. The block was a misdiagnosis on our side, not a gap in the
+vendored HACL* tree: we searched for a *portable C* AES backend, didn't find one, and overlooked
+the **Vale verified x86_64 assembly** (`aesgcm-x86_64-linux.S`) plus the EverCrypt dispatcher that
+ship in the tree — the same production path NSS/Firefox use, and the verified one. This host has
+AES-NI + PCLMULQDQ, so it runs. SHA-384 was never blocked either (long bound as `kroopt_ffi_sha384`).
+
+This increment binds AES-GCM through the FFI and proves it against NIST vectors. It does **not** yet
+negotiate the AES suites (that touches the verified core's suite enum + `selectSuite`, and the
+SHA384 suite needs the key schedule under SHA-384) — those are the next increments.
+
+### This increment — AES-GCM FFI binding (TESTED)
+- Vendored `EverCrypt_AEAD.c`, `EverCrypt_AutoConfig2.c`, `aesgcm-x86_64-linux.S`, and
+  `cpuid-x86_64-linux.S` into `Kroopt/Native/hacl/` (all dependent headers were already present).
+- New `Kroopt/Native/kroopt_aesgcm.c`: `kroopt_ffi_aes128_gcm_seal/open` +
+  `kroopt_ffi_aes256_gcm_seal/open`, with the exact fail-closed ABI of the ChaCha wrappers
+  (seal → `ciphertext ++ tag(16)`, empty on malformed length; open → `[status] ++ plaintext`,
+  status 1 + zeroed plaintext on auth/length failure). One-time `EverCrypt_AutoConfig2_init`.
+- `lakefile.lean`: a second compile group in `extern_lib krooptCrypto` builds the AES sources with
+  `-DHACL_CAN_COMPILE_VALE=1 -DHACL_CAN_COMPILE_VEC128 -DHACL_CAN_COMPILE_VEC256 -mavx2 -mavx -maes
+  -mpclmul -msse4.2`. `HACL_CAN_COMPILE_VALE` gates *both* the CPUID detection in
+  `AutoConfig2_init` and the `create_in` AES path — without it the whole path silently no-ops to
+  "unsupported," which is how the original misdiagnosis happened. The portable-C primitives keep
+  their original flags unchanged.
+- `Kroopt/Crypto/Hacl.lean`: `aes128GcmSeal` / `aes128GcmOpen(Raw)` / `aes256GcmSeal` /
+  `aes256GcmOpen(Raw)`, mirroring the ChaCha externs + `Option`-returning open wrappers.
+
+### Tests
+- `kroopt-hacl-test` (+9 checks, **50** total): AES-128-GCM and AES-256-GCM each — seal matches
+  NIST GCM Test Case 4 (`ciphertext ++ tag`), seal/open round-trips, tampered ciphertext rejected
+  (`none`), wrong-size key rejected fail-closed; plus the 128-bit output-size check. All driven
+  through the Lean FFI against the live Vale assembly.
+
+### Trust posture
+- AES-GCM stays in the **ASSUMED-verified** crypto tier exactly like the other HACL*/EverCrypt
+  primitives — the Vale assembly is verified upstream; kroopt's wrapper only marshals bytes and
+  fails closed on malformed lengths. No protocol proof is affected; 94 public theorems unchanged.
+
+### Still gating a non-dev v0.4.0
+- AES suite **negotiation** (core `selectSuite` + suite enum; SHA-384 key schedule for the
+  AES-256-GCM-SHA384 suite) and live `openssl -ciphersuites` interop — next increments.
+- Browser interop (no browser in the environment), RFC 027 (stability) unstarted.
+
+
 ## [0.65.0-dev] — Consolidation: config-validation hardening + edge-feature checkpoint — 2026-06-14
 
 A consolidation checkpoint for the constrained-profile edge feature band (0.53–0.64) plus a

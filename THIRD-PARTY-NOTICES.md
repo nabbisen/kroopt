@@ -15,11 +15,17 @@ cryptographic backend for the v0.3 binding (see
 | What | License | Files |
 |------|---------|-------|
 | HACL\* generated C primitives | **MIT** — Copyright (c) 2016-2020 INRIA, CMU and Microsoft Corporation | `Hacl_*.c`, `Hacl_*.h`, `Lib_Memzero0.c`, `internal/*.h` |
+| EverCrypt AEAD dispatch + CPU autoconfig | **MIT** — Copyright (c) 2016-2020 INRIA, CMU and Microsoft Corporation | `EverCrypt_AEAD.c`, `EverCrypt_AutoConfig2.c`, `EverCrypt_*.h` |
+| Vale verified x86_64 assembly (AES-GCM, CPUID) | **MIT** — Copyright (c) 2016-2020 INRIA, CMU and Microsoft Corporation | `aesgcm-x86_64-linux.S`, `cpuid-x86_64-linux.S` |
 | KaRaMeL / kremlin runtime headers | **Apache-2.0** — Copyright (c) INRIA and Microsoft Corporation | `include/kremlin/**`, `minimal/*.h` |
 
-* **Scope.** Only the primitives `TLS_CHACHA20_POLY1305_SHA256` needs with X25519
-  and Ed25519: SHA-256/384, X25519, ChaCha20-Poly1305, HKDF/HMAC-SHA256, Ed25519.
-  No vale assembly and no EverCrypt dispatch layer are vendored.
+* **Scope.** The primitives `TLS_CHACHA20_POLY1305_SHA256` needs with X25519 and
+  Ed25519: SHA-256/384, X25519, ChaCha20-Poly1305, HKDF/HMAC-SHA256, Ed25519;
+  plus P-256/ECDSA and RSA-PSS for server auth. As of 0.66.0-dev this also
+  includes **AES-128/256-GCM via EverCrypt's AEAD dispatch over the Vale verified
+  x86_64 assembly** (AES-NI + PCLMULQDQ) — the verified production path. (ChaCha is
+  still driven directly via `Hacl_Chacha20Poly1305_32`; the EverCrypt dispatcher's
+  ChaCha case is satisfied by abort-stubs in `kroopt_aesgcm.c` and never reached.)
 * **Modifications.** None. The files are redistributed verbatim with their
   license headers retained. The full license texts are reproduced in
   [`Kroopt/Native/hacl/LICENSE`](Kroopt/Native/hacl/LICENSE). This was verified:

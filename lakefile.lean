@@ -152,12 +152,30 @@ extern_lib krooptCrypto (pkg : NPackage _package.name) := do
     ("hacl/Lib_Memzero0.c",            "Lib_Memzero0.o"),
     ("kroopt_ffi.c",                   "kroopt_ffi.o"),
     ("kroopt_socket.c",                "kroopt_socket.o")]
+  -- AES-GCM via HACL*/EverCrypt's Vale verified x86_64 assembly (RFC 008/009). HACL_CAN_COMPILE_VALE
+  -- gates both the CPUID detection in EverCrypt_AutoConfig2_init AND the create_in AES path; the
+  -- VEC128/256 macros + ISA flags let libintvector.h declare the vector types the AEAD headers use.
+  -- The .S files (no #include) harmlessly ignore the C-only flags in this shared set.
+  let aesFlags := cFlags ++ #[
+    "-DHACL_CAN_COMPILE_VALE=1", "-DHACL_CAN_COMPILE_VEC128", "-DHACL_CAN_COMPILE_VEC256",
+    "-mavx2", "-mavx", "-maes", "-mpclmul", "-msse4.2"]
+  let aesFiles : Array (String × String) := #[
+    ("hacl/EverCrypt_AEAD.c",          "EverCrypt_AEAD.o"),
+    ("hacl/EverCrypt_AutoConfig2.c",   "EverCrypt_AutoConfig2.o"),
+    ("hacl/aesgcm-x86_64-linux.S",     "aesgcm_x86_64.o"),
+    ("hacl/cpuid-x86_64-linux.S",      "cpuid_x86_64.o"),
+    ("kroopt_aesgcm.c",                "kroopt_aesgcm.o")]
   let oJobs ← cFiles.mapM fun (cFile, oFile) => do
     let src    := nativeDir / cFile
     let obj    := pkg.buildDir / "c" / oFile
     let srcJob ← inputFile src false
     buildO obj srcJob cFlags
-  buildStaticLib (pkg.buildDir / "lib" / "libkroopt_crypto.a") oJobs
+  let aesJobs ← aesFiles.mapM fun (cFile, oFile) => do
+    let src    := nativeDir / cFile
+    let obj    := pkg.buildDir / "c" / oFile
+    let srcJob ← inputFile src false
+    buildO obj srcJob aesFlags
+  buildStaticLib (pkg.buildDir / "lib" / "libkroopt_crypto.a") (oJobs ++ aesJobs)
 
 /-- Native HACL* crypto known-answer tests (v0.3 binding). Links `krooptCrypto`.
 `--gc-sections` drops the agile-HMAC hash variants (SHA-1/Blake2) the suite never
