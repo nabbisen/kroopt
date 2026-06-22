@@ -139,6 +139,39 @@ def runChecks : Except Kroopt.CryptoError (List (String × Bool)) := do
   let (a, rt) ← p a oid (.aeadOpen meta aad (ct.set! 0 ((ct.get! 0) ^^^ 1)))
   let aeadTamper := match rt with | .verifyFailed => true | _ => false
 
+  -- SHA-384 schedule through `submit`: prove the provider routes each op's `.sha384` algorithm to
+  -- the SHA-384 HKDF/HMAC primitives (not SHA-256). Early Secret, an Expand-Label derivation, and an
+  -- AES-256-GCM-SHA384 traffic-key install are cross-checked against the KeySchedule SHA-384 path,
+  -- and shown to diverge from the SHA-256 computation of the same inputs.
+  let (a, r) ← p a oid (.hkdfExtract .sha384 none none)
+  let .hkdfSecret early384 := r | throw .providerInternal
+  let early384Ok := match a.get early384 with
+    | some b => eqB b (Kroopt.Crypto.KeySchedule.earlySecret .sha384) && b.size == 48
+    | none => false
+  let sha384empty := Kroopt.Crypto.Hacl.sha384 ByteArray.empty
+  let (a, r) ← p a oid (.hkdfExpandLabel .sha384 early384 "derived" sha384empty 48)
+  let .hkdfSecret der384 := r | throw .providerInternal
+  let expand384Ok := match a.get early384, a.get der384 with
+    | some e, some d =>
+        eqB d (Kroopt.Crypto.KeySchedule.expandLabel e "derived" sha384empty 48 .sha384)
+    | _, _ => false
+  let expand384DiffersFrom256 := match a.get early384, a.get der384 with
+    | some e, some d =>
+        ! eqB d (Kroopt.Crypto.KeySchedule.expandLabel e "derived" sha384empty 48 .sha256)
+    | _, _ => false
+  let (a, _) ← p a oid (.installTrafficKeys .aes256GcmSha384 .write .application early384)
+  let aes256Inst := a.lookupInstalled .write .application
+  let aes256KeyOk := match aes256Inst, a.get early384 with
+    | some (k, _), some e => match a.getById k with
+        | some kb => eqB kb (Kroopt.Crypto.KeySchedule.trafficKey .aes256GcmSha384 e) && kb.size == 32
+        | none => false
+    | _, _ => false
+  let aes256IvOk := match aes256Inst, a.get early384 with
+    | some (_, iv), some e => match a.getById iv with
+        | some ib => eqB ib (Kroopt.Crypto.KeySchedule.trafficIv e .sha384) && ib.size == 12
+        | none => false
+    | _, _ => false
+
   -- real Ed25519 CertificateVerify signature, verified with the cert public key
   let msg := hexToBytes "deadbeefcafe"
   let (a, rsig) ← p a oid (.signCertificateVerify .ed25519 msg)
@@ -184,7 +217,12 @@ def runChecks : Except Kroopt.CryptoError (List (String × Bool)) := do
     fun h hex => (match a.get h with | some b => eqB b (hexToBytes hex) | none => false)
 
   let checks : List (String × Bool) :=
-    [ ("ECDHE returns server public share = RFC 8448 server_pub", eqB srvShare (hexToBytes serverPub))
+    [ ("SHA-384 Early Secret via submit (.hkdfExtract .sha384) uses HKDF-Extract-384", early384Ok)
+    , ("SHA-384 Expand-Label via submit (.hkdfExpandLabel .sha384) uses HKDF-Expand-384", expand384Ok)
+    , ("SHA-384 schedule diverges from SHA-256 for identical inputs", expand384DiffersFrom256)
+    , ("AES-256-GCM-SHA384 install derives a 32-byte key under SHA-384", aes256KeyOk)
+    , ("AES-256-GCM-SHA384 install derives a 12-byte IV under SHA-384", aes256IvOk)
+    , ("ECDHE returns server public share = RFC 8448 server_pub", eqB srvShare (hexToBytes serverPub))
     , ("ECDHE shared secret (in arena) = RFC 8448 shared", getEq sharedH ecdhe)
     , ("Early Secret (in arena) = RFC 8448", getEq earlyH early)
     , ("Derive-Secret(Early,\"derived\") (in arena) = RFC 8448", getEq derivedH derivedHs)

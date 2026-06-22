@@ -5,6 +5,48 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.71.0-dev] — Hash-parameterized key schedule + provider (toward AES-256-GCM-SHA384) — 2026-06-14
+
+The second step toward `TLS_AES_256_GCM_SHA384`: the crypto *execution* layer now runs the key
+schedule under whichever hash the negotiated suite carries (SHA-256 or SHA-384), exactly mirroring
+the AES-GCM sequence where provider dispatch (0.67) and the seal path (0.68) preceded negotiation
+(0.69). Behavior is unchanged for every suite negotiable today — they are all SHA-256 — but the
+provider now demonstrably runs SHA-384 when handed a SHA-384 op.
+
+### Key schedule (`Kroopt/Crypto/KeySchedule.lean`)
+- Parameterized the whole RFC 8446 §7.1 schedule by `HashAlgorithm`. Added dispatch helpers
+  `hashLen` (32/48), `hashOf` (SHA-256/384), `hkdfExtractH`, `hkdfExpandH`, and `hmacH`. Every entry
+  point (`expandLabel`, `deriveSecret`, `emptyHash`, the early/handshake/master secret chain,
+  `trafficIv`, `finishedKey`, …) takes the hash as a trailing argument **defaulting to SHA-256**, so
+  the established SHA-256 callers compile and behave verbatim. `trafficKey` keeps its signature and
+  derives the hash from the suite (`suite.hashAlg`), so it is already correct for AES-256.
+
+### Provider (`Kroopt/Crypto/RealProvider.lean`)
+- `submit` now binds and threads each op's `HashAlgorithm` instead of ignoring it: `.hkdfExtract`
+  and `.hkdfExpandLabel` route through `hkdfExtractH`/`expandLabel` under the op's hash (and the
+  absent-salt/IKM zero block is now `hashLen`-sized, so SHA-384's Early-Secret extract uses 48-byte
+  zeros); `.installTrafficKeys` expands the IV under `suite.hashAlg`; `.computeServerFinished` and
+  `.verifyFinished` compute the Finished MAC with `hmacH`/`finishedKey` under the op's hash.
+- `Kroopt/Conn/Interpreter.lean`: `sealHandshakeRecord` threads `suite.hashAlg` into `trafficIv`, so
+  the handshake record IV matches the key's hash.
+
+### Tests
+- `kroopt-realprovider-test` (+5, **34** total): drives `submit` with `.sha384` ops and cross-checks
+  against the SHA-384 schedule — the Early Secret uses HKDF-Extract-384 (48 bytes), an Expand-Label
+  uses HKDF-Expand-384, an `aes256GcmSha384` install derives a 32-byte key and 12-byte IV under
+  SHA-384, and the SHA-384 result is shown to diverge from the SHA-256 computation of the same input.
+
+### Trust posture
+- No core/proof changes: 94 public theorems unchanged, all 24 suites green, parser fuzz clean. The
+  SHA-256 path is behavior-identical (the only negotiable suites remain SHA-256).
+
+### Remaining for AES-256-GCM-SHA384
+1. Core `KeyScheduleDriver` must emit ops under `suite.hashAlg` (it currently hardcodes `.sha256`
+   and length `32`) and the transcript hash must be set to the suite's hash on negotiation — the
+   proof-touching core step.
+2. Recognize `0x1302` in `suiteOfU16`, advertise the suite + SHA-384 in `realCapabilities`, and
+   validate end-to-end (deterministic + OpenSSL `-ciphersuites TLS_AES_256_GCM_SHA384`).
+
 ## [0.70.0-dev] — SHA-384 HKDF/HMAC primitive layer (toward AES-256-GCM-SHA384) — 2026-06-14
 
 The first step toward `TLS_AES_256_GCM_SHA384`, the one remaining suite whose key schedule differs

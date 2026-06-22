@@ -71,13 +71,11 @@ private def need (a : SecretArena) (h : SecretKeyHandle) : Except CryptoError By
   | some b => .ok b
   | none => .error .invalidHandle
 
-/-- 32 zero bytes (HKDF zero salt / IKM). -/
-private def z32 : ByteArray := KeySchedule.zeros 32
-
 /-- The real per-operation answer. Threads the arena: secret-producing ops store
 their output and return a handle; key installation derives and stores the record
 key/IV and records the index; AEAD resolves the installed key by record metadata.
-SHA-256 / X25519 / ChaCha20-Poly1305 / Ed25519 only (the vendored HACL subset). -/
+The schedule is parameterized by each op's `HashAlgorithm` (SHA-256 or SHA-384) and the
+AEAD by `meta.suite` / the installed suite; X25519 / Ed25519 / ECDSA-P256 / RSA-PSS signing. -/
 def submit (cfg : RealCryptoConfig) (a : SecretArena) (_ : OperationId) :
     CryptoOp → Except CryptoError (SecretArena × CryptoResult)
   | .randomBytes _ =>
@@ -102,19 +100,20 @@ def submit (cfg : RealCryptoConfig) (a : SecretArena) (_ : OperationId) :
           let (h, a') ← a.store shared
           .ok (a', .ecdheComplete serverShare h)
       | _, none => .error .providerInternal
-  | .hkdfExtract _ salt ikm => do
-      let saltBytes ← match salt with | some h => need a h | none => .ok z32
-      let ikmBytes  ← match ikm  with | some h => need a h | none => .ok z32
-      let (h, a') ← a.store (Hacl.hkdfExtract256 saltBytes ikmBytes)
+  | .hkdfExtract alg salt ikm => do
+      let z := KeySchedule.zeros (KeySchedule.hashLen alg)
+      let saltBytes ← match salt with | some h => need a h | none => .ok z
+      let ikmBytes  ← match ikm  with | some h => need a h | none => .ok z
+      let (h, a') ← a.store (KeySchedule.hkdfExtractH alg saltBytes ikmBytes)
       .ok (a', .hkdfSecret h)
-  | .hkdfExpandLabel _ secret label context len => do
+  | .hkdfExpandLabel alg secret label context len => do
       let secretBytes ← need a secret
-      let (h, a') ← a.store (KeySchedule.expandLabel secretBytes label context len)
+      let (h, a') ← a.store (KeySchedule.expandLabel secretBytes label context len alg)
       .ok (a', .hkdfSecret h)
   | .installTrafficKeys suite dir epoch secret => do
       let secretBytes ← need a secret
       let key := KeySchedule.trafficKey suite secretBytes
-      let iv  := KeySchedule.trafficIv secretBytes
+      let iv  := KeySchedule.trafficIv secretBytes suite.hashAlg
       let (kh, a1) ← a.store key
       let (ih, a2) ← a1.store iv
       let (bh, a3) ← a2.store secretBytes
@@ -156,7 +155,7 @@ def submit (cfg : RealCryptoConfig) (a : SecretArena) (_ : OperationId) :
           else match Hacl.rsapssSign cfg.rsaN cfg.rsaE cfg.rsaD cfg.signNonce input with
             | some sig => .ok (a, .signature sig)
             | none     => .error .providerInternal
-  | .computeServerFinished _ transcriptHash =>
+  | .computeServerFinished alg transcriptHash =>
       -- The server Finished verify_data = HMAC(server_finished_key, H) over the transcript
       -- hash through CertificateVerify, using the *write* (server) handshake-traffic secret
       -- (RFC 8446 §4.4.4). Mirror of `verifyFinished`'s read-secret path.
@@ -166,9 +165,9 @@ def submit (cfg : RealCryptoConfig) (a : SecretArena) (_ : OperationId) :
         match a.getById sid with
         | none => .error .invalidHandle
         | some baseSecret =>
-            let finKey := KeySchedule.finishedKey baseSecret
-            .ok (a, .finishedMac (Hacl.hmac256 finKey transcriptHash))
-  | .verifyFinished _ transcriptHash received =>
+            let finKey := KeySchedule.finishedKey baseSecret alg
+            .ok (a, .finishedMac (KeySchedule.hmacH alg finKey transcriptHash))
+  | .verifyFinished alg transcriptHash received =>
       -- A TLS 1.3 server verifies the client's Finished with the *read* (client)
       -- handshake-traffic secret; finished_key = HKDF-Expand-Label(secret,
       -- "finished", "", H.len) and Finished = HMAC(finished_key, H) (RFC 8446 §4.4.4).
@@ -178,8 +177,8 @@ def submit (cfg : RealCryptoConfig) (a : SecretArena) (_ : OperationId) :
         match a.getById sid with
         | none => .error .invalidHandle
         | some baseSecret =>
-            let finKey := KeySchedule.finishedKey baseSecret
-            let expected := Hacl.hmac256 finKey transcriptHash
+            let finKey := KeySchedule.finishedKey baseSecret alg
+            let expected := KeySchedule.hmacH alg finKey transcriptHash
             -- `received` is the client Finished handshake message; its verify_data is
             -- the body after the 4-octet handshake header (`0x14 || u24 length`).
             let verifyData :=

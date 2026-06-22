@@ -143,7 +143,7 @@ def sealHandshakeRecord (arena : SecretArena) (seq : UInt64) (plain : ByteArray)
         -- ChaCha20-Poly1305 on the transitional fake-provider path where no suite was recorded.)
         let suite := (arena.lookupInstalledSuite .write .handshake).getD .chacha20Poly1305Sha256
         let key := Kroopt.Crypto.KeySchedule.trafficKey suite secret
-        let iv  := Kroopt.Crypto.KeySchedule.trafficIv secret
+        let iv  := Kroopt.Crypto.KeySchedule.trafficIv secret suite.hashAlg
         (Record13.sealRecord key iv seq plain .handshake 0 suite).map some
 
 /-- Realize a flight message as the wire bytes its core-authorized epoch demands: a
