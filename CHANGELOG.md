@@ -5,6 +5,34 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.90.0-dev] — RFC 036 §2 captured-client replay bridge (first slice) — 2026-06-15
+
+Second slice of RFC 036 on the real-wire band: a deterministic replay bridge that exercises
+real-shaped ClientHello captures through the verified path before live sockets.
+
+### Added
+- **`Tests/Replay.lean`** (`kroopt-replay-test`, 7 checks) — replays ClientHello captures through the
+  **pure parser + production interpreter over the fake transport** (the path live sockets use, minus
+  syscalls), asserting deterministic negotiation and rejection:
+  - a constrained capture negotiates aes128GcmSha256 / x25519 and produces a server flight;
+  - the same capture split into 2 and 3 fragments yields a byte-identical negotiation + flight,
+    exercising record reassembly/coalescing on real-shaped bytes;
+  - a broad capture that additionally offers aes256GcmSha384 deterministically negotiates that suite
+    — same client, different offer → different deterministic selection;
+  - a TLS-1.2-only capture is rejected cleanly: no negotiation, no flight, never connected (no
+    downgrade).
+  Captures are sanitized (public randoms/key_shares only) and the server ephemeral is pinned so the
+  result is reproducible; the ECDHE/HKDF/signature math is the real HACL\* path.
+
+### Changed
+- **RFC 036 status**: §2 replay bridge (first slice) recorded as landed alongside the §3 trace
+  facility. Remaining: a fuller committed capture corpus (real `openssl`/`curl` captures + more
+  malformed/edge cases) and the interpreter `debug_trace` wiring.
+
+Gate: full build green; 27 suites (incl. `replay`, `trace`) green; hygiene; deps 37 pure-zone clean;
+axioms 102 public theorems, no `sorryAx`; parser fuzz 20000; sanitizer clean; live OpenSSL/Python
+interop green. No proofs or pure-zone code changed.
+
 ## [0.89.0-dev] — RFC 036 §3 no-secrets trace facility (first slice) — 2026-06-15
 
 First forward increment on the unfrozen real-wire band: the diagnostic backbone of the live-interop

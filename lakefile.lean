@@ -108,6 +108,11 @@ lean_exe «kroopt-trace-test» where
   root := `Tests.Trace
   moreLinkArgs := #["-Wl,--gc-sections"]
 
+/-- Captured-client ClientHello replay bridge (RFC 036 §2). -/
+lean_exe «kroopt-replay-test» where
+  root := `Tests.Replay
+  moreLinkArgs := #["-Wl,--gc-sections"]
+
 /-- jemmet integration + end-to-end HTTPS acceptance tests (RFC 015). -/
 @[default_target]
 lean_exe «kroopt-https-test» where
@@ -267,3 +272,6 @@ lean_exe «kroopt-realch-interop» where
 lean_exe «kroopt-capabilities-test» where
   root := `Tests.Capabilities
   moreLinkArgs := #["-Wl,--gc-sections"]
+
+
+

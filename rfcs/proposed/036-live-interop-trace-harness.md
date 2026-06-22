@@ -6,9 +6,21 @@ secret-free-by-construction trace projection `Kroopt.Conn.traceOfAction : Output
 TraceEvent` plus `TraceEvent.render`, where every byte-bearing action projects to a *length* and
 every secret reference to a bare event, so no rendered line can carry plaintext, ciphertext, DER, a
 transcript digest, or a secret handle (`Tests.Trace`, 19 checks, including sentinel-leak negatives).
-Remaining: §2 captured-client replay bridge (sanitized openssl/curl ClientHello fixtures → pure
-parser + fake-transport replay with deterministic negotiation/alert assertions), and wiring the
-projection into the interpreter behind the `debug_trace` build gate.
+Remaining: a fuller capture corpus (committed real `openssl s_client`/`curl` captures + more
+malformed/edge cases) and wiring the trace projection into the interpreter behind the `debug_trace`
+build gate.
+
+### §2 captured-client replay bridge — first slice landed (0.90.0-dev)
+
+`Tests.Replay` (`kroopt-replay-test`, 7 checks) replays real-shaped ClientHello captures through the
+**pure parser + production interpreter over the fake transport** — the path live sockets use, minus
+syscalls — with deterministic assertions: a constrained capture negotiates aes128GcmSha256/x25519 and
+produces a server flight; the same capture split into 2 and 3 fragments yields a byte-identical
+negotiation and flight (reassembly/coalescing); a broad capture that additionally offers
+aes256GcmSha384 deterministically negotiates that suite (same client, different offer → different
+selection); and a TLS-1.2-only capture is rejected cleanly with no negotiation and no flight (no
+downgrade). Captures are sanitized (public randoms/key_shares only) and the server ephemeral is pinned
+so the result is reproducible.
 **Type.** Implementation RFC  
 **Target milestone.** M38 (prep starts during M36 via captured-CH fixtures)  
 **Depends on.** RFC 033 (real-client handshake), RFC 020 (observability/redaction), RFC 026 (interop matrix), RFC 015 (E2E acceptance)  
