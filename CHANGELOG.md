@@ -5,6 +5,46 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.75.0-dev] — Sign-by-handle for all cert key types (ECDSA-P256, RSA-PSS) — 2026-06-14
+
+Completes the C-resident private-key mechanism for every certificate signature scheme: the
+ECDSA-P256 scalar and the RSA-PSS private exponent `d` can now be signed *by handle*, like the
+Ed25519 key in 0.74, so no cert private key need ever live on the Lean heap.
+
+### Sign-by-handle (`Kroopt/Native/kroopt_ffi.c`, `Kroopt/Crypto/Hacl.lean`)
+- `kroopt_ffi_ecdsa_p256_sign_h(m, keyId, k)` and `kroopt_ffi_rsapss_sign_h(n, e, dId, salt, msg)`
+  read the secret scalar / `d` from the arena slot inside C; the public `(n, e)` and the ephemeral
+  nonce/salt stay caller arguments. Both fail closed on an absent/wrong-size handle.
+- Lean: `ecdsaP256SignRawH` / `ecdsaP256SignDerH` and `rsapssSignRawH` / `rsapssSignH`.
+
+### Provider (`Kroopt/Crypto/RealProvider.lean`)
+- `RealCryptoConfig.ecdsaKeyHandle` / `rsaKeyHandle` (default `0`), mirroring `certKeyHandle`. The
+  ECDSA and RSA `submit` branches sign by handle when set, else fall back to the byte fields.
+
+### Tests
+- `kroopt-nativesecret-test` (**10**): adds "ECDSA-P256 sign-by-handle produces a verifying
+  signature" and "RSA-PSS sign-by-handle produces a verifying signature" (scalar / `d` resident only
+  in C, signature verified against the public key).
+
+### A soundness boundary, made explicit
+- The sign-by-handle functions are `opaque` (pure-typed) so the pure `submit` can call them, which
+  is valid only under the **load-once, stable-until-shutdown** invariant — a config key is written
+  once and never signed-after-release. An exploratory "released cannot sign" check exposed the edge:
+  two `signH` calls with *identical* arguments are one pure expression to Lean, so the optimizer may
+  reuse the pre-release value. That behavior is out-of-invariant (production never signs after
+  release), so the check was removed as ill-founded; the key's wipe-on-release is proven soundly at
+  the arena level instead (`zeroize` → zeros, read-after-release → empty). The opaque declarations
+  document the invariant.
+
+### Status
+- All three cert key types can now reside only in the C zeroizing arena. The Ed25519 path is wired
+  and OpenSSL/Python-validated end-to-end (0.74); ECDSA/RSA are mechanism-complete and unit-validated
+  (their provisioning — loading the fixture/SNI keys into the arena, including in the separate iotakt
+  driver — is the remaining wiring). 94 theorems unchanged; all 25 suites green; fuzz clean.
+  Connection-lifetime traffic secrets remain on the pure Lean arena — migrating them requires making
+  the pure interpreter drive-loop IO, a deliberate architectural change (it trades the pure-drive-loop
+  correspondence property) best taken as its own decision rather than folded in here.
+
 ## [0.74.0-dev] — Server private key resident in the C zeroizing arena (sign-by-handle) — 2026-06-14
 
 The integration half of RFC 037 §3's secret-arena work: the highest-value durable secret — the

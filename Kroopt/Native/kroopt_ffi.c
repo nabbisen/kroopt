@@ -462,3 +462,50 @@ LEAN_EXPORT lean_object *kroopt_ffi_ed25519_sign_h(uint64_t keyId, b_lean_obj_ar
   Hacl_Ed25519_sign(lean_sarray_cptr(r), s->ptr, (uint32_t)ba_len(msg), ba_ptr(msg));
   return r;
 }
+
+/* ECDSA-P256/SHA-256 sign with the private scalar resident in the C secret arena (RFC 037 §3): the
+ * scalar is read from the arena slot here, never crossing into Lean. The per-connection nonce `k`
+ * stays a caller argument (it is ephemeral, not the durable key). status(1)||sgnt(64); fails closed
+ * if the handle is absent/released or the stored scalar is not 32 bytes. */
+LEAN_EXPORT lean_object *kroopt_ffi_ecdsa_p256_sign_h(b_lean_obj_arg m, uint64_t keyId,
+                                                      b_lean_obj_arg k) {
+  lean_object *r = mk_ba(65);
+  uint8_t *q = lean_sarray_cptr(r);
+  kroopt_secret_slot *s = kroopt_secret_find(keyId);
+  if (!s || s->len != 32 || ba_len(k) != 32 || ba_len(m) > UINT32_MAX) {
+    q[0] = 1; memset(q + 1, 0, 64); return r;
+  }
+  bool ok = Hacl_P256_ecdsa_sign_p256_sha2(q + 1, (uint32_t)ba_len(m), ba_ptr(m), s->ptr, ba_ptr(k));
+  q[0] = ok ? 0 : 1;
+  if (!ok) memset(q + 1, 0, 64);
+  return r;
+}
+
+/* RSA-PSS/SHA-256 sign with the private exponent `d` resident in the C secret arena (RFC 037 §3):
+ * `d` is read from the arena slot here. The public modulus `n` and exponent `e` are caller
+ * arguments (not secret); the salt is ephemeral. status(1)||sgnt(modBytes); fails closed on an
+ * absent/empty handle or empty `n`/`e`. */
+LEAN_EXPORT lean_object *kroopt_ffi_rsapss_sign_h(b_lean_obj_arg nb, b_lean_obj_arg eb,
+                                                  uint64_t dId, b_lean_obj_arg salt,
+                                                  b_lean_obj_arg msg) {
+  size_t modBytes = ba_len(nb);
+  lean_object *r = mk_ba(1 + modBytes);
+  uint8_t *q = lean_sarray_cptr(r);
+  memset(q, 0, 1 + modBytes);
+  kroopt_secret_slot *s = kroopt_secret_find(dId);
+  if (modBytes == 0 || ba_len(eb) == 0 || !s || s->len == 0 || ba_len(msg) > UINT32_MAX) {
+    q[0] = 1; return r;
+  }
+  uint32_t modBits = (uint32_t)(modBytes * 8);
+  uint32_t eBits   = (uint32_t)(ba_len(eb) * 8);
+  uint32_t dBits   = (uint32_t)(s->len * 8);
+  uint64_t *skey = Hacl_RSAPSS_new_rsapss_load_skey(modBits, eBits, dBits, ba_ptr(nb), ba_ptr(eb), s->ptr);
+  if (skey == NULL) { q[0] = 1; return r; }
+  bool ok = Hacl_RSAPSS_rsapss_sign(Spec_Hash_Definitions_SHA2_256, modBits, eBits, dBits, skey,
+                                    (uint32_t)ba_len(salt), ba_ptr(salt),
+                                    (uint32_t)ba_len(msg), ba_ptr(msg), q + 1);
+  free(skey);
+  q[0] = ok ? 0 : 1;
+  if (!ok) memset(q + 1, 0, modBytes);
+  return r;
+}

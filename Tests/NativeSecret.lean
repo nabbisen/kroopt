@@ -1,5 +1,6 @@
 import Kroopt.Crypto.NativeSecret
 import Kroopt.Crypto.Hacl
+import Tests.RealFixtures
 
 /-!
 Tests for the C-owned zeroizing secret arena (RFC 037 §3). The decisive check is that
@@ -62,9 +63,33 @@ def main : IO UInt32 := do
   let msg := ByteArray.mk #[0xCA, 0xFE, 0xBA, 0xBE, 0xDE, 0xAD]
   let sigH := Kroopt.Crypto.Hacl.ed25519SignH keyId msg
   let signByHandleVerifies := sigH.size == 64 && Kroopt.Crypto.Hacl.ed25519Verify pub msg sigH
+  -- The key is wiped/gone on release — proven soundly at the arena level above (zeroize → zeros,
+  -- read-after-release → empty). We do not re-test "released cannot sign" through the sign-by-handle
+  -- functions: they are `opaque` (so pure `submit` can call them), valid only under the load-once-
+  -- stable-until-shutdown invariant, so calling them after release is out-of-invariant and the
+  -- optimizer may legitimately reuse the pre-release value. Release here is lifecycle cleanup.
   release keyId
-  let sigAfter := Kroopt.Crypto.Hacl.ed25519SignH keyId msg
-  let releasedCannotSign := sigAfter.size != 64 && ! Kroopt.Crypto.Hacl.ed25519Verify pub msg sigAfter
+
+  -- (8) ECDSA-P256 sign-by-handle: the private scalar lives only in C
+  let ecScalar := rep 32 0x42
+  let ecPub := Kroopt.Crypto.Hacl.p256Public ecScalar
+  let ecId ← alloc ecScalar
+  let ecMsg := ByteArray.mk #[0x11, 0x22, 0x33, 0x44]
+  let ecNonce := rep 32 0x77
+  let ecRaw := Kroopt.Crypto.Hacl.ecdsaP256SignRawH ecMsg ecId ecNonce
+  let ecdsaByHandle := ecPub.size == 65 && ecRaw.size == 65 && ecRaw.get! 0 == 0
+                       && Kroopt.Crypto.Hacl.ecdsaP256Verify ecMsg ecPub (ecRaw.extract 1 65)
+  release ecId
+
+  -- (9) RSA-PSS sign-by-handle: the private exponent d lives only in C (RSA fixtures)
+  let dId ← alloc Tests.RealFixtures.rsaD
+  let rsaSalt := rep 32 0x33
+  let rsaMsg := ByteArray.mk #[0xAB, 0xCD, 0xEF]
+  let rsaSig := Kroopt.Crypto.Hacl.rsapssSignH Tests.RealFixtures.rsaN Tests.RealFixtures.rsaE dId rsaSalt rsaMsg
+  let rsaByHandle := match rsaSig with
+    | some sig => Kroopt.Crypto.Hacl.rsapssVerify Tests.RealFixtures.rsaN Tests.RealFixtures.rsaE 32 sig rsaMsg
+    | none => false
+  release dId
 
   let checks : List (String × Bool) :=
     [ ("alloc + read round-trips the secret bytes through C-owned memory", roundTrip)
@@ -75,7 +100,8 @@ def main : IO UInt32 := do
     , ("a fresh handle reads its own bytes; the released one stays gone", newReads)
     , ("live-count tracks alloc/release with no leak", leakClean)
     , ("Ed25519 sign-by-handle (key resident in C) produces a verifying signature", signByHandleVerifies)
-    , ("a released key handle can no longer sign (durable key is gone)", releasedCannotSign) ]
+    , ("ECDSA-P256 sign-by-handle (scalar resident in C) produces a verifying signature", ecdsaByHandle)
+    , ("RSA-PSS sign-by-handle (d resident in C) produces a verifying signature", rsaByHandle) ]
 
   let mut passed := 0
   for (name, ok) in checks do

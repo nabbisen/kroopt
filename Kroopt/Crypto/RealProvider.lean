@@ -68,6 +68,11 @@ structure RealCryptoConfig where
   Ed25519 seed) so a single config can hold an Ed25519 *and* an ECDSA *and* an RSA key at once and
   the provider dispatches on the negotiated scheme (multi-certificate / SNI serving). -/
   ecdsaPriv        : ByteArray := ByteArray.empty
+  /-- Arena handles for the ECDSA-P256 scalar and the RSA private exponent `d`, mirroring
+  `certKeyHandle` for Ed25519: when non-zero the provider signs by handle (key resident only in C),
+  else it falls back to the `ecdsaPriv` / `rsaD` bytes. -/
+  ecdsaKeyHandle   : Kroopt.Crypto.NativeSecret.SecretId := 0
+  rsaKeyHandle     : Kroopt.Crypto.NativeSecret.SecretId := 0
   deriving Inhabited
 
 namespace RealProvider
@@ -154,8 +159,11 @@ def submit (cfg : RealCryptoConfig) (a : SecretArena) (_ : OperationId) :
       | .ecdsaSecp256r1Sha256 =>
           -- ECDSA P-256 / SHA-256 (RFC 8446 §4.4.3): hash the signing input with SHA-256 and
           -- sign with the cert key and the fresh per-connection nonce, returning the DER-encoded
-          -- Ecdsa-Sig-Value for the wire.
-          match Hacl.ecdsaP256SignDer input cfg.ecdsaPriv cfg.signNonce with
+          -- Ecdsa-Sig-Value for the wire. Sign by arena handle when the scalar is C-resident.
+          let der := if cfg.ecdsaKeyHandle != 0
+                     then Hacl.ecdsaP256SignDerH input cfg.ecdsaKeyHandle cfg.signNonce
+                     else Hacl.ecdsaP256SignDer input cfg.ecdsaPriv cfg.signNonce
+          match der with
           | some der => .ok (a, .signature der)
           | none     => .error .providerInternal
       | .rsaPssRsaeSha256 =>
@@ -163,7 +171,11 @@ def submit (cfg : RealCryptoConfig) (a : SecretArena) (_ : OperationId) :
           -- private key (n, e, d) and the fresh per-connection 32-byte salt; the raw RSA signature
           -- goes on the wire (no DER wrapper, unlike ECDSA).
           if cfg.rsaN.isEmpty then .error .unsupportedOperation
-          else match Hacl.rsapssSign cfg.rsaN cfg.rsaE cfg.rsaD cfg.signNonce input with
+          else
+            let sig := if cfg.rsaKeyHandle != 0
+                       then Hacl.rsapssSignH cfg.rsaN cfg.rsaE cfg.rsaKeyHandle cfg.signNonce input
+                       else Hacl.rsapssSign cfg.rsaN cfg.rsaE cfg.rsaD cfg.signNonce input
+            match sig with
             | some sig => .ok (a, .signature sig)
             | none     => .error .providerInternal
   | .computeServerFinished alg transcriptHash =>

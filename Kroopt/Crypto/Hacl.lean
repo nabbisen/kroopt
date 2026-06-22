@@ -48,6 +48,12 @@ nonce (must be fresh and in `[1, n-1]`). Returns 65 bytes `status(1) || raw(64 =
 @[extern "kroopt_ffi_ecdsa_p256_sign"]
 opaque ecdsaP256SignRaw (m priv k : ByteArray) : ByteArray
 
+/-- ECDSA P-256 / SHA-256 sign with the private scalar resident in the C secret arena, addressed by
+`keyId`; the scalar never enters the Lean heap. `status(1) || raw(64)`; empty/absent handle fails
+closed. `opaque` — the config-lifetime scalar is read-only for the arena's lifetime. -/
+@[extern "kroopt_ffi_ecdsa_p256_sign_h"]
+opaque ecdsaP256SignRawH (m : ByteArray) (keyId : UInt64) (k : ByteArray) : ByteArray
+
 /-- ECDSA P-256 / SHA-256 verify against the 65-byte uncompressed public point and a raw 64-byte
 `r‖s`. Returns a 1-byte `0/1` result. -/
 @[extern "kroopt_ffi_ecdsa_p256_verify"]
@@ -57,6 +63,13 @@ opaque ecdsaP256VerifyRaw (m pub sigraw : ByteArray) : ByteArray
 byte arrays and signs `msg` with `salt`. Returns `status(1) || sgnt(n.size)`. -/
 @[extern "kroopt_ffi_rsapss_sign"]
 opaque rsapssSignRaw (n e d salt msg : ByteArray) : ByteArray
+
+/-- RSA-PSS / SHA-256 sign with the private exponent `d` resident in the C secret arena, addressed
+by `dId`; `d` never enters the Lean heap. `(n, e)` and `salt` are arguments. `status(1) ||
+sgnt(n.size)`; absent/empty handle fails closed. `opaque` — `d` is read-only for the arena's
+lifetime. -/
+@[extern "kroopt_ffi_rsapss_sign_h"]
+opaque rsapssSignRawH (n e : ByteArray) (dId : UInt64) (salt msg : ByteArray) : ByteArray
 
 /-- RSA-PSS / SHA-256 verify against the public key `(n, e)` with the given salt length. Returns a
 1-byte `0/1` result. -/
@@ -184,6 +197,13 @@ def ecdsaP256SignDer (m priv k : ByteArray) : Option ByteArray :=
   let r := ecdsaP256SignRaw m priv k
   if r.size == 65 ∧ r.get! 0 == 0 then derEncodeEcdsaSig (r.extract 1 65) else none
 
+/-- ECDSA P-256 / SHA-256 sign-by-handle: the private scalar lives in the C secret arena
+(`Kroopt.Crypto.NativeSecret`) and is read inside C, never on the Lean heap. DER-encoded result, or
+`none` on failure (absent/released handle, wrong-size nonce, HACL rejection). -/
+def ecdsaP256SignDerH (m : ByteArray) (keyId : UInt64) (k : ByteArray) : Option ByteArray :=
+  let r := ecdsaP256SignRawH m keyId k
+  if r.size == 65 ∧ r.get! 0 == 0 then derEncodeEcdsaSig (r.extract 1 65) else none
+
 /-- ECDSA P-256 / SHA-256 verify over the raw 64-byte `r‖s`. -/
 def ecdsaP256Verify (m pub sigraw : ByteArray) : Bool :=
   let r := ecdsaP256VerifyRaw m pub sigraw
@@ -194,6 +214,13 @@ def ecdsaP256Verify (m pub sigraw : ByteArray) : Bool :=
 the raw RSA signature (`n.size` bytes), or `none` on failure. -/
 def rsapssSign (n e d salt msg : ByteArray) : Option ByteArray :=
   let r := rsapssSignRaw n e d salt msg
+  if r.size == n.size + 1 ∧ r.get! 0 == 0 then some (r.extract 1 r.size) else none
+
+/-- RSA-PSS / SHA-256 sign-by-handle: the private exponent `d` lives in the C secret arena and is
+read inside C; the public `(n, e)` and the salt are caller arguments. Raw signature (`n.size`
+bytes), or `none` on failure. -/
+def rsapssSignH (n e : ByteArray) (dId : UInt64) (salt msg : ByteArray) : Option ByteArray :=
+  let r := rsapssSignRawH n e dId salt msg
   if r.size == n.size + 1 ∧ r.get! 0 == 0 then some (r.extract 1 r.size) else none
 
 /-- RSA-PSS / SHA-256 verify of `sgnt` over `msg` against the public key `(n, e)`. -/
