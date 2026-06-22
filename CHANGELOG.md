@@ -5,6 +5,34 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.59.0-dev] — RFC (v0.4): SNI multi-certificate selection — LIVE — 2026-06-14
+
+One kroopt server now presents a **different certificate and signature scheme per SNI hostname**
+(RFC 6066 server_name → RFC 8446 §4.4.2.2 cert-aware signing). Validated live: `ecdsa.test` →
+ECDSA-P256 leaf + `ecdsa_secp256r1_sha256`, `rsa.test` → RSA-2048 leaf + `rsa_pss_rsae_sha256`, any
+other name (or no SNI) → the default Ed25519 leaf — each completing the TLS 1.3 handshake and HTTP
+200 against `openssl s_client -servername …`. This composes the SNI routing, the three server-auth
+schemes, and the cert-aware negotiation built across v0.4 into one listener.
+
+- **Parser (core) — latent bug fixed.** `vch.sni` was the *raw* `server_name` extension body (the
+  `ServerNameList`/`name_type`/length framing), so it could never match a bare-hostname route and SNI
+  routing always fell through to the default. A new bounded `parseSni` (RFC 6066:
+  `list_len(2) ‖ name_type(1=0x00) ‖ host_len(2) ‖ host`) extracts the bare hostname; the parser now
+  stores `(findExt exts 0).bind parseSni`. Bounds-checked against the extension length; 3 new unit
+  checks (extract, truncated-reject, non-host_name-reject). The proofs treat `vch.sni` opaquely, so
+  all 94 theorems and the axiom profile are unchanged.
+- **Provider — multi-key dispatch.** `RealCryptoConfig` gains `ecdsaPriv` (the ECDSA-P256 scalar),
+  kept separate from `certPrivate` (the Ed25519 seed) and `rsaN/rsaE/rsaD`, so one config holds an
+  Ed25519 *and* an ECDSA *and* an RSA key at once and `signCertificateVerify` selects by the
+  negotiated scheme. The single-cert ECDSA fixtures move their scalar to `ecdsaPriv` accordingly.
+- **Fixtures.** `multiCfg` (all three keys) and `multiCertServerConfig` (default Ed25519 endpoint +
+  exact SNI routes `ecdsa.test`/`rsa.test`); the kroopt-iotakt driver gains a `cert=multi` profile.
+- **Trust posture unchanged.** Protocol PROVEN (94 theorems), crypto ASSUMED (vendored HACL*), wire
+  TESTED + interop-validated. Full sweep 380 checks; hygiene/deps/axioms clean; fuzz 20000 clean.
+
+Known limitation: SNI matching is exact + single-label wildcard on the parsed hostname; the ALPN
+extension has the same raw-framing shape `parseSni` just fixed for SNI and is a parallel follow-up.
+
 ## [0.58.0-dev] — RFC (v0.4 operational polish): HTTP/1.1 keep-alive — multi-request connections — 2026-06-14
 
 Removes the one-request-per-handshake limitation: a single TLS connection now serves **many HTTP

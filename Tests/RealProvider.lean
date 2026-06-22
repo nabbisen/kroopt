@@ -131,8 +131,8 @@ def runChecks : Except Kroopt.CryptoError (List (String × Bool)) := do
   -- DER-encoded Ecdsa-Sig-Value (RFC 8446 §4.4.3). Crypto correctness is KAT-proven in Tests.Hacl;
   -- here we confirm the provider wiring and the on-the-wire DER shape.
   let ecdsaCfg : RealCryptoConfig :=
-    { ephemeralPrivate := hexToBytes serverPriv
-      certPrivate := hexToBytes "519b423d715f8b581f4fa8ee59f4771a5b44c8130b4e3eacca54a56dda72b464"
+    { ephemeralPrivate := hexToBytes serverPriv, certPrivate := ByteArray.empty
+      ecdsaPriv := hexToBytes "519b423d715f8b581f4fa8ee59f4771a5b44c8130b4e3eacca54a56dda72b464"
       certPublic := ByteArray.empty
       signNonce := hexToBytes "94a1bbb14b906a61a280f245f9e93c7f3b4a6247824f5d33b9670787642a68de" }
   let (_, recdsa) ← (RealProvider.submit ecdsaCfg) a oid (.signCertificateVerify .ecdsaSecp256r1Sha256 msg)

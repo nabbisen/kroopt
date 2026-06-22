@@ -92,7 +92,8 @@ def ecdsaCertPriv : ByteArray := hx
 /-- Base crypto config for the ECDSA endpoint. `signNonce` is injected fresh per connection at the
 IO layer; `ephemeralPrivate` is overridden per connection. -/
 def ecdsaCfg : RealCryptoConfig :=
-  { ephemeralPrivate := serverPriv, certPrivate := ecdsaCertPriv, certPublic := ByteArray.empty }
+  { ephemeralPrivate := serverPriv, certPrivate := ByteArray.empty, certPublic := ByteArray.empty
+    ecdsaPriv := ecdsaCertPriv }
 
 /-- A validated server config presenting the ECDSA-P256 leaf. The endpoint advertises
 `ecdsaSecp256r1Sha256` only, so the core selects ECDSA when the client offers it (RFC 8446 §4.2.3). -/
@@ -127,5 +128,30 @@ def rsaServerConfig : Kroopt.Core.ValidatedServerConfig :=
     defaultEndpoint := some
       { (default : Kroopt.Core.EndpointConfig) with
         der := rsaCertDer, signatureSchemes := [.rsaPssRsaeSha256] } }
+
+/-- A single crypto config holding all three private keys (Ed25519 seed, ECDSA-P256 scalar, RSA
+`(n,e,d)`); the provider dispatches on the negotiated signature scheme, so one config serves a
+multi-certificate (SNI) listener. `signNonce` (the per-connection ECDSA nonce / PSS salt) is injected
+fresh at the IO layer. -/
+def multiCfg : RealCryptoConfig :=
+  { ephemeralPrivate := serverPriv, certPrivate := certSeed, certPublic := certPub
+    ecdsaPriv := ecdsaCertPriv, rsaN := rsaN, rsaE := rsaE, rsaD := rsaD }
+
+private def edEndpoint : Kroopt.Core.EndpointConfig :=
+  { (default : Kroopt.Core.EndpointConfig) with der := certDer, signatureSchemes := [.ed25519] }
+private def ecEndpoint : Kroopt.Core.EndpointConfig :=
+  { (default : Kroopt.Core.EndpointConfig) with der := ecdsaCertDer, signatureSchemes := [.ecdsaSecp256r1Sha256] }
+private def rsaEndpoint : Kroopt.Core.EndpointConfig :=
+  { (default : Kroopt.Core.EndpointConfig) with der := rsaCertDer, signatureSchemes := [.rsaPssRsaeSha256] }
+
+/-- A multi-certificate server config: SNI `ecdsa.test` → the ECDSA-P256 leaf, `rsa.test` → the
+RSA-2048 leaf, anything else (including no SNI) → the default Ed25519 leaf. Each hostname therefore
+selects a different certificate *and* a different signature scheme (RFC 8446 §4.4.2.2). -/
+def multiCertServerConfig : Kroopt.Core.ValidatedServerConfig :=
+  { (default : Kroopt.Core.ValidatedServerConfig) with
+    defaultEndpoint := some edEndpoint
+    sniRoutes :=
+      [ { pattern := .exact (String.toUTF8 "ecdsa.test"), endpoint := ecEndpoint }
+      , { pattern := .exact (String.toUTF8 "rsa.test"),   endpoint := rsaEndpoint } ] }
 
 end Tests.RealFixtures

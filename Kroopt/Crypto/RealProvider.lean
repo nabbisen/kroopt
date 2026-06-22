@@ -57,6 +57,10 @@ structure RealCryptoConfig where
   rsaN             : ByteArray := ByteArray.empty
   rsaE             : ByteArray := ByteArray.empty
   rsaD             : ByteArray := ByteArray.empty
+  /-- The ECDSA-P256 private scalar for an ECDSA certificate, kept separate from `certPrivate` (the
+  Ed25519 seed) so a single config can hold an Ed25519 *and* an ECDSA *and* an RSA key at once and
+  the provider dispatches on the negotiated scheme (multi-certificate / SNI serving). -/
+  ecdsaPriv        : ByteArray := ByteArray.empty
   deriving Inhabited
 
 namespace RealProvider
@@ -141,7 +145,7 @@ def submit (cfg : RealCryptoConfig) (a : SecretArena) (_ : OperationId) :
           -- ECDSA P-256 / SHA-256 (RFC 8446 §4.4.3): hash the signing input with SHA-256 and
           -- sign with the cert key and the fresh per-connection nonce, returning the DER-encoded
           -- Ecdsa-Sig-Value for the wire.
-          match Hacl.ecdsaP256SignDer input cfg.certPrivate cfg.signNonce with
+          match Hacl.ecdsaP256SignDer input cfg.ecdsaPriv cfg.signNonce with
           | some der => .ok (a, .signature der)
           | none     => .error .providerInternal
       | .rsaPssRsaeSha256 =>

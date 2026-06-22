@@ -78,6 +78,18 @@ def hasDuplicateExt (exts : List RawExtension) : Bool :=
 def findExt (exts : List RawExtension) (ty : UInt16) : Option ByteArray :=
   (exts.find? (fun e => e.fst == ty)).map Prod.snd
 
+/-- Extract the first host_name from a raw `server_name` extension body (RFC 6066 §3):
+`server_name_list_len(2) ‖ name_type(1, 0x00 = host_name) ‖ host_name_len(2) ‖ host_name`. Returns
+the bare hostname bytes — what the SNI routing table matches against — or `none` if absent,
+malformed, or empty. Bounds-checked against the extension length. -/
+def parseSni (ext : ByteArray) : Option ByteArray :=
+  if ext.size < 5 then none
+  else if ext.get! 2 != 0x00 then none
+  else
+    let hlen := (ext.get! 3).toNat * 256 + (ext.get! 4).toNat
+    if hlen == 0 ∨ 5 + hlen > ext.size then none
+    else some (ext.extract 5 (5 + hlen))
+
 /-- `supported_versions` (type 43) must offer TLS 1.3 (0x0304). The extension
 data is a u8-length-prefixed list of u16 versions. -/
 def offersTls13 (exts : List RawExtension) : Bool :=
@@ -177,7 +189,7 @@ def parseClientHello (input : ByteArray) : Except ParseError (Kroopt.Core.WireBo
       selectedGroup := grp
       clientShare := share
       offeredSigSchemes := offeredSchemes
-      sni := findExt exts 0
+      sni := (findExt exts 0).bind parseSni
       alpn := match findExt exts 16 with | some d => [d] | none => []
       sessionId := sessionId }
   pure { value := vch, wireBytes := input }

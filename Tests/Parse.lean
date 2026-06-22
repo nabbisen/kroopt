@@ -1,4 +1,5 @@
 import Kroopt.Parse.Reader
+import Kroopt.Parse.Handshake
 
 /-!
 # Tests.Parse
@@ -97,6 +98,13 @@ def checks : List Check :=
              | .error _     => false) }
   , { name := "takeCountedItems with too little fuel fails (budgetExceeded)"
     , ok := isError ((Reader.ofBytes (bytes [1,2,3,4,5])).takeCountedItems 2 (fun r => r.takeU8)) }
+  , { name := "parseSni extracts the bare hostname from a server_name extension (RFC 6066)"
+    , ok := (parseSni (ByteArray.mk #[0,13,0,0,10] ++ (String.toUTF8 "ecdsa.test"))).map (·.toList)
+              == some (String.toUTF8 "ecdsa.test").toList }
+  , { name := "parseSni rejects a truncated server_name body (bounds-checked)"
+    , ok := (parseSni (ByteArray.mk #[0,13,0,0,10])).isNone }
+  , { name := "parseSni rejects a non-host_name name_type"
+    , ok := (parseSni (ByteArray.mk #[0,13,1,0,10] ++ (String.toUTF8 "ecdsa.test"))).isNone }
   ]
 
 def main : IO UInt32 := do
