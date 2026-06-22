@@ -54,7 +54,6 @@ control), then 017–030 (cross-cutting security, lifecycle, and release governa
 |----|-------|------------------------|
 | 009 | [HACL*/EverCrypt Shim, KATs, and Sanitizer Strategy](proposed/009-hacl-evercrypt-shim-kat-sanitizer.md) | ASan/UBSan sanitizer CI job (shim + KATs done) |
 | 015 | [jemmet Integration and End-to-End Acceptance](proposed/015-jemmet-integration-and-e2e-acceptance.md) | Real OpenSSL/curl handshake + jemmet HTTPS E2E over the wire |
-| 020 | [Observability, Audit Logging, and Redaction](proposed/020-observability-audit-logging-and-redaction.md) | Operator-facing event/metric reference doc (redaction + typed errors done) |
 | 024 | [Native Build, Lake Packaging, and Feature Gates](proposed/024-native-build-lake-packaging-and-features.md) | Sanitizer build profile in CI (pure + native profiles done) |
 | 025 | [Performance and Memory Benchmark Policy](proposed/025-performance-and-memory-benchmark-policy.md) | Parser/record microbenchmarks + loopback throughput |
 | 026 | [Compatibility, Interop, and Negative Matrix](proposed/026-compatibility-interop-and-negative-matrix.md) | Positive OpenSSL/curl/browser interop matrix (negatives done) |
@@ -77,6 +76,7 @@ milestone where the work substantively landed (see CHANGELOG/ROADMAP for detail)
 | 031 | [Production Interpreter Correspondence](done/031-production-interpreter-correspondence.md) | Implemented (0.88.0-dev) — **synchronous** correspondence locked; async ledger + stale-result refinements relocated to RFC 040 |
 | 010 | [TlsConn API and Non-Blocking iotakt Interpreter](done/010-tlsconn-api-nonblocking-interpreter.md) | Implemented (0.91.0-dev) — TlsConn API + non-blocking interpreter + real-socket driver; live OpenSSL/Python interop. Live-interop breadth (026) / jemmet E2E (015) tracked separately |
 | 036 | [Live Interop Trace Harness and Captured-Client Replay](done/036-live-interop-trace-harness.md) | Implemented (0.96.0-dev) — deterministic captured-client replay (constrained+broad+malformed) + secret-free `debug_trace` facility + constrained-vs-browser-grade docs (incl. tested GREASE tolerance). Durable live-transcript archival relocated to M38 |
+| 020 | [Observability, Audit Logging, and Redaction](done/020-observability-audit-logging-and-redaction.md) | Implemented (0.98.0-dev) — v0.3 lock: trace taxonomy, redaction, coarse public error view, default-off debug trace, operator event/metric reference. Public `SecurityEvent` API + live metric emission/histograms/export relocated to v0.4 |
 | 028 | [Security Review and Vulnerability Process](done/028-security-review-and-vulnerability-process.md) | Implemented (0.86.0-dev) |
 | 032 | [Typed Handshake/Record Assembly Contract](done/032-typed-flight-assembly-contract.md) | Implemented (0.46.0-dev) |
 | 034 | [Provider Capability Honesty and Fail-Closed Entropy](done/034-provider-capability-honesty-and-entropy.md) | 0.36.0-dev (M36-prelude) |

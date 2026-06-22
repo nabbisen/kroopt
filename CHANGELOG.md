@@ -5,6 +5,39 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.98.0-dev] — RFC 020 locked for v0.3; SecurityEvent API + metric emission relocated to v0.4 — 2026-06-15
+
+Per architect review (decision **A2 / B2 / lock yes / C1**). RFC 020 moves to `done/`.
+
+### Changed
+- **`rfcs/proposed/020` → `rfcs/done/020`.** Status → **Implemented (0.98.0-dev)**. §9 acceptance
+  annotated with v0.3 met-status; a new **§10** records the v0.3/v0.4 split:
+  - **§10.1 (A2)** — the public subscribable `SecurityEvent` API is *not* added in v0.3 (avoids a
+    premature public-API commitment pre-jemmet/RFC 027); its intended content is mapped to the existing
+    surfaces (`TlsConn.metadata`/`negotiatedAlpn` for success, `TlsErrorView` for failure, `TraceEvent`
+    for the debug trace).
+  - **§10.2 (B2)** — metric honesty: the `Metrics` counter logic exists and is tested, but v0.3 does
+    **not** claim live driver emission, histograms, aggregation, or export (all v0.4). An optional
+    non-public internal wiring of the existing struct is permitted but not required.
+  - **§10.3 (C1)** — the public `ErrorCategory` stays intentionally coarse (8 categories); finer §6
+    reasons remain internal/debug-only unless a later RFC exposes them.
+  - **§10.4** — the relocated v0.4 acceptance criteria (8 items: public event API + jemmet examples,
+    stable `HandshakeSummary`, audit events distinct from trace, live counter emission, histogram
+    policy, export model, redaction tests for all public surfaces, RFC 027 stability review).
+- **`docs/src/operations/event-and-metric-reference.md`** — records that public error categories are
+  intentionally coarse and stable, with finer causes kept internal.
+- **`rfcs/README.md`** — 020 moved Proposed → Done. **`ROADMAP.md`** — governance order updated (020
+  locked v0.3) and an RFC 020 lock note added mirroring the RFC 031/036 notes.
+
+### Scope note
+- This locks RFC 020's v0.3 content only. RFC 020 must not be cited as evidence that a public event
+  stream or runtime metric emission exists — those are the relocated v0.4 deliverables (§10.4).
+
+Gate: build green; `trace` 19 checks green; hygiene; axioms 102, no `sorryAx`; all SUMMARY links
+resolve; no stale `proposed/020` references. Docs/RFC-only change; no `Kroopt/` source, proofs, or
+pure-zone code touched (the optional `Metrics`-into-driver wiring was deliberately not bundled with the
+lock).
+
 ## [0.97.0-dev] — RFC 020 criterion 5: operator event and metric reference — 2026-06-15
 
 Parallel-governance increment building on the trace facility. Documents the operator-facing surface.

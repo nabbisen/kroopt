@@ -56,6 +56,12 @@ metric increment, and whether to suppress noisy attacker-caused parse errors —
 secrets or raw handshake blobs. Internal invariant failures map to a generic external category while
 retaining typed local detail for the project's own metrics.
 
+These public categories are **intentionally coarse and stable**. Finer internal failure causes (the
+specific unsupported version/group, the precise parse fault, and so on) remain implementation detail in
+debug/trace metadata and are not part of the public API commitment — a coarse surface reduces oracle
+signal and gives consumers a stable contract; TLS alert descriptions already carry protocol-level
+failure semantics where a peer needs them.
+
 ## Metric surface (planned, not yet emitted)
 
 kroopt does **not** currently emit operational counters; `recordMetric` is reserved on a separate

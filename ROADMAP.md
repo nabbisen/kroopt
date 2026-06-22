@@ -224,8 +224,18 @@ where async crypto results first occur. RFC 031 must not be cited for async-resu
 is mandatory before any production/stable native-secret or async-result claim. Approved post-lock
 order: **headline track** RFC 010 (socket adapter — **locked Implemented 0.91.0-dev**) → RFC 036
 (replay + trace harness — **locked Implemented 0.96.0-dev**) → RFC 037 inbound-alert residue (done) → RFC
-015/026 (live OpenSSL/curl + jemmet HTTPS E2E); **parallel governance** RFC 030/027/020;
-**stable/v1** RFC 040.
+015/026 (live OpenSSL/curl + jemmet HTTPS E2E); **parallel governance** RFC 030/027 (RFC 020
+**locked v0.3**, 0.98.0-dev); **stable/v1** RFC 040.
+
+*RFC 020 lock (architect review 2026-06-15, decision A2 / B2 / lock yes / C1).* RFC 020 is **locked for
+v0.3** on the trace taxonomy, redaction, the coarse public error view, the secret-free default-off
+debug trace, and the operator event/metric reference (0.98.0-dev → `done/`). Per the review, the public
+subscribable `SecurityEvent` stream, the production audit-event surface, live metric emission,
+histograms, and an export backend are **relocated to RFC 020's v0.4 band** (RFC 020 §10.4), where
+jemmet's consumption pattern and RFC 027 API-stability policy can shape them. v0.3 does **not** claim
+runtime metric emission; the `Metrics` counter logic exists and is tested but is not wired into the live
+driver (an optional, non-public internal wiring is permitted but not required). Public error categories
+stay intentionally coarse (C1).
 
 *RFC 036 lock (architect review 2026-06-15).* RFC 036 is **locked for deterministic captured-client
 replay, secret-free tracing, and constrained-vs-browser-grade documentation** (0.96.0-dev → `done/`):
