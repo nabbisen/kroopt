@@ -5,6 +5,52 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.85.0-dev] — RFC 037 §4.1: crypto-op budget enforcement — 2026-06-15
+
+Crypto-op allocation is brought into the same budget-enforced `Except` idiom as every other
+resource charge, making the `maxPendingCryptoOps` bound real, and the sequence-advance proofs
+are restated to the honest *registered-reserves-and-advances* invariant. RFC 037 remains in
+`proposed/` — §4.1 is now partially met (outstanding-op **count** is enforced; pending-op
+*bytes* and operation *timeout/expiry* are still deferred with the async-crypto work).
+
+### Core
+- `State.allocOp` now returns `Except ResourceLimitError (OperationId × State)` and fails with
+  `.pendingCryptoOps` when registering another op would exceed `maxPendingCryptoOps`; a CPS
+  wrapper `allocOpOrFail` fails the connection closed (`internalError`, fatal) on overflow.
+  All 13 registration sites route through it.
+- **Clear-on-failure (exactly-once accounting):** the record-path AEAD `.verifyFailed` /
+  `.failed` arms of `handleCryptoResultCorrelated` now `clearOp` before failing closed, matching
+  the success arms and `handshakeOnGatingResult` (which already retires every handshake-internal
+  op on its correlated result). `PendingCryptoOps` is therefore *outstanding work, not history*:
+  a completed handshake returns the pending set to zero and the tight cap of 16 stays meaningful.
+  No cap change.
+
+### Proofs
+- Replaced the (now-false-under-budget) `successful_seal_increments_write_seq` with the
+  disjunctive `seal_step_either_registers_and_advances_or_fails_closed` plus derived
+  `successful_registered_seal_increments_write_seq` and
+  `budget_failed_seal_does_not_advance_write_seq`: a registered seal reserves the current write
+  sequence and advances it by one; on allocation failure no op is registered, no plaintext
+  crosses, and the connection fails closed without advancing. `successful_open_increments_read_seq`
+  is kept and documented — the read advance runs on the authenticated open *result*, not at the
+  budget-gated registration, so it is correspondingly unconditional.
+- `ActionDiscipline` and `KeySeparation` carry the registered-vs-failed split (budget failure
+  emits only fail/alert/reportError; any emitted `callCrypto` still carries correct
+  epoch/direction metadata; vacuous on the failed branch).
+- New `Kroopt/Proofs/PendingOps.lean`: `correlated_result_clears_op` (retirement removes exactly
+  that op) and `clearOp_does_not_grow_pending` (retirement never grows the set — only gated
+  `allocOp` can). Axiom gate: 102 public theorems, no `sorryAx`, axioms within
+  `{propext, Quot.sound, Classical.choice}`.
+
+### Tests
+- `kroopt-crypto-test`: `allocOp` errors at the cap / succeeds below it; an app-send at the cap
+  fails closed (terminal + `internalError`, no seal, no sequence advance); a `.verifyFailed` and a
+  `.failed` result each clear their op and fail closed.
+- `kroopt-handshake-test`: the synthetic trace is driven through the production correlation
+  dispatcher (`handshakeOnGatingResult`, which retires the answered op) instead of the transition
+  functions directly, so it models crypto-op lifetime — it passes at the tight cap of 16 and
+  asserts a completed handshake leaves **zero** ops pending.
+
 ## [0.84.0-dev] — RFC 037 §6: inbound alert parsing (close_notify vs. fatal) — 2026-06-15
 
 Inbound TLS 1.3 alerts are now parsed and dispatched deterministically instead of being

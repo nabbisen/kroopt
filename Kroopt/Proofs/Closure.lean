@@ -22,6 +22,21 @@ namespace Kroopt.Core.Proofs
 
 open Kroopt Kroopt.Core
 
+/-- `allocOpOrFail` as a plain budget `if` (private copy for the close-path proofs). -/
+private theorem allocOpOrFail_eq (s : State) (kind : CryptoOpKind) (epoch : Epoch)
+    (dir : Option Direction) (k : OperationId → State → HsResult) :
+    allocOpOrFail s kind epoch dir k =
+      if s.pendingOps.ops.length ≥ ResourceLimits.standard.maxPendingCryptoOps then
+        hsFail s (alertForResourceLimit .pendingCryptoOps) (.resourceLimit .pendingCryptoOps)
+      else
+        k ⟨s.nextOpId⟩
+          { s with nextOpId := s.nextOpId + 1
+                   pendingOps := ⟨⟨⟨s.nextOpId⟩, kind, epoch, dir⟩ :: s.pendingOps.ops⟩ } := by
+  unfold allocOpOrFail State.allocOp
+  by_cases hc : s.pendingOps.ops.length ≥ ResourceLimits.standard.maxPendingCryptoOps
+  · simp only [if_pos hc]
+  · simp only [if_neg hc]
+
 /-- **No plaintext on the fatal path.** `failAlert` emits no application
 plaintext (RFC 013 §7, §11). -/
 theorem failAlert_no_emit (s : State) (a : AlertDescription) (e : TlsError)
@@ -74,7 +89,14 @@ theorem appClose_no_emit (s s' : State) (conn : ConnId) (mode : CloseMode)
             rw [← h.2] at hmem
             simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil,
               reduceCtorEq, or_self, or_false] at hmem
-          · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+          · simp only [allocOpOrFail_eq] at h
+            split at h
+            · unfold hsFail at h
+              simp only [Except.ok.injEq, Prod.mk.injEq] at h
+              rw [← h.2] at hmem
+              simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil,
+                reduceCtorEq, or_self, or_false] at hmem
+            simp only [Except.ok.injEq, Prod.mk.injEq] at h
             rw [← h.2] at hmem; simp only [List.mem_singleton, reduceCtorEq] at hmem
         · simp only [Except.ok.injEq, Prod.mk.injEq] at h
           rw [← h.2] at hmem; simp only [List.mem_singleton, reduceCtorEq] at hmem

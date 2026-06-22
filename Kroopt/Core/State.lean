@@ -215,16 +215,22 @@ def redactedSummary (s : State) : String :=
      pendingPlaintext={plain} \
      pendingCryptoOps={s.pendingOps.ops.length}"
 
-/-- Allocate a fresh operation id and register a pending crypto operation with
-its expected metadata, so the returning result can be correlated and stale or
-wrong-kind results rejected (RFC 008 §5). Returns the id and the updated state. -/
+/-- Register a pending crypto operation, enforcing the outstanding-op budget
+(`ResourceLimits.maxPendingCryptoOps`, passed as `maxOps` since `State` sits below the budget
+module). The pending-op map is attacker-amplifiable, so allocation fails closed once the
+ceiling is reached rather than growing without bound (RFC 037 §4.1). Brings `allocOp` in line
+with the other budget charges (`chargeHandshakeBytes`, …), which already return `Except`. -/
 def allocOp (s : State) (kind : CryptoOpKind) (epoch : Epoch)
-    (dir : Option Direction) : OperationId × State :=
-  let oid : OperationId := ⟨s.nextOpId⟩
-  let pend : PendingCryptoOp :=
-    { id := oid, expectedKind := kind, expectedEpoch := epoch, expectedDirection := dir }
-  (oid, { s with nextOpId := s.nextOpId + 1
-                 pendingOps := ⟨pend :: s.pendingOps.ops⟩ })
+    (dir : Option Direction) (maxOps : Nat) :
+    Except ResourceLimitError (OperationId × State) :=
+  if s.pendingOps.ops.length ≥ maxOps then
+    .error .pendingCryptoOps
+  else
+    let oid : OperationId := ⟨s.nextOpId⟩
+    let pend : PendingCryptoOp :=
+      { id := oid, expectedKind := kind, expectedEpoch := epoch, expectedDirection := dir }
+    .ok (oid, { s with nextOpId := s.nextOpId + 1
+                       pendingOps := ⟨pend :: s.pendingOps.ops⟩ })
 
 /-- Remove a pending crypto operation by id once its result has been handled. -/
 def clearOp (s : State) (op : OperationId) : State :=

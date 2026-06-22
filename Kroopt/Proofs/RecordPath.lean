@@ -23,6 +23,21 @@ namespace Proofs
 
 open Kroopt
 
+/-- `allocOpOrFail` as a plain budget `if` (private copy; the Handshake one is private). -/
+private theorem allocOpOrFail_eq (s : State) (kind : CryptoOpKind) (epoch : Epoch)
+    (dir : Option Direction) (k : OperationId → State → HsResult) :
+    allocOpOrFail s kind epoch dir k =
+      if s.pendingOps.ops.length ≥ ResourceLimits.standard.maxPendingCryptoOps then
+        hsFail s (alertForResourceLimit .pendingCryptoOps) (.resourceLimit .pendingCryptoOps)
+      else
+        k ⟨s.nextOpId⟩
+          { s with nextOpId := s.nextOpId + 1
+                   pendingOps := ⟨⟨⟨s.nextOpId⟩, kind, epoch, dir⟩ :: s.pendingOps.ops⟩ } := by
+  unfold allocOpOrFail State.allocOp
+  by_cases hc : s.pendingOps.ops.length ≥ ResourceLimits.standard.maxPendingCryptoOps
+  · simp only [if_pos hc]
+  · simp only [if_neg hc]
+
 /-- The plaintext-handshake-record dispatch emits no application plaintext: it
 routes to handshake transitions (each proved no-emit) or a clean decode failure. -/
 theorem handshakeOnPlaintextRecord_no_emit
@@ -140,6 +155,9 @@ private theorem handleTransportBytes_no_emit
   intro c bb hmem
   unfold handleTransportBytes recordFailAlert at h
   simp only [] at h
+  try simp only [allocOpOrFail_eq] at h
+  all_goals (try split at h)
+  all_goals (try split at h)
   all_goals (try split at h)
   all_goals (try split at h)
   all_goals (try split at h)
@@ -156,7 +174,8 @@ private theorem handleTransportBytes_no_emit
     | exact handshakeOnGatingResult_no_accept _ _ _ _ _ h _ _ hmem
     | exact onInboundAlert_no_emit _ _ _ _ h _ _ hmem
     | exact onInboundAlert_no_accept _ _ _ _ h _ _ hmem
-    | (simp only [Except.ok.injEq, Prod.mk.injEq] at h
+    | (try unfold hsFail at h
+       simp only [Except.ok.injEq, Prod.mk.injEq] at h
        obtain ⟨-, rfl⟩ := h
        simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
          or_self, or_false, false_or] at hmem
@@ -171,6 +190,9 @@ private theorem handleCryptoResult_no_emit
     ∀ (c : ConnId) (bb : ByteArray), OutputAction.emitPlaintext c bb ∉ acts := by
   intro c bb hmem
   unfold handleCryptoResult handleCryptoResultCorrelated recordFailAlert at h
+  try simp only [allocOpOrFail_eq] at h
+  all_goals (try split at h)
+  all_goals (try split at h)
   all_goals (try split at h)
   all_goals (try split at h)
   all_goals (try split at h)
@@ -188,7 +210,8 @@ private theorem handleCryptoResult_no_emit
     | exact handshakeOnGatingResult_no_accept _ _ _ _ _ h _ _ hmem
     | exact onInboundAlert_no_emit _ _ _ _ h _ _ hmem
     | exact onInboundAlert_no_accept _ _ _ _ h _ _ hmem
-    | (simp only [Except.ok.injEq, Prod.mk.injEq] at h
+    | (try unfold hsFail at h
+       simp only [Except.ok.injEq, Prod.mk.injEq] at h
        obtain ⟨-, rfl⟩ := h
        simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
          or_self, or_false, false_or] at hmem
@@ -204,6 +227,9 @@ private theorem handleAppSend_no_emit
   intro c bb hmem
   unfold handleAppSend recordFailAlert at h
   simp only [] at h
+  try simp only [allocOpOrFail_eq] at h
+  all_goals (try split at h)
+  all_goals (try split at h)
   all_goals (try split at h)
   all_goals (try split at h)
   all_goals (try split at h)
@@ -220,7 +246,8 @@ private theorem handleAppSend_no_emit
     | exact handshakeOnGatingResult_no_accept _ _ _ _ _ h _ _ hmem
     | exact onInboundAlert_no_emit _ _ _ _ h _ _ hmem
     | exact onInboundAlert_no_accept _ _ _ _ h _ _ hmem
-    | (simp only [Except.ok.injEq, Prod.mk.injEq] at h
+    | (try unfold hsFail at h
+       simp only [Except.ok.injEq, Prod.mk.injEq] at h
        obtain ⟨-, rfl⟩ := h
        simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
          or_self, or_false, false_or] at hmem
@@ -234,6 +261,9 @@ private theorem handleTransportBytes_no_accept'
   intro c n hmem
   unfold handleTransportBytes recordFailAlert at h
   simp only [] at h
+  try simp only [allocOpOrFail_eq] at h
+  all_goals (try split at h)
+  all_goals (try split at h)
   all_goals (try split at h)
   all_goals (try split at h)
   all_goals (try split at h)
@@ -250,7 +280,8 @@ private theorem handleTransportBytes_no_accept'
     | exact handshakeOnGatingResult_no_accept _ _ _ _ _ h _ _ hmem
     | exact onInboundAlert_no_emit _ _ _ _ h _ _ hmem
     | exact onInboundAlert_no_accept _ _ _ _ h _ _ hmem
-    | (simp only [Except.ok.injEq, Prod.mk.injEq] at h
+    | (try unfold hsFail at h
+       simp only [Except.ok.injEq, Prod.mk.injEq] at h
        obtain ⟨-, rfl⟩ := h
        simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
          or_self, or_false, false_or] at hmem
@@ -263,6 +294,9 @@ private theorem handleCryptoResult_no_accept'
     ∀ (c : ConnId) (n : Nat), OutputAction.acceptPlaintextBytes c n ∉ acts := by
   intro c n hmem
   unfold handleCryptoResult handleCryptoResultCorrelated recordFailAlert at h
+  try simp only [allocOpOrFail_eq] at h
+  all_goals (try split at h)
+  all_goals (try split at h)
   all_goals (try split at h)
   all_goals (try split at h)
   all_goals (try split at h)
@@ -280,7 +314,8 @@ private theorem handleCryptoResult_no_accept'
     | exact handshakeOnGatingResult_no_accept _ _ _ _ _ h _ _ hmem
     | exact onInboundAlert_no_emit _ _ _ _ h _ _ hmem
     | exact onInboundAlert_no_accept _ _ _ _ h _ _ hmem
-    | (simp only [Except.ok.injEq, Prod.mk.injEq] at h
+    | (try unfold hsFail at h
+       simp only [Except.ok.injEq, Prod.mk.injEq] at h
        obtain ⟨-, rfl⟩ := h
        simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
          or_self, or_false, false_or] at hmem
@@ -396,7 +431,12 @@ theorem onClientHello_pp
           obtain ⟨rfl, -⟩ := h; right; rfl
         | some gp =>
           obtain ⟨selGroup, selShare⟩ := gp
-          simp only [hsel, State.allocOp, Except.ok.injEq, Prod.mk.injEq] at h
+          simp only [hsel, allocOpOrFail_eq] at h
+          split at h
+          · unfold hsFail at h
+            simp only [Except.ok.injEq, Prod.mk.injEq] at h
+            obtain ⟨rfl, -⟩ := h; right; rfl
+          simp only [Except.ok.injEq, Prod.mk.injEq] at h
           obtain ⟨rfl, -⟩ := h; left; rfl
   · simp only [Except.ok.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h; right; rfl
@@ -407,7 +447,12 @@ theorem onClientFinishedBytes_pp
     s'.pendingPlainOut = s.pendingPlainOut ∨ s'.pendingPlainOut = none := by
   unfold onClientFinishedBytes hsFail at h
   split at h
-  · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+  · simp only [allocOpOrFail_eq] at h
+    split at h
+    · unfold hsFail at h
+      simp only [Except.ok.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h; right; rfl
+    simp only [Except.ok.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h; left; rfl
   · simp only [Except.ok.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h; right; rfl
@@ -453,6 +498,9 @@ theorem buffered_plaintext_authenticated
     s.handshake.isConnected = true := by
   unfold handleCryptoResult handleCryptoResultCorrelated recordFailAlert at h
   simp only [] at h
+  try simp only [allocOpOrFail_eq] at h
+  all_goals (try split at h)
+  all_goals (try split at h)
   all_goals (try split at h)
   all_goals (try split at h)
   all_goals (try split at h)

@@ -133,6 +133,18 @@ def hsFail (s : State) (a : AlertDescription) (e : TlsError) : HsResult :=
                 pendingPlainOut := none },
        [ OutputAction.failWithAlert s.connId a, OutputAction.reportError s.connId e ])
 
+/-- Allocate a pending crypto operation under the outstanding-op budget, then continue with
+`k`. If the budget is exhausted the connection fails closed (fatal resource-limit alert) — the
+same `.ok (failed, [failWithAlert, reportError])` failure shape every other budget uses — so
+the 13 allocation sites stay flat one-liners instead of open-coding the budget match (RFC 037
+§4.1). The limit is the standard ceiling, threaded as `Nat` since `State` sits below the
+budget module. -/
+def allocOpOrFail (s : State) (kind : CryptoOpKind) (epoch : Epoch) (dir : Option Direction)
+    (k : OperationId → State → HsResult) : HsResult :=
+  match s.allocOp kind epoch dir ResourceLimits.standard.maxPendingCryptoOps with
+  | .error e => hsFail s (alertForResourceLimit e) (.resourceLimit e)
+  | .ok r => k r.1 r.2
+
 /-- Install epoch keys for a direction (synthetic: marks the epoch installed and
 resets the sequence; the real HKDF-derived handles arrive at M6). -/
 def installEpoch (e : Epoch) : EpochState :=
@@ -252,9 +264,9 @@ def onClientHello (s : State) (vch : ValidClientHello) (chWire : ByteArray) : Hs
                       clientSessionId := vch.sessionId }
       transcript := { s.transcript.appendFramed .clientHello .read chWire with
                       hashAlg := vch.selectedSuite.hashAlg } }
-    let (oid, s) := s.allocOp .randomBytes .handshake (some .write)
+    allocOpOrFail s .randomBytes .handshake (some .write) (fun oid s =>
     .ok ({ s with handshake := .requestedServerRandom },
-         [OutputAction.callCrypto s.connId oid (CryptoOp.randomBytes 32)])
+         [OutputAction.callCrypto s.connId oid (CryptoOp.randomBytes 32)]))
   else
     hsFail s .unexpectedMessage (.protocol .illegalMessageForState)
 
@@ -264,7 +276,7 @@ value, sourced from the CSPRNG before ServerHello is assembled). -/
 def onServerRandomDone (s : State) (random : ByteArray) : HsResult :=
   if s.handshake = .requestedServerRandom then
     let s := { s with negotiated := { s.negotiated with serverRandom := some random } }
-    let (oid, s) := s.allocOp .ecdhe .handshake (some .read)
+    allocOpOrFail s .ecdhe .handshake (some .read) (fun oid s =>
     -- RFC 8446 §4.2.8: the ECDHE primitive is selected by the negotiated group. kroopt
     -- negotiates x25519 (default) or secp256r1; the client share carries the matching point.
     let peer := s.negotiated.clientShare.getD (ByteArray.mk #[])
@@ -272,7 +284,7 @@ def onServerRandomDone (s : State) (random : ByteArray) : HsResult :=
               | some .secp256r1 => CryptoOp.ecdheP256 peer
               | _               => CryptoOp.ecdheX25519 peer
     .ok ({ s with handshake := .requestedEcdhe },
-         [OutputAction.callCrypto s.connId oid op])
+         [OutputAction.callCrypto s.connId oid op]))
   else
     hsFail s .unexpectedMessage (.protocol .illegalMessageForState)
 
@@ -300,10 +312,10 @@ def onEcdheDone (s : State) (serverShare : ByteArray) (secret : SecretKeyHandle)
     let suite := s.negotiated.selectedSuite.getD .aes128GcmSha256
     let (ksd, earlyOp) := KeyScheduleDriver.startPostEcdhe suite
                             (KeyScheduleDriver.emptyHashFor suite.hashAlg) hsTh secret
-    let (oid, s) := s.allocOp earlyOp.kind .handshake (some .write)
+    allocOpOrFail s earlyOp.kind .handshake (some .write) (fun oid s =>
     .ok ({ s with handshake := .derivedHandshakeSecrets, keySched := some ksd },
          [ OutputAction.writeHandshake s.connId .initial 0 shMsg,
-           OutputAction.callCrypto s.connId oid earlyOp ])
+           OutputAction.callCrypto s.connId oid earlyOp ]))
   else
     hsFail s .unexpectedMessage (.protocol .illegalMessageForState)
 
@@ -320,9 +332,9 @@ def onHsScheduleResult (s : State) (r : CryptoResult) : HsResult :=
       match KeyScheduleDriver.advance ksd r with
       | .error e => hsFail s .internalError e
       | .ok (ksd, op :: _) =>
-          let (oid, s) := s.allocOp op.kind .handshake (some .write)
+          allocOpOrFail s op.kind .handshake (some .write) (fun oid s =>
           .ok ({ s with keySched := some ksd },
-               [OutputAction.callCrypto s.connId oid op])
+               [OutputAction.callCrypto s.connId oid op]))
       | .ok (ksd, []) =>
           if ksd.phase = .handshakeKeysInstalled then
             let eeMsg : HandshakeOut :=
@@ -334,14 +346,14 @@ def onHsScheduleResult (s : State) (r : CryptoResult) : HsResult :=
                         (serializeServerCertificate certDer)
             let (snap, ts) := ts.snapshot
             let s := { s with transcript := ts, keySched := some ksd }
-            let (oid, s) := s.allocOp .signCertificateVerify .handshake (some .write)
+            allocOpOrFail s .signCertificateVerify .handshake (some .write) (fun oid s =>
             let scheme := s.negotiated.selectedSigScheme.getD .ed25519
             .ok ({ s with handshake := .requestedCertificateVerifySignature },
                  [ OutputAction.writeHandshake s.connId .handshake 0 eeMsg,
                    OutputAction.writeCertificate s.connId .handshake 1 certDer,
                    OutputAction.callCrypto s.connId oid
                      (CryptoOp.signCertificateVerify scheme
-                       (ts.prefixBytes snap)) ])
+                       (ts.prefixBytes snap)) ]))
           else
             .ok ({ s with keySched := some ksd }, [])
   else
@@ -359,11 +371,11 @@ def onCertVerifySigned (s : State) (sig : ByteArray) : HsResult :=
     let (snap, ts) := ts.snapshot
     let cvTh := ts.prefixBytes snap
     let s := { s with transcript := ts }
-    let (oid, s) := s.allocOp .computeServerFinished .handshake (some .write)
+    allocOpOrFail s .computeServerFinished .handshake (some .write) (fun oid s =>
     .ok ({ s with handshake := .requestedServerFinishedMac },
          [ OutputAction.writeHandshake s.connId .handshake 2 cvMsg,
            OutputAction.callCrypto s.connId oid
-             (CryptoOp.computeServerFinished s.transcript.hashAlg cvTh) ])
+             (CryptoOp.computeServerFinished s.transcript.hashAlg cvTh) ]))
   else
     hsFail s .unexpectedMessage (.protocol .illegalMessageForState)
 
@@ -384,10 +396,10 @@ def onServerFinishedMac (s : State) (verifyData : ByteArray) : HsResult :=
       | .error e => hsFail s .internalError e
       | .ok (ksd, op :: _) =>
           let s := { s with transcript := ts }
-          let (oid, s) := s.allocOp op.kind .application (some .write)
+          allocOpOrFail s op.kind .application (some .write) (fun oid s =>
           .ok ({ s with handshake := .sentCertificateVerify, keySched := some ksd },
                [ OutputAction.writeHandshake s.connId .handshake 3 (.finished verifyData),
-                 OutputAction.callCrypto s.connId oid op ])
+                 OutputAction.callCrypto s.connId oid op ]))
       | .ok (_, []) => hsFail s .internalError (.protocol .illegalMessageForState)
   else
     hsFail s .unexpectedMessage (.protocol .illegalMessageForState)
@@ -404,9 +416,9 @@ def onApScheduleResult (s : State) (r : CryptoResult) : HsResult :=
       match KeyScheduleDriver.advance ksd r with
       | .error e => hsFail s .internalError e
       | .ok (ksd, op :: _) =>
-          let (oid, s) := s.allocOp op.kind .application (some .write)
+          allocOpOrFail s op.kind .application (some .write) (fun oid s =>
           .ok ({ s with keySched := some ksd },
-               [OutputAction.callCrypto s.connId oid op])
+               [OutputAction.callCrypto s.connId oid op]))
       | .ok (ksd, []) =>
           if ksd.phase = .complete then
             -- Server Finished sent: the server's *write* switches to application keys,
@@ -428,11 +440,11 @@ def onClientFinishedBytes (s : State) (cfWire : ByteArray) : HsResult :=
   if s.handshake = .sentServerFinished then
     let (snap, ts) := s.transcript.snapshot
     let s := { s with transcript := ts, pendingClientFinished := some cfWire }
-    let (oid, s) := s.allocOp .verifyFinished .application (some .read)
+    allocOpOrFail s .verifyFinished .application (some .read) (fun oid s =>
     .ok ({ s with handshake := .requestedClientFinishedVerify },
          [ OutputAction.callCrypto s.connId oid
              (CryptoOp.verifyFinished s.transcript.hashAlg
-               (ts.prefixBytes snap) cfWire) ])
+               (ts.prefixBytes snap) cfWire) ]))
   else
     hsFail s .unexpectedMessage (.protocol .illegalMessageForState)
 

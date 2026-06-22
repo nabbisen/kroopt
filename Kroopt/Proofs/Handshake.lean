@@ -22,6 +22,24 @@ namespace Proofs
 
 open Kroopt
 
+/-- `allocOpOrFail` as a plain `if` on the outstanding-op budget: the wrapper either fails
+closed (budget reached) or continues with the freshly-registered op. This is the rewrite the
+allocation proofs split on — `split` can case a plain `if` but not the underlying
+`match`-on-`allocOp` (dependent elimination on a non-variable discriminant). -/
+private theorem allocOpOrFail_eq (s : State) (kind : CryptoOpKind) (epoch : Epoch)
+    (dir : Option Direction) (k : OperationId → State → HsResult) :
+    allocOpOrFail s kind epoch dir k =
+      if s.pendingOps.ops.length ≥ ResourceLimits.standard.maxPendingCryptoOps then
+        hsFail s (alertForResourceLimit .pendingCryptoOps) (.resourceLimit .pendingCryptoOps)
+      else
+        k ⟨s.nextOpId⟩
+          { s with nextOpId := s.nextOpId + 1
+                   pendingOps := ⟨⟨⟨s.nextOpId⟩, kind, epoch, dir⟩ :: s.pendingOps.ops⟩ } := by
+  unfold allocOpOrFail State.allocOp
+  by_cases hc : s.pendingOps.ops.length ≥ ResourceLimits.standard.maxPendingCryptoOps
+  · simp only [if_pos hc]
+  · simp only [if_neg hc]
+
 /-- Helper: a handshake transition that ends in `hsFail` lands on a `legalEdge`
 from any non-terminal phase (clean failure). -/
 private theorem hsFail_legal (s : State) (a : AlertDescription) (e : TlsError)
@@ -125,12 +143,19 @@ theorem ecdhe_op_matches_selected_group
     s.negotiated.selectedGroup = some .secp256r1 := by
   unfold onServerRandomDone at h
   split at h
-  · simp only [State.allocOp, Except.ok.injEq, Prod.mk.injEq] at h
-    obtain ⟨-, rfl⟩ := h
-    split at hmem
-    · rename_i hsel; exact hsel
-    · simp only [List.mem_cons, List.not_mem_nil, or_false, OutputAction.callCrypto.injEq,
-        CryptoOp.ecdheX25519.injEq, reduceCtorEq, and_false] at hmem
+  · simp only [allocOpOrFail_eq, TranscriptState.snapshot, KeyScheduleDriver.startPostEcdhe] at h
+    split at h
+    · -- budget overflow: the connection fails closed, emitting no ECDHE op
+      unfold hsFail at h
+      simp only [Except.ok.injEq, Prod.mk.injEq] at h
+      obtain ⟨-, rfl⟩ := h
+      simp only [List.mem_cons, List.not_mem_nil, or_false, reduceCtorEq, or_self] at hmem
+    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+      obtain ⟨-, rfl⟩ := h
+      split at hmem
+      · rename_i hsel; exact hsel
+      · simp only [List.mem_cons, List.not_mem_nil, or_false, OutputAction.callCrypto.injEq,
+          CryptoOp.ecdheX25519.injEq, reduceCtorEq, and_false] at hmem
   · unfold hsFail at h
     simp only [Except.ok.injEq, Prod.mk.injEq] at h
     obtain ⟨-, rfl⟩ := h
@@ -169,12 +194,20 @@ theorem onClientHello_selectedGroup_allowed
           simp only [reduceCtorEq] at hsucc
         | some gp =>
           obtain ⟨selGroup, selShare⟩ := gp
-          simp only [hsel, State.allocOp, Except.ok.injEq, Prod.mk.injEq] at h
-          obtain ⟨rfl, -⟩ := h
-          refine ⟨selGroup, rfl, ?_⟩
-          have ha := (selectGroup_authorized hsel).1
-          rw [hep] at ha
-          exact ha
+          simp only [hsel] at h
+          simp only [allocOpOrFail_eq, TranscriptState.snapshot, KeyScheduleDriver.startPostEcdhe] at h
+          split at h
+          · -- budget overflow: fails closed; never reaches requestedServerRandom
+            unfold hsFail at h
+            simp only [Except.ok.injEq, Prod.mk.injEq] at h
+            obtain ⟨rfl, -⟩ := h
+            simp only [reduceCtorEq] at hsucc
+          · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+            obtain ⟨rfl, -⟩ := h
+            refine ⟨selGroup, rfl, ?_⟩
+            have ha := (selectGroup_authorized hsel).1
+            rw [hep] at ha
+            exact ha
   · unfold hsFail at h
     simp only [Except.ok.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
@@ -212,9 +245,9 @@ theorem onClientHello_legal
   split at h
   · rename_i hcond
     split at h
-    · exact hsFail_legal _ _ _ _ _ h hnt
+    · have hx := hsFail_legal _ _ _ _ _ h hnt; exact hx
     · split at h
-      · exact hsFail_legal _ _ _ _ _ h hnt
+      · have hx := hsFail_legal _ _ _ _ _ h hnt; exact hx
       · cases hsel : selectGroup vch.offeredShares
             ((Option.map (fun x => x.namedGroups) (selectEndpoint s.serverConfig vch.sni)).getD []) with
         | none =>
@@ -223,10 +256,13 @@ theorem onClientHello_legal
           exact hl
         | some gp =>
           obtain ⟨selGroup, selShare⟩ := gp
-          simp only [hsel, State.allocOp, Except.ok.injEq, Prod.mk.injEq] at h
+          simp only [hsel, allocOpOrFail_eq] at h
+          split at h
+          · have hx := hsFail_legal _ _ _ _ _ h hnt; exact hx
+          simp only [Except.ok.injEq, Prod.mk.injEq] at h
           obtain ⟨hs, -⟩ := h
           rw [← hs, hcond]; rfl
-  · exact hsFail_legal _ _ _ _ _ h hnt
+  · have hx := hsFail_legal _ _ _ _ _ h hnt; exact hx
 
 /-- `onEcdheDone` moves along a legal edge. -/
 theorem onEcdheDone_legal
@@ -237,11 +273,14 @@ theorem onEcdheDone_legal
   unfold onEcdheDone at h
   split at h
   · rename_i hcond
-    simp only [State.allocOp, TranscriptState.snapshot, KeyScheduleDriver.startPostEcdhe,
+    simp only [allocOpOrFail_eq, TranscriptState.snapshot, KeyScheduleDriver.startPostEcdhe] at h
+    split at h
+    · have hx := hsFail_legal _ _ _ _ _ h hnt; exact hx
+    simp only [TranscriptState.snapshot, KeyScheduleDriver.startPostEcdhe,
       Except.ok.injEq, Prod.mk.injEq] at h
     obtain ⟨hs, -⟩ := h
     rw [← hs, hcond]; rfl
-  · exact hsFail_legal _ _ _ _ _ h hnt
+  · have hx := hsFail_legal _ _ _ _ _ h hnt; exact hx
 
 /-- `onHsScheduleResult` moves along a legal edge: it either self-loops in
 `derivedHandshakeSecrets` (pumping the schedule), advances to
@@ -255,15 +294,21 @@ theorem onHsScheduleResult_legal
   split at h
   · rename_i hcond
     split at h
-    · exact hsFail_legal _ _ _ _ _ h hnt
+    · have hx := hsFail_legal _ _ _ _ _ h hnt; exact hx
     · split at h
-      · exact hsFail_legal _ _ _ _ _ h hnt
-      · simp only [State.allocOp, Except.ok.injEq, Prod.mk.injEq] at h
+      · have hx := hsFail_legal _ _ _ _ _ h hnt; exact hx
+      · simp only [allocOpOrFail_eq, TranscriptState.snapshot, KeyScheduleDriver.startPostEcdhe] at h
+        split at h
+        · have hx := hsFail_legal _ _ _ _ _ h hnt; exact hx
+        simp only [Except.ok.injEq, Prod.mk.injEq] at h
         obtain ⟨hs, -⟩ := h
         have hsh : s'.handshake = s.handshake := by rw [← hs]
         rw [hsh, hcond]; rfl
       · split at h
-        · simp only [State.allocOp, TranscriptState.snapshot, Except.ok.injEq,
+        · simp only [allocOpOrFail_eq, TranscriptState.snapshot, KeyScheduleDriver.startPostEcdhe] at h
+          split at h
+          · have hx := hsFail_legal _ _ _ _ _ h hnt; exact hx
+          simp only [TranscriptState.snapshot, Except.ok.injEq,
             Prod.mk.injEq] at h
           obtain ⟨hs, -⟩ := h
           have hsh : s'.handshake = .requestedCertificateVerifySignature := by rw [← hs]
@@ -272,7 +317,7 @@ theorem onHsScheduleResult_legal
           obtain ⟨hs, -⟩ := h
           have hsh : s'.handshake = s.handshake := by rw [← hs]
           rw [hsh, hcond]; rfl
-  · exact hsFail_legal _ _ _ _ _ h hnt
+  · have hx := hsFail_legal _ _ _ _ _ h hnt; exact hx
 
 /-- `onCertVerifySigned` moves along a legal edge. -/
 theorem onCertVerifySigned_legal
@@ -283,10 +328,13 @@ theorem onCertVerifySigned_legal
   unfold onCertVerifySigned at h
   split at h
   · rename_i hcond
-    simp only [TranscriptState.snapshot, State.allocOp, Except.ok.injEq, Prod.mk.injEq] at h
+    simp only [allocOpOrFail_eq, TranscriptState.snapshot, KeyScheduleDriver.startPostEcdhe] at h
+    split at h
+    · have hx := hsFail_legal _ _ _ _ _ h hnt; exact hx
+    simp only [TranscriptState.snapshot, Except.ok.injEq, Prod.mk.injEq] at h
     obtain ⟨hs, -⟩ := h
     rw [← hs, hcond]; rfl
-  · exact hsFail_legal _ _ _ _ _ h hnt
+  · have hx := hsFail_legal _ _ _ _ _ h hnt; exact hx
 
 /-- `onServerFinishedMac` moves along a legal edge: it advances
 `requestedServerFinishedMac → sentCertificateVerify`, or fails. -/
@@ -299,15 +347,18 @@ theorem onServerFinishedMac_legal
   split at h
   · rename_i hcond
     split at h
-    · exact hsFail_legal _ _ _ _ _ h hnt
+    · have hx := hsFail_legal _ _ _ _ _ h hnt; exact hx
     · simp only [TranscriptState.snapshot] at h
       split at h
-      · exact hsFail_legal _ _ _ _ _ h hnt
-      · simp only [State.allocOp, Except.ok.injEq, Prod.mk.injEq] at h
+      · have hx := hsFail_legal _ _ _ _ _ h hnt; exact hx
+      · simp only [allocOpOrFail_eq, TranscriptState.snapshot, KeyScheduleDriver.startPostEcdhe] at h
+        split at h
+        · have hx := hsFail_legal _ _ _ _ _ h hnt; exact hx
+        simp only [Except.ok.injEq, Prod.mk.injEq] at h
         obtain ⟨hs, -⟩ := h
         rw [← hs, hcond]; rfl
-      · exact hsFail_legal _ _ _ _ _ h hnt
-  · exact hsFail_legal _ _ _ _ _ h hnt
+      · have hx := hsFail_legal _ _ _ _ _ h hnt; exact hx
+  · have hx := hsFail_legal _ _ _ _ _ h hnt; exact hx
 
 /-- `onApScheduleResult` moves along a legal edge: it either self-loops in
 `sentCertificateVerify` (pumping the application-key stage) or advances to
@@ -321,10 +372,13 @@ theorem onApScheduleResult_legal
   split at h
   · rename_i hcond
     split at h
-    · exact hsFail_legal _ _ _ _ _ h hnt
+    · have hx := hsFail_legal _ _ _ _ _ h hnt; exact hx
     · split at h
-      · exact hsFail_legal _ _ _ _ _ h hnt
-      · simp only [State.allocOp, Except.ok.injEq, Prod.mk.injEq] at h
+      · have hx := hsFail_legal _ _ _ _ _ h hnt; exact hx
+      · simp only [allocOpOrFail_eq, TranscriptState.snapshot, KeyScheduleDriver.startPostEcdhe] at h
+        split at h
+        · have hx := hsFail_legal _ _ _ _ _ h hnt; exact hx
+        simp only [Except.ok.injEq, Prod.mk.injEq] at h
         obtain ⟨hs, -⟩ := h
         have hsh : s'.handshake = s.handshake := by rw [← hs]
         rw [hsh, hcond]; rfl
@@ -337,7 +391,7 @@ theorem onApScheduleResult_legal
           obtain ⟨hs, -⟩ := h
           have hsh : s'.handshake = s.handshake := by rw [← hs]
           rw [hsh, hcond]; rfl
-  · exact hsFail_legal _ _ _ _ _ h hnt
+  · have hx := hsFail_legal _ _ _ _ _ h hnt; exact hx
 
 /-- `onClientFinishedBytes` moves along a legal edge. -/
 theorem onClientFinishedBytes_legal
@@ -348,10 +402,13 @@ theorem onClientFinishedBytes_legal
   unfold onClientFinishedBytes at h
   split at h
   · rename_i hcond
-    simp only [State.allocOp, TranscriptState.snapshot, Except.ok.injEq, Prod.mk.injEq] at h
+    simp only [allocOpOrFail_eq, TranscriptState.snapshot, KeyScheduleDriver.startPostEcdhe] at h
+    split at h
+    · have hx := hsFail_legal _ _ _ _ _ h hnt; exact hx
+    simp only [TranscriptState.snapshot, Except.ok.injEq, Prod.mk.injEq] at h
     obtain ⟨hs, -⟩ := h
     rw [← hs, hcond]; rfl
-  · exact hsFail_legal _ _ _ _ _ h hnt
+  · have hx := hsFail_legal _ _ _ _ _ h hnt; exact hx
 
 /-- `onClientFinishedVerified` moves along a legal edge. -/
 theorem onClientFinishedVerified_legal
@@ -366,8 +423,8 @@ theorem onClientFinishedVerified_legal
     · simp only [Except.ok.injEq, Prod.mk.injEq] at h
       obtain ⟨hs, -⟩ := h
       rw [← hs, hcond]; rfl
-    · exact hsFail_legal _ _ _ _ _ h hnt
-  · exact hsFail_legal _ _ _ _ _ h hnt
+    · have hx := hsFail_legal _ _ _ _ _ h hnt; exact hx
+  · have hx := hsFail_legal _ _ _ _ _ h hnt; exact hx
 
 /-- **Client Finished verified before connected (RFC 006 §9).** The only
 transition reaching `connected` requires the client-Finished verification to have
@@ -379,6 +436,7 @@ theorem connected_requires_finished_verified
     (hc : s'.handshake = .connected) :
     verified = true ∧ s.handshake = .requestedClientFinishedVerify := by
   unfold onClientFinishedVerified hsFail at h
+  try simp only [allocOpOrFail_eq] at h
   split at h
   · rename_i hcond
     split at h
@@ -430,7 +488,14 @@ private theorem hs_no_emit_onClientHello
             or_self, or_false] at hmem
         | some gp =>
           obtain ⟨selGroup, selShare⟩ := gp
-          simp only [hsel, State.allocOp, Except.ok.injEq, Prod.mk.injEq] at h
+          simp only [hsel, allocOpOrFail_eq] at h
+          split at h
+          · try unfold hsFail at h
+            simp only [Except.ok.injEq, Prod.mk.injEq] at h
+            obtain ⟨-, rfl⟩ := h
+            simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+              or_self, or_false] at hmem
+          simp only [Except.ok.injEq, Prod.mk.injEq] at h
           obtain ⟨-, rfl⟩ := h
           simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
             or_self, or_false] at hmem
@@ -445,8 +510,11 @@ private theorem hs_no_emit_onEcdheDone
     OutputAction.emitPlaintext c bb ∉ acts := by
   intro hmem
   unfold onEcdheDone hsFail at h
-  split at h <;>
-    (simp only [State.allocOp, TranscriptState.snapshot, Except.ok.injEq, Prod.mk.injEq] at h
+  try simp only [allocOpOrFail_eq] at h
+  repeat' split at h
+  all_goals
+    (try unfold hsFail at h
+     simp only [TranscriptState.snapshot, Except.ok.injEq, Prod.mk.injEq] at h
      obtain ⟨-, rfl⟩ := h
      simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
        or_self, or_false] at hmem)
@@ -457,8 +525,11 @@ private theorem hs_no_emit_onServerRandomDone
     OutputAction.emitPlaintext c bb ∉ acts := by
   intro hmem
   unfold onServerRandomDone hsFail at h
-  split at h <;>
-    (simp only [State.allocOp, Except.ok.injEq, Prod.mk.injEq] at h
+  try simp only [allocOpOrFail_eq] at h
+  repeat' split at h
+  all_goals
+    (try unfold hsFail at h
+     simp only [Except.ok.injEq, Prod.mk.injEq] at h
      obtain ⟨-, rfl⟩ := h
      simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
        or_self, or_false] at hmem)
@@ -469,9 +540,11 @@ private theorem hs_no_emit_onHsScheduleResult
     OutputAction.emitPlaintext c bb ∉ acts := by
   intro hmem
   unfold onHsScheduleResult hsFail at h
+  try simp only [allocOpOrFail_eq] at h
   repeat' split at h
   all_goals
-    (simp only [State.allocOp, TranscriptState.snapshot, Except.ok.injEq, Prod.mk.injEq] at h
+    (try unfold hsFail at h
+     simp only [TranscriptState.snapshot, Except.ok.injEq, Prod.mk.injEq] at h
      obtain ⟨-, rfl⟩ := h
      simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
        or_self, or_false] at hmem)
@@ -482,10 +555,12 @@ private theorem hs_no_emit_onCertVerifySigned
     OutputAction.emitPlaintext c bb ∉ acts := by
   intro hmem
   unfold onCertVerifySigned hsFail at h
+  try simp only [allocOpOrFail_eq] at h
   simp only [TranscriptState.snapshot] at h
   repeat' split at h
   all_goals
-    (simp only [State.allocOp, TranscriptState.snapshot, Except.ok.injEq, Prod.mk.injEq] at h
+    (try unfold hsFail at h
+     simp only [TranscriptState.snapshot, Except.ok.injEq, Prod.mk.injEq] at h
      obtain ⟨-, rfl⟩ := h
      simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
        or_self, or_false] at hmem)
@@ -496,10 +571,12 @@ private theorem hs_no_emit_onServerFinishedMac
     OutputAction.emitPlaintext c bb ∉ acts := by
   intro hmem
   unfold onServerFinishedMac hsFail at h
+  try simp only [allocOpOrFail_eq] at h
   simp only [TranscriptState.snapshot] at h
   repeat' split at h
   all_goals
-    (simp only [State.allocOp, TranscriptState.snapshot, Except.ok.injEq, Prod.mk.injEq] at h
+    (try unfold hsFail at h
+     simp only [TranscriptState.snapshot, Except.ok.injEq, Prod.mk.injEq] at h
      obtain ⟨-, rfl⟩ := h
      simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
        or_self, or_false] at hmem)
@@ -510,9 +587,11 @@ private theorem hs_no_emit_onApScheduleResult
     OutputAction.emitPlaintext c bb ∉ acts := by
   intro hmem
   unfold onApScheduleResult hsFail at h
+  try simp only [allocOpOrFail_eq] at h
   repeat' split at h
   all_goals
-    (simp only [State.allocOp, TranscriptState.snapshot, Except.ok.injEq, Prod.mk.injEq] at h
+    (try unfold hsFail at h
+     simp only [TranscriptState.snapshot, Except.ok.injEq, Prod.mk.injEq] at h
      obtain ⟨-, rfl⟩ := h
      simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
        or_self, or_false] at hmem)
@@ -523,8 +602,11 @@ private theorem hs_no_emit_onClientFinishedBytes
     OutputAction.emitPlaintext c bb ∉ acts := by
   intro hmem
   unfold onClientFinishedBytes hsFail at h
-  split at h <;>
-    (simp only [State.allocOp, TranscriptState.snapshot, Except.ok.injEq, Prod.mk.injEq] at h
+  try simp only [allocOpOrFail_eq] at h
+  repeat' split at h
+  all_goals
+    (try unfold hsFail at h
+     simp only [TranscriptState.snapshot, Except.ok.injEq, Prod.mk.injEq] at h
      obtain ⟨-, rfl⟩ := h
      simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
        or_self, or_false] at hmem)
@@ -535,16 +617,13 @@ private theorem hs_no_emit_onClientFinishedVerified
     OutputAction.emitPlaintext c bb ∉ acts := by
   intro hmem
   unfold onClientFinishedVerified hsFail at h
-  split at h
-  · split at h <;>
-      (simp only [Except.ok.injEq, Prod.mk.injEq] at h
-       obtain ⟨-, rfl⟩ := h
-       simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
-         or_self, or_false] at hmem)
-  · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-    obtain ⟨-, rfl⟩ := h
-    simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
-      or_self, or_false] at hmem
+  try simp only [allocOpOrFail_eq] at h
+  repeat' split at h
+  all_goals
+    (simp only [Except.ok.injEq, Prod.mk.injEq] at h
+     obtain ⟨-, rfl⟩ := h
+     simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+       or_self, or_false] at hmem)
 
 /-- The gating-result dispatch emits no application plaintext. -/
 theorem handshakeOnGatingResult_no_emit
@@ -614,7 +693,14 @@ private theorem hs_no_accept_generic_onClientHello
             or_self, or_false] at hmem
         | some gp =>
           obtain ⟨selGroup, selShare⟩ := gp
-          simp only [hsel, State.allocOp, Except.ok.injEq, Prod.mk.injEq] at h
+          simp only [hsel, allocOpOrFail_eq] at h
+          split at h
+          · try unfold hsFail at h
+            simp only [Except.ok.injEq, Prod.mk.injEq] at h
+            obtain ⟨-, rfl⟩ := h
+            simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+              or_self, or_false] at hmem
+          simp only [Except.ok.injEq, Prod.mk.injEq] at h
           obtain ⟨-, rfl⟩ := h
           simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
             or_self, or_false] at hmem
@@ -629,8 +715,11 @@ private theorem hs_no_accept_onEcdheDone
     OutputAction.acceptPlaintextBytes c n ∉ acts := by
   intro hmem
   unfold onEcdheDone hsFail at h
-  split at h <;>
-    (simp only [State.allocOp, TranscriptState.snapshot, Except.ok.injEq, Prod.mk.injEq] at h
+  try simp only [allocOpOrFail_eq] at h
+  repeat' split at h
+  all_goals
+    (try unfold hsFail at h
+     simp only [TranscriptState.snapshot, Except.ok.injEq, Prod.mk.injEq] at h
      obtain ⟨-, rfl⟩ := h
      simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
        or_self, or_false] at hmem)
@@ -641,8 +730,11 @@ private theorem hs_no_accept_onServerRandomDone
     OutputAction.acceptPlaintextBytes c n ∉ acts := by
   intro hmem
   unfold onServerRandomDone hsFail at h
-  split at h <;>
-    (simp only [State.allocOp, Except.ok.injEq, Prod.mk.injEq] at h
+  try simp only [allocOpOrFail_eq] at h
+  repeat' split at h
+  all_goals
+    (try unfold hsFail at h
+     simp only [Except.ok.injEq, Prod.mk.injEq] at h
      obtain ⟨-, rfl⟩ := h
      simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
        or_self, or_false] at hmem)
@@ -653,9 +745,11 @@ private theorem hs_no_accept_onHsScheduleResult
     OutputAction.acceptPlaintextBytes c n ∉ acts := by
   intro hmem
   unfold onHsScheduleResult hsFail at h
+  try simp only [allocOpOrFail_eq] at h
   repeat' split at h
   all_goals
-    (simp only [State.allocOp, TranscriptState.snapshot, Except.ok.injEq, Prod.mk.injEq] at h
+    (try unfold hsFail at h
+     simp only [TranscriptState.snapshot, Except.ok.injEq, Prod.mk.injEq] at h
      obtain ⟨-, rfl⟩ := h
      simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
        or_self, or_false] at hmem)
@@ -666,10 +760,12 @@ private theorem hs_no_accept_onCertVerifySigned
     OutputAction.acceptPlaintextBytes c n ∉ acts := by
   intro hmem
   unfold onCertVerifySigned hsFail at h
+  try simp only [allocOpOrFail_eq] at h
   simp only [TranscriptState.snapshot] at h
   repeat' split at h
   all_goals
-    (simp only [State.allocOp, TranscriptState.snapshot, Except.ok.injEq, Prod.mk.injEq] at h
+    (try unfold hsFail at h
+     simp only [TranscriptState.snapshot, Except.ok.injEq, Prod.mk.injEq] at h
      obtain ⟨-, rfl⟩ := h
      simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
        or_self, or_false] at hmem)
@@ -680,10 +776,12 @@ private theorem hs_no_accept_onServerFinishedMac
     OutputAction.acceptPlaintextBytes c n ∉ acts := by
   intro hmem
   unfold onServerFinishedMac hsFail at h
+  try simp only [allocOpOrFail_eq] at h
   simp only [TranscriptState.snapshot] at h
   repeat' split at h
   all_goals
-    (simp only [State.allocOp, TranscriptState.snapshot, Except.ok.injEq, Prod.mk.injEq] at h
+    (try unfold hsFail at h
+     simp only [TranscriptState.snapshot, Except.ok.injEq, Prod.mk.injEq] at h
      obtain ⟨-, rfl⟩ := h
      simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
        or_self, or_false] at hmem)
@@ -694,9 +792,11 @@ private theorem hs_no_accept_onApScheduleResult
     OutputAction.acceptPlaintextBytes c n ∉ acts := by
   intro hmem
   unfold onApScheduleResult hsFail at h
+  try simp only [allocOpOrFail_eq] at h
   repeat' split at h
   all_goals
-    (simp only [State.allocOp, TranscriptState.snapshot, Except.ok.injEq, Prod.mk.injEq] at h
+    (try unfold hsFail at h
+     simp only [TranscriptState.snapshot, Except.ok.injEq, Prod.mk.injEq] at h
      obtain ⟨-, rfl⟩ := h
      simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
        or_self, or_false] at hmem)
@@ -707,16 +807,13 @@ private theorem hs_no_accept_onClientFinishedVerified
     OutputAction.acceptPlaintextBytes c n ∉ acts := by
   intro hmem
   unfold onClientFinishedVerified hsFail at h
-  split at h
-  · split at h <;>
-      (simp only [Except.ok.injEq, Prod.mk.injEq] at h
-       obtain ⟨-, rfl⟩ := h
-       simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
-         or_self, or_false] at hmem)
-  · simp only [Except.ok.injEq, Prod.mk.injEq] at h
-    obtain ⟨-, rfl⟩ := h
-    simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
-      or_self, or_false] at hmem
+  try simp only [allocOpOrFail_eq] at h
+  repeat' split at h
+  all_goals
+    (simp only [Except.ok.injEq, Prod.mk.injEq] at h
+     obtain ⟨-, rfl⟩ := h
+     simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+       or_self, or_false] at hmem)
 
 theorem handshakeOnGatingResult_no_accept
     (s s' : State) (op : OperationId) (r : CryptoResult) (acts : List OutputAction)
@@ -755,8 +852,11 @@ theorem onClientFinishedBytes_no_accept
     OutputAction.acceptPlaintextBytes c n ∉ acts := by
   intro hmem
   unfold onClientFinishedBytes hsFail at h
-  split at h <;>
-    (simp only [State.allocOp, TranscriptState.snapshot, Except.ok.injEq, Prod.mk.injEq] at h
+  try simp only [allocOpOrFail_eq] at h
+  repeat' split at h
+  all_goals
+    (try unfold hsFail at h
+     simp only [TranscriptState.snapshot, Except.ok.injEq, Prod.mk.injEq] at h
      obtain ⟨-, rfl⟩ := h
      simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
        or_self, or_false] at hmem)
@@ -795,7 +895,14 @@ private theorem hs_no_aeadOpen_onClientHello
             or_self, or_false, and_false, OutputAction.callCrypto.injEq] at hmem
         | some gp =>
           obtain ⟨selGroup, selShare⟩ := gp
-          simp only [hsel, State.allocOp, Except.ok.injEq, Prod.mk.injEq] at h
+          simp only [hsel, allocOpOrFail_eq] at h
+          split at h
+          · try unfold hsFail at h
+            simp only [Except.ok.injEq, Prod.mk.injEq] at h
+            obtain ⟨-, rfl⟩ := h
+            simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+              or_self, or_false, and_false, OutputAction.callCrypto.injEq] at hmem
+          simp only [Except.ok.injEq, Prod.mk.injEq] at h
           obtain ⟨-, rfl⟩ := h
           simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
             or_self, or_false, and_false, OutputAction.callCrypto.injEq] at hmem
@@ -811,8 +918,11 @@ private theorem hs_no_aeadOpen_onClientFinishedBytes
     OutputAction.callCrypto c oid (CryptoOp.aeadOpen meta aad ct) ∉ acts := by
   intro hmem
   unfold onClientFinishedBytes hsFail at h
-  split at h <;>
-    (simp only [State.allocOp, TranscriptState.snapshot, Except.ok.injEq, Prod.mk.injEq] at h
+  try simp only [allocOpOrFail_eq] at h
+  repeat' split at h
+  all_goals
+    (try unfold hsFail at h
+     simp only [TranscriptState.snapshot, Except.ok.injEq, Prod.mk.injEq] at h
      obtain ⟨-, rfl⟩ := h
      simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
        or_self, or_false, and_false, OutputAction.callCrypto.injEq] at hmem)

@@ -133,9 +133,9 @@ def handleTransportBytes (s0 : State) (b : ByteArray) : RecordStepResult :=
       match hdr.outerType with
       | .applicationData =>
           if s.handshake.isConnected then
-            let (oid, s) := s.allocOp .aeadOpen .application (some .read)
+            allocOpOrFail s .aeadOpen .application (some .read) (fun oid s =>
             .ok (s, [OutputAction.callCrypto s.connId oid
-                      (CryptoOp.aeadOpen (readMeta s) (ByteArray.mk #[]) body)])
+                      (CryptoOp.aeadOpen (readMeta s) (ByteArray.mk #[]) body)]))
           else if s.handshake = .sentServerFinished then
             -- Protected handshake record expected here: the client Finished, sealed
             -- under the client handshake-traffic key. Open it under the handshake
@@ -143,9 +143,9 @@ def handleTransportBytes (s0 : State) (b : ByteArray) : RecordStepResult :=
             -- inner message through the handshake model (RFC 033 §3). The result is
             -- handled by the not-connected `aeadOpened` branch below — it never
             -- reaches the application plaintext buffer.
-            let (oid, s) := s.allocOp .aeadOpen .handshake (some .read)
+            allocOpOrFail s .aeadOpen .handshake (some .read) (fun oid s =>
             .ok (s, [OutputAction.callCrypto s.connId oid
-                      (CryptoOp.aeadOpen (readMeta s) (ByteArray.mk #[]) body)])
+                      (CryptoOp.aeadOpen (readMeta s) (ByteArray.mk #[]) body)]))
           else
             -- No protected record is expected in any other pre-`connected` phase.
             .ok (s, [])
@@ -250,13 +250,14 @@ def handleCryptoResultCorrelated (s : State) (op : OperationId) (r : CryptoResul
                        then [OutputAction.closeTransport s.connId .graceful] else []
       .ok (s, OutputAction.writeTransport s.connId ct :: closeTail)
   | .verifyFailed =>
-      -- AEAD / Finished verification failure ⇒ fatal, never plaintext (RFC 004 §12).
-      recordFailAlert s .badRecordMac (.crypto .authFailed)
+      -- AEAD / Finished verification failure ⇒ fatal, never plaintext (RFC 004 §12). Retire the
+      -- correlated op first so the pending set stays exactly-once-consistent (RFC 037 §4.1).
+      recordFailAlert (s.clearOp op) .badRecordMac (.crypto .authFailed)
   | .failed e =>
       -- A peer-invalid key_share is attacker input → `illegal_parameter`; a genuine
       -- provider/shim fault has no peer-facing alert and maps to `internal_error`
-      -- (RFC 039 §4.8). Either way: fatal, never plaintext.
-      recordFailAlert s ((alertForCryptoFailure e).getD .internalError) (.crypto e)
+      -- (RFC 039 §4.8). Either way: fatal, never plaintext. Retire the correlated op first.
+      recordFailAlert (s.clearOp op) ((alertForCryptoFailure e).getD .internalError) (.crypto e)
   | .randomBytes b => handshakeOnGatingResult s op (.randomBytes b)
   | .finishedMac vd => handshakeOnGatingResult s op (.finishedMac vd)
   | .ecdheComplete srv h => handshakeOnGatingResult s op (.ecdheComplete srv h)
@@ -295,10 +296,10 @@ def handleAppSend (s : State) (b : ByteArray) : RecordStepResult :=
       -- metadata before the advance makes the first application record seq 0, not 1 (RFC 005 §7.1;
       -- RFC 8446 §5.3 — the per-epoch sequence starts at 0).
       let sealMeta := writeMeta s
-      let (oid, s) := s.allocOp .aeadSeal .application (some .write)
+      allocOpOrFail s .aeadSeal .application (some .write) (fun oid s =>
       let s := { s with writeEpoch := { s.writeEpoch with seq := sq } }
       .ok (s, [ OutputAction.callCrypto s.connId oid
                   (CryptoOp.aeadSeal sealMeta (ByteArray.mk #[]) inner),
-                OutputAction.acceptPlaintextBytes s.connId n ])
+                OutputAction.acceptPlaintextBytes s.connId n ]))
 
 end Kroopt.Core

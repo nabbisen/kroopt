@@ -9,6 +9,7 @@ import Kroopt.Proofs.Nonces
 import Kroopt.Proofs.Config
 import Kroopt.Proofs.Closure
 import Kroopt.Proofs.Budget
+import Kroopt.Proofs.PendingOps
 import Kroopt.Proofs.KeyScheduleDriver
 
 /-!

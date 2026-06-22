@@ -73,6 +73,44 @@ Pending crypto operations are attacker-amplifiable. Budget and bound them:
 
 Budget exhaustion is terminal, typed, metric-visible, and yields no partial plaintext.
 
+**Implemented ([0.85.0-dev]).** The *max outstanding ops per connection* bound is now
+enforced in the core. `State.allocOp` returns `Except ResourceLimitError`, and the
+`allocOpOrFail` wrapper fails the connection closed (`.pendingCryptoOps` → `internalError`,
+fatal alert + `reportError`) when registering another op would exceed
+`maxPendingCryptoOps`. Because a record reserves its sequence number only *inside* a
+successful allocation, the sequence invariant is now **registered-reserves-and-advances**:
+a registered seal/open reserves the current sequence number and advances that direction's
+sequence by exactly one; if crypto-op allocation fails, no op is registered, no plaintext
+crosses the boundary, and the connection fails closed without advancing the sequence. This
+is proved by `Kroopt.Proofs.Nonces.seal_step_either_registers_and_advances_or_fails_closed`
+(disjunctive) plus the derived `successful_registered_seal_increments_write_seq` and
+`budget_failed_seal_does_not_advance_write_seq`; the read-side advance runs on the
+authenticated open *result* (not at the budget-gated registration in `handleTransportBytes`)
+and is correspondingly unconditional (`successful_open_increments_read_seq`).
+`ActionDiscipline` and `KeySeparation` carry the matching split: budget failure emits only
+`failWithAlert` / `reportError` (never plaintext or an unauthorised crypto op), and any
+emitted `callCrypto` still carries the correct epoch/direction metadata. The remaining
+bullets — total pending-op **bytes**, operation **timeout / handshake-phase expiry**, and
+config-sourced limits — are deferred with the async-crypto work, so §7.3 is only partially
+met and this RFC stays `proposed`.
+
+**`PendingCryptoOps` is outstanding work, not history.** The budget set is the operations
+**registered and not yet retired**, never a cumulative log of every operation requested on
+the connection. Every operation the core registers is retired when its correlated result is
+consumed — on success *and* failure. Retirement is centralised: handshake-internal results
+are consumed through `handshakeOnGatingResult`, which `clearOp`s the answered op before
+dispatching to any transition function; record AEAD seal/open results are retired in the
+corresponding arms of `handleCryptoResultCorrelated`, and (this increment) the AEAD
+`.verifyFailed` / `.failed` arms now `clearOp` before failing closed so the set stays
+exactly-once-consistent on the failure paths too. Consequences: a completed handshake
+returns the pending set to **zero** (it never accumulates registrations), the tight cap of
+16 is both true and meaningful for a normal handshake, and the budget genuinely bounds
+outstanding provider work and stale-result correlation state. This is backed by
+`Kroopt.Proofs.PendingOps.correlated_result_clears_op` (retirement removes exactly that op)
+and `clearOp_does_not_grow_pending` (retirement never grows the set — only gated `allocOp`
+can), with the end-to-end "no handshake-internal op lingers once `connected`" exercised by
+`Tests.Handshake` (final pending count = 0) and the production-path `Tests.Correspondence`.
+
 ## 5. Record-size enforcement
 
 `Record13.sealRecord` must enforce, not merely cast to `UInt16`:

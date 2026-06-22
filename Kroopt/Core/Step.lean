@@ -103,13 +103,13 @@ def step (s : State) (ev : InputEvent) : StepResult :=
                 | some sq =>
                     let inner := ByteArray.mk #[(1 : UInt8), 0, ContentType.alert.toByte]
                     let sealMeta := writeMeta s
-                    let (oid, s) := s.allocOp .aeadSeal .application (some .write)
+                    allocOpOrFail s .aeadSeal .application (some .write) (fun oid s =>
                     let s := { s with writeEpoch := { s.writeEpoch with seq := sq }
                                       handshake := .closing
                                       closeState := .sentCloseNotify
                                       pendingPlainOut := none }
                     .ok (s, [OutputAction.callCrypto s.connId oid
-                               (CryptoOp.aeadSeal sealMeta (ByteArray.mk #[]) inner)])
+                               (CryptoOp.aeadSeal sealMeta (ByteArray.mk #[]) inner)]))
             | _ =>
                 .ok ({ s with handshake := .closing
                               closeState := .sentCloseNotify

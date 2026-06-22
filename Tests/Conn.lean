@@ -53,7 +53,7 @@ def handshaken : TlsConn :=
 /-- A connected connection with an outstanding record-open op, for read tests. -/
 def connectedForRecv : TlsConn :=
   let s := State.initial ⟨0, 0⟩ ⟨0⟩ .sha256
-  let (_, s) := s.allocOp .aeadOpen .application (some .read)
+  let (_, s) := (s.allocOp .aeadOpen .application (some .read) ResourceLimits.standard.maxPendingCryptoOps).toOption.getD (⟨0⟩, s)
   { core := { s with handshake := .connected }, rt := {}, tr := { fd := fd0, inbound := [] },
     prov := fakeProvider }
 

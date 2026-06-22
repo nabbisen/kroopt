@@ -20,8 +20,14 @@ Two facts are proved about it: a successful increment is exactly `+1`
 (`next_none_overflow`) — so a wrapped value is never produced. Over the record
 path this lifts to:
 
-- `successful_seal_increments_write_seq` / `successful_open_increments_read_seq`
-  — an accepted seal/open advances that direction's sequence by exactly one;
+- `seal_step_either_registers_and_advances_or_fails_closed` (with derived
+  `successful_registered_seal_increments_write_seq` /
+  `budget_failed_seal_does_not_advance_write_seq`) and
+  `successful_open_increments_read_seq` — a *registered* record crypto operation
+  reserves the current sequence number and advances that direction's sequence by
+  exactly one; if crypto-op allocation fails (RFC 037 §4.1) no op is registered,
+  no plaintext crosses the boundary, and the connection fails closed without
+  advancing the sequence;
 - `no_crypto_on_write_seq_overflow` — at the ceiling, a send requests *no* crypto
   and fails, so no seal is ever emitted with a wrapped sequence (**no silent
   wrap**).

@@ -23,6 +23,21 @@ namespace Proofs
 
 open Kroopt
 
+/-- `allocOpOrFail` as a plain budget `if` (private copy for this proof file). -/
+private theorem allocOpOrFail_eq (s : State) (kind : CryptoOpKind) (epoch : Epoch)
+    (dir : Option Direction) (k : OperationId → State → HsResult) :
+    allocOpOrFail s kind epoch dir k =
+      if s.pendingOps.ops.length ≥ ResourceLimits.standard.maxPendingCryptoOps then
+        hsFail s (alertForResourceLimit .pendingCryptoOps) (.resourceLimit .pendingCryptoOps)
+      else
+        k ⟨s.nextOpId⟩
+          { s with nextOpId := s.nextOpId + 1
+                   pendingOps := ⟨⟨⟨s.nextOpId⟩, kind, epoch, dir⟩ :: s.pendingOps.ops⟩ } := by
+  unfold allocOpOrFail State.allocOp
+  by_cases hc : s.pendingOps.ops.length ≥ ResourceLimits.standard.maxPendingCryptoOps
+  · simp only [if_pos hc]
+  · simp only [if_neg hc]
+
 /-- **Directional + epoch separation for seals (RFC 005 §7.4, §7.5).** Any AEAD
 seal a send requests carries write-direction, application-epoch metadata. -/
 theorem aeadSeal_uses_write_keys
@@ -40,7 +55,16 @@ theorem aeadSeal_uses_write_keys
     rw [← ha] at hmem
     simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil,
       reduceCtorEq, or_self, or_false] at hmem
-  · -- success: the sole callCrypto carries `writeMeta s`
+  · -- registered seal carries write metadata; on budget overflow no callCrypto is emitted
+    simp only [allocOpOrFail_eq] at h
+    split at h
+    · -- budget-failed: acts = [failWithAlert, reportError], membership is vacuous
+      unfold hsFail at h
+      simp only [Except.ok.injEq, Prod.mk.injEq] at h
+      obtain ⟨-, ha⟩ := h
+      rw [← ha] at hmem
+      simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil,
+        reduceCtorEq, or_self, or_false] at hmem
     simp only [Except.ok.injEq, Prod.mk.injEq] at h
     obtain ⟨-, ha⟩ := h
     rw [← ha] at hmem
@@ -64,6 +88,9 @@ theorem aeadOpen_uses_read_keys
     meta.direction = .read ∧ meta.epoch = s.readEpoch.epoch := by
   unfold handleTransportBytes onInboundAlert recordFailAlert at h
   simp only [] at h
+  try simp only [allocOpOrFail_eq] at h
+  all_goals (try split at h)
+  all_goals (try split at h)
   all_goals (try split at h)
   all_goals (try split at h)
   all_goals (try split at h)
@@ -85,7 +112,8 @@ theorem aeadOpen_uses_read_keys
        obtain ⟨-, -, hmeta, -, -⟩ := hmem
        rw [hmeta]
        exact ⟨rfl, rfl⟩)
-    | (simp only [Except.ok.injEq, Prod.mk.injEq] at h
+    | (try unfold hsFail at h
+       simp only [Except.ok.injEq, Prod.mk.injEq] at h
        obtain ⟨-, ha⟩ := h
        rw [← ha] at hmem
        simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil,

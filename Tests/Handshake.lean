@@ -39,33 +39,41 @@ def fakeServerRandom : ByteArray := bytes (List.replicate 32 0x5a)
 def fakeFinishedMac : ByteArray := bytes (List.replicate 32 0xEF)
 def fakeSig : ByteArray := bytes (List.replicate 64 0xAB)
 
+/-- Drive one crypto result through the production correlation dispatcher
+(`handshakeOnGatingResult`), which **retires the outstanding op** (RFC 037 §4.1) before
+dispatching to the transition function — exactly the real `step` path. Using this instead of
+calling the transition functions directly makes the trace model crypto-op lifetime, so the
+pending set stays bounded rather than accumulating one registration per step. -/
+def gate (s : State) (r : CryptoResult) : Except TlsError (State × List OutputAction) :=
+  handshakeOnGatingResult s ((s.pendingOps.ops.head?.map (·.id)).getD ⟨0⟩) r
+
 /-- Run the whole synthetic handshake, returning the final state and whether each
 phase along the way matched the expected legal edge. -/
 def runHandshake : Except TlsError (State × List OutputAction × List HandshakeState) := do
   let (s1, _) ← onClientHello s0 vch chWire
-  let (sR, _) ← onServerRandomDone s1 fakeServerRandom
-  let (s2, _) ← onEcdheDone sR fakeServerShare fakeSecret
+  let (sR, _) ← gate s1 (.randomBytes fakeServerRandom)
+  let (s2, _) ← gate sR (.ecdheComplete fakeServerShare fakeSecret)
   -- pump the handshake-key schedule: 5 derivations then 2 installs, the last of
   -- which lands at the pause and frames EE/Cert + requests CertVerify
-  let (p1, _) ← onHsScheduleResult s2 (.hkdfSecret ⟨0, 0⟩)
-  let (p2, _) ← onHsScheduleResult p1 (.hkdfSecret ⟨0, 0⟩)
-  let (p3, _) ← onHsScheduleResult p2 (.hkdfSecret ⟨0, 0⟩)
-  let (p4, _) ← onHsScheduleResult p3 (.hkdfSecret ⟨0, 0⟩)
-  let (p5, _) ← onHsScheduleResult p4 (.hkdfSecret ⟨0, 0⟩)
-  let (p6, _) ← onHsScheduleResult p5 .keysInstalled
-  let (s2done, _) ← onHsScheduleResult p6 .keysInstalled
-  let (s3, _) ← onCertVerifySigned s2done fakeSig
-  let (sF, _) ← onServerFinishedMac s3 fakeFinishedMac
+  let (p1, _) ← gate s2 (.hkdfSecret ⟨0, 0⟩)
+  let (p2, _) ← gate p1 (.hkdfSecret ⟨0, 0⟩)
+  let (p3, _) ← gate p2 (.hkdfSecret ⟨0, 0⟩)
+  let (p4, _) ← gate p3 (.hkdfSecret ⟨0, 0⟩)
+  let (p5, _) ← gate p4 (.hkdfSecret ⟨0, 0⟩)
+  let (p6, _) ← gate p5 .keysInstalled
+  let (s2done, _) ← gate p6 .keysInstalled
+  let (s3, _) ← gate s2done (.signature fakeSig)
+  let (sF, _) ← gate s3 (.finishedMac fakeFinishedMac)
   -- pump the application-key stage: 4 derivations then 2 installs, the last of
   -- which lands at `complete` and installs the application epoch
-  let (q1, _) ← onApScheduleResult sF (.hkdfSecret ⟨0, 0⟩)
-  let (q2, _) ← onApScheduleResult q1 (.hkdfSecret ⟨0, 0⟩)
-  let (q3, _) ← onApScheduleResult q2 (.hkdfSecret ⟨0, 0⟩)
-  let (q4, _) ← onApScheduleResult q3 (.hkdfSecret ⟨0, 0⟩)
-  let (q5, _) ← onApScheduleResult q4 .keysInstalled
-  let (s3done, _) ← onApScheduleResult q5 .keysInstalled
+  let (q1, _) ← gate sF (.hkdfSecret ⟨0, 0⟩)
+  let (q2, _) ← gate q1 (.hkdfSecret ⟨0, 0⟩)
+  let (q3, _) ← gate q2 (.hkdfSecret ⟨0, 0⟩)
+  let (q4, _) ← gate q3 (.hkdfSecret ⟨0, 0⟩)
+  let (q5, _) ← gate q4 .keysInstalled
+  let (s3done, _) ← gate q5 .keysInstalled
   let (s4, _) ← onClientFinishedBytes s3done cfWire
-  let (s5, acts) ← onClientFinishedVerified s4 true cfWire
+  let (s5, acts) ← gate s4 .verified
   .ok (s5, acts,
        [s1.handshake, sR.handshake, s2.handshake, s2done.handshake, s3.handshake, sF.handshake,
         s3done.handshake, s4.handshake, s5.handshake])
@@ -90,6 +98,13 @@ def checks : List Check :=
   [ { name := "full synthetic handshake reaches connected"
     , ok := (match runHandshake with
              | .ok (s, _, _) => s.handshake == .connected
+             | .error _ => false) }
+    -- RFC 037 §4.1: because each result is consumed through the correlation dispatcher
+    -- (which retires the answered op), a completed handshake leaves the pending-op set empty —
+    -- the budget measures outstanding work, not cumulative history.
+  , { name := "a successful handshake leaves no crypto ops pending (RFC 037 §4.1)"
+    , ok := (match runHandshake with
+             | .ok (s, _, _) => s.pendingOps.ops.length == 0
              | .error _ => false) }
   , { name := "onClientHello with no signature-scheme overlap fails with handshake_failure (RFC 8446 §9.2)"
     , ok := (match onClientHello s0Ed vchRsaOnly chWire with
@@ -189,3 +204,5 @@ def main : IO UInt32 := do
 end Tests.Handshake
 
 def main : IO UInt32 := Tests.Handshake.main
+
+

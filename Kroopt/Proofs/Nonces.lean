@@ -22,6 +22,21 @@ namespace Proofs
 
 open Kroopt
 
+/-- `allocOpOrFail` as a plain budget `if` (private copy for the nonce/seq proofs). -/
+private theorem allocOpOrFail_eq (s : State) (kind : CryptoOpKind) (epoch : Epoch)
+    (dir : Option Direction) (k : OperationId → State → HsResult) :
+    allocOpOrFail s kind epoch dir k =
+      if s.pendingOps.ops.length ≥ ResourceLimits.standard.maxPendingCryptoOps then
+        hsFail s (alertForResourceLimit .pendingCryptoOps) (.resourceLimit .pendingCryptoOps)
+      else
+        k ⟨s.nextOpId⟩
+          { s with nextOpId := s.nextOpId + 1
+                   pendingOps := ⟨⟨⟨s.nextOpId⟩, kind, epoch, dir⟩ :: s.pendingOps.ops⟩ } := by
+  unfold allocOpOrFail State.allocOp
+  by_cases hc : s.pendingOps.ops.length ≥ ResourceLimits.standard.maxPendingCryptoOps
+  · simp only [if_pos hc]
+  · simp only [if_neg hc]
+
 /-- **Nonce uniqueness within an epoch (RFC 005 §7.3).** For a fixed IV-base
 identity, two sequence numbers with different values derive different nonces.
 Because the concrete derivation `iv_base XOR left_pad(seq)` is a bijection in the
@@ -35,25 +50,112 @@ theorem nonce_unique_within_epoch (ivBaseId : Nat) (s1 s2 : SeqNo)
   have := congrArg RecordNonce.seqValue h
   simpa [deriveNonce] using this
 
-/-- **A successful seal advances the write sequence by one (RFC 005 §7.1).** -/
-theorem successful_seal_increments_write_seq
+/-- **Seal step: register-and-advance, or fail closed (RFC 005 §7.1, RFC 037 §4.1).**
+
+Crypto-op budget enforcement (RFC 037 §4.1) means an `Except.ok` from `handleAppSend` no
+longer implies "the record was accepted". If the AEAD-seal op cannot be registered (the
+pending-op budget is exhausted) — or the write sequence has already overflowed — the
+handler returns a fatal-close result instead. The honest invariant is therefore
+disjunctive:
+
+* **registered:** the write sequence advances by exactly one and a seal `callCrypto` is
+  emitted (its metadata captured `writeMeta s`, i.e. the pre-advance sequence); or
+* **fail-closed:** the connection is terminal, no crypto op / plaintext crosses the
+  boundary, and the sequence is unchanged.
+
+Nonce uniqueness is preserved either way: the fail-closed branch emits no record, so it
+cannot reuse an `(epoch, direction, seq)` nonce. The advance is genuinely conditional on
+the op being *registered*, not on the function returning `ok`. -/
+theorem seal_step_either_registers_and_advances_or_fails_closed
     (s s' : State) (b : ByteArray) (acts : List OutputAction)
-    (h : handleAppSend s b = .ok (s', acts))
-    (hsucc : s.writeEpoch.seq.next ≠ none) :
-    s'.writeEpoch.seq.value = s.writeEpoch.seq.value + 1 := by
+    (h : handleAppSend s b = .ok (s', acts)) :
+    (s'.writeEpoch.seq.value = s.writeEpoch.seq.value + 1
+      ∧ ∃ c oid meta aad inner, OutputAction.callCrypto c oid (.aeadSeal meta aad inner) ∈ acts)
+    ∨ (s'.writeEpoch.seq.value = s.writeEpoch.seq.value
+      ∧ s'.handshake.isTerminal = true
+      ∧ (∀ c oid o, OutputAction.callCrypto c oid o ∉ acts)
+      ∧ (∀ c bb, OutputAction.emitPlaintext c bb ∉ acts)
+      ∧ (∀ c n, OutputAction.acceptPlaintextBytes c n ∉ acts)) := by
   unfold handleAppSend recordFailAlert at h
   split at h
-  · rename_i hnone; exact absurd hnone hsucc
-  · rename_i sq hsome
+  · -- write-sequence overflow (next = none): fail closed, sequence unchanged
+    right
     simp only [Except.ok.injEq, Prod.mk.injEq] at h
-    obtain ⟨hs, -⟩ := h
-    rw [← hs]
-    simp only [State.allocOp]
-    exact SeqNo.next_some_succ hsome
+    obtain ⟨hs, ha⟩ := h
+    refine ⟨?_, ?_, ?_, ?_, ?_⟩
+    · rw [← hs]
+    · rw [← hs]; rfl
+    · intro c oid o hin; rw [← ha] at hin
+      simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq, or_self, or_false] at hin
+    · intro c bb hin; rw [← ha] at hin
+      simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq, or_self, or_false] at hin
+    · intro c n hin; rw [← ha] at hin
+      simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq, or_self, or_false] at hin
+  · rename_i sq hsome
+    simp only [allocOpOrFail_eq] at h
+    split at h
+    · -- crypto-op budget exhausted: fail closed, sequence unchanged
+      right
+      unfold hsFail at h
+      simp only [Except.ok.injEq, Prod.mk.injEq] at h
+      obtain ⟨hs, ha⟩ := h
+      refine ⟨?_, ?_, ?_, ?_, ?_⟩
+      · rw [← hs]
+      · rw [← hs]; rfl
+      · intro c oid o hin; rw [← ha] at hin
+        simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq, or_self, or_false] at hin
+      · intro c bb hin; rw [← ha] at hin
+        simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq, or_self, or_false] at hin
+      · intro c n hin; rw [← ha] at hin
+        simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq, or_self, or_false] at hin
+    · -- registered: the seal op is emitted and the write sequence advances by one
+      left
+      simp only [Except.ok.injEq, Prod.mk.injEq] at h
+      obtain ⟨hs, ha⟩ := h
+      refine ⟨?_, ?_⟩
+      · rw [← hs]; exact SeqNo.next_some_succ hsome
+      · rw [← ha]; exact ⟨_, _, _, _, _, List.mem_cons_self _ _⟩
 
-/-- **A successful open advances the read sequence by one (RFC 005 §7.1).** When
-handling an `aeadOpened` result buffers application content, the read sequence
-moves up by exactly one. -/
+/-- Convenience (registered branch): a seal that actually emits its AEAD-seal op advances
+the write sequence by exactly one. -/
+theorem successful_registered_seal_increments_write_seq
+    (s s' : State) (b : ByteArray) (acts : List OutputAction)
+    (h : handleAppSend s b = .ok (s', acts))
+    (hreg : ∃ c oid meta aad inner,
+      OutputAction.callCrypto c oid (.aeadSeal meta aad inner) ∈ acts) :
+    s'.writeEpoch.seq.value = s.writeEpoch.seq.value + 1 := by
+  rcases seal_step_either_registers_and_advances_or_fails_closed s s' b acts h with
+    ⟨hadv, -⟩ | ⟨-, -, hnc, -, -⟩
+  · exact hadv
+  · obtain ⟨c, oid, meta, aad, inner, hin⟩ := hreg
+    exact absurd hin (hnc c oid _)
+
+/-- Convenience (fail-closed branch): a seal that does *not* register its op (budget
+exhausted or sequence overflow) advances nothing and lets no plaintext cross. -/
+theorem budget_failed_seal_does_not_advance_write_seq
+    (s s' : State) (b : ByteArray) (acts : List OutputAction)
+    (h : handleAppSend s b = .ok (s', acts))
+    (hnoreg : ¬ ∃ c oid meta aad inner,
+      OutputAction.callCrypto c oid (.aeadSeal meta aad inner) ∈ acts) :
+    s'.writeEpoch.seq.value = s.writeEpoch.seq.value
+    ∧ (∀ c bb, OutputAction.emitPlaintext c bb ∉ acts)
+    ∧ (∀ c n, OutputAction.acceptPlaintextBytes c n ∉ acts) := by
+  rcases seal_step_either_registers_and_advances_or_fails_closed s s' b acts h with
+    ⟨-, hreg⟩ | ⟨hseq, -, -, hne, hna⟩
+  · exact absurd hreg hnoreg
+  · exact ⟨hseq, hne, hna⟩
+
+/-- **A successful open advances the read sequence by one (RFC 005 §7.1).** When handling
+an `aeadOpened` result buffers application content, the read sequence moves up by exactly
+one.
+
+Note the asymmetry with the seal path (RFC 037 §4.1): the read sequence advances *here*,
+on the authenticated open **result** (`handleCryptoResult`), which performs no allocation —
+so this advance is unconditional on a successful authenticated open and needs no disjunctive
+treatment. The budget gate sits one step earlier, at *registration* of the inbound
+AEAD-open op in `handleTransportBytes`; its fail-closed safety (no plaintext, fatal close,
+no op registered) is carried by `handleTransportBytes_no_emit` / `…_no_accept` and the
+read-direction metadata by `KeySeparation.aeadOpen_uses_read_keys`. -/
 theorem successful_open_increments_read_seq
     (s s' : State) (op : OperationId) (pt : ByteArray) (acts : List OutputAction)
     (h : handleCryptoResult s op (.aeadOpened pt) = .ok (s', acts))

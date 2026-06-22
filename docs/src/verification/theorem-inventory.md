@@ -94,8 +94,8 @@ core.
 | # | Theorem | Property | RFC | Axioms | Status |
 |---|---------|----------|-----|--------|--------|
 | 20 | `SeqNo.next_some_succ` / `SeqNo.next_none_overflow` | A successful increment is exactly `+1`; `next` returns `none` only at the `UInt64` ceiling. | RFC 005 §7.1–7.2 | propext | proved |
-| 21 | `successful_seal_increments_write_seq` | A successful seal advances the write sequence by exactly one. | RFC 005 §7.1 | propext | proved |
-| 22 | `successful_open_increments_read_seq` | A successful open (that buffers content) advances the read sequence by exactly one. | RFC 005 §7.1 | propext | proved |
+| 21 | `seal_step_either_registers_and_advances_or_fails_closed` (+ derived `successful_registered_seal_increments_write_seq`, `budget_failed_seal_does_not_advance_write_seq`) | A *registered* seal reserves the current write sequence and advances it by exactly one; if the crypto-op budget is exhausted no op is registered, no plaintext crosses, and the connection fails closed without advancing the sequence. | RFC 005 §7.1, RFC 037 §4.1 | propext | proved |
+| 22 | `successful_open_increments_read_seq` | A successful authenticated open (that buffers content) advances the read sequence by exactly one. The inbound AEAD-open op is budget-gated earlier, at registration in `handleTransportBytes`; this advance runs on the authenticated result, so it is unconditional. | RFC 005 §7.1, RFC 037 §4.1 | propext | proved |
 | 23 | `no_crypto_on_write_seq_overflow` | At the sequence ceiling a send requests no crypto and fails — no seal with a wrapped sequence (no silent wrap). | RFC 005 §7.2 | propext | proved |
 | 24 | `nonce_unique_within_epoch` | For a fixed IV base, distinct sequence values derive distinct nonces. | RFC 005 §7.3 | none | proved |
 | 25 | `aeadSeal_uses_write_keys` | Every seal request carries write-direction, application-epoch metadata. | RFC 005 §7.4–7.5 | propext | proved |
@@ -179,6 +179,8 @@ stands in, and the correlation guarantee holds regardless of provider.
 |---|---------|----------|-----|--------|--------|
 | 37 | `stale_crypto_result_rejected` | A crypto result whose operation id is not outstanding (stale / duplicate / forged) is a complete no-op — state unchanged, no actions. | RFC 008 §5 | propext | proved |
 | 38 | `stale_crypto_result_no_plaintext` | A stale crypto result emits no application plaintext (corollary). | RFC 008 §5 | propext | proved |
+| 39 | `correlated_result_clears_op` | Retiring a crypto op (what every correlated-result consumption does, via `clearOp`) removes exactly that op from the pending set — so `PendingCryptoOps` tracks *outstanding* work, not a history of every request. | RFC 037 §4.1 | propext | proved |
+| 40 | `clearOp_does_not_grow_pending` | Retirement never grows the pending set; only gated `allocOp` (below `maxPendingCryptoOps`) can. Together with row 39, a completed handshake returns the pending set to zero, keeping the tight cap meaningful. | RFC 037 §4.1 | propext | proved |
 
 All M2–M5 safety theorems were re-checked over the guarded `handleCryptoResult`
 and still hold; `aead_open_failure_no_plaintext` now carries an explicit

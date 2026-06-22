@@ -26,7 +26,7 @@ def connectedState : State :=
 
 /-- Connected with an outstanding record-open op, for the inbound-alert path. -/
 def connectedWithOp : State :=
-  let (_, s) := connectedState.allocOp .aeadOpen .application (some .read)
+  let (_, s) := (connectedState.allocOp .aeadOpen .application (some .read) ResourceLimits.standard.maxPendingCryptoOps).toOption.getD (⟨0⟩, connectedState)
   s
 
 def failedState : State :=

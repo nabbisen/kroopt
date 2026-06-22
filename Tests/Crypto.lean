@@ -38,8 +38,38 @@ def noEntropyCaps : CryptoCapabilities :=
 /-- A connected state with operation id 0 outstanding (a record-open). -/
 def connectedWithOp : State :=
   let s := State.initial ⟨0, 0⟩ ⟨0⟩ .sha256
-  let (_, s) := s.allocOp .aeadOpen .application (some .read)
+  let (_, s) := (s.allocOp .aeadOpen .application (some .read) ResourceLimits.standard.maxPendingCryptoOps).toOption.getD (⟨0⟩, s)
   { s with handshake := .connected }
+
+/-- RFC 037 §4.1 — a state carrying exactly `n` outstanding pending crypto ops, used to
+probe the `maxPendingCryptoOps` budget boundary directly. -/
+def opsAtDepth (n : Nat) : State :=
+  let s := State.initial ⟨0, 0⟩ ⟨0⟩ .sha256
+  { s with pendingOps := ⟨(List.range n).map
+      (fun _ => { id := ⟨0⟩, expectedKind := .aeadSeal,
+                  expectedEpoch := .application, expectedDirection := some .write })⟩ }
+
+/-- `true` iff `allocOp` at op-depth `n` under cap `cap` reports the budget error. -/
+def allocErrorsAtCap (n cap : Nat) : Bool :=
+  match (opsAtDepth n).allocOp .aeadSeal .application (some .write) cap with
+  | .error .pendingCryptoOps => true
+  | _ => false
+
+/-- `true` iff `allocOp` at op-depth `n` under cap `cap` succeeds (registers the op). -/
+def allocSucceedsAtCap (n cap : Nat) : Bool :=
+  match (opsAtDepth n).allocOp .aeadSeal .application (some .write) cap with
+  | .ok _ => true
+  | _ => false
+
+/-- A *connected* state already at the pending-op budget; the next seal cannot register. -/
+def connectedAtBudget : State :=
+  { (opsAtDepth ResourceLimits.standard.maxPendingCryptoOps) with handshake := .connected }
+
+/-- Drive an application send from the budget-saturated connected state. -/
+def appSendAtBudget : Option (State × List OutputAction) :=
+  match step connectedAtBudget (.appSend ⟨0, 0⟩ (ByteArray.mk #[0x41])) with
+  | .ok r => some r
+  | .error _ => none
 
 def stateAfter (s : State) (ev : InputEvent) : Option State :=
   match step s ev with
@@ -47,8 +77,35 @@ def stateAfter (s : State) (ev : InputEvent) : Option State :=
   | .error _ => none
 
 def checks : List Check :=
-  [ -- capability validation
-    { name := "fake provider supports the required initial crypto set"
+  [ -- RFC 037 §4.1 crypto-op budget enforcement
+    { name := "allocOp at the pending-op budget fails closed (.pendingCryptoOps)"
+    , ok := allocErrorsAtCap ResourceLimits.standard.maxPendingCryptoOps
+              ResourceLimits.standard.maxPendingCryptoOps }
+  , { name := "allocOp one below the budget still registers the op"
+    , ok := allocSucceedsAtCap (ResourceLimits.standard.maxPendingCryptoOps - 1)
+              ResourceLimits.standard.maxPendingCryptoOps }
+  , { name := "allocOp above the budget fails closed"
+    , ok := allocErrorsAtCap (ResourceLimits.standard.maxPendingCryptoOps + 3)
+              ResourceLimits.standard.maxPendingCryptoOps }
+  , { name := "app-send at the budget fails closed: terminal, internalError alert, no seal"
+    , ok := (match appSendAtBudget with
+             | some (s', acts) =>
+                 s'.handshake.isTerminal
+                 && acts.any (fun a => match a with | .failWithAlert _ .internalError => true | _ => false)
+                 && acts.all (fun a => match a with | .callCrypto _ _ _ => false | _ => true)
+             | none => false) }
+    -- RFC 037 §4.1 clear-on-failure: a correlated crypto *failure* retires its op (so the
+    -- pending set stays exactly-once-consistent) and fails the connection closed.
+  , { name := "a verify-failed crypto result clears its op and fails closed"
+    , ok := (match handleCryptoResult connectedWithOp ⟨0⟩ .verifyFailed with
+             | .ok (s', _) => s'.handshake.isTerminal && (s'.pendingOps.contains ⟨0⟩ == false)
+             | .error _ => false) }
+  , { name := "a provider-failed crypto result clears its op and fails closed"
+    , ok := (match handleCryptoResult connectedWithOp ⟨0⟩ (.failed .providerInternal) with
+             | .ok (s', _) => s'.handshake.isTerminal && (s'.pendingOps.contains ⟨0⟩ == false)
+             | .error _ => false) }
+    -- capability validation
+  , { name := "fake provider supports the required initial crypto set"
     , ok := (match validateCapabilities fakeCapabilities requiredInitial with
              | .ok () => true | _ => false) }
   , { name := "weak provider missing X25519 is rejected (config error)"
