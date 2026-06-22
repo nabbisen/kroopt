@@ -204,23 +204,28 @@ def checks : List Check :=
                             (ByteArray.mk #[])) }
     -- (2) computeServerFinished is hashed over exactly the prefix bytes the core carried.
   , { name := "computeServerFinished hashes the core-carried prefix bytes"
-    , ok := (match resolveCryptoTranscript (CryptoOp.computeServerFinished .sha256 samplePrefix) with
+    , ok := (match resolveCryptoTranscript .sha256 (CryptoOp.computeServerFinished .sha256 samplePrefix) with
              | .computeServerFinished _ h => eqB h (Hacl.sha256 samplePrefix)
+             | _ => false) }
+    -- (2b) a SHA-384 Finished op is hashed with SHA-384, not SHA-256 (AES-256-GCM-SHA384 path).
+  , { name := "computeServerFinished under .sha384 hashes the prefix with SHA-384"
+    , ok := (match resolveCryptoTranscript .sha256 (CryptoOp.computeServerFinished .sha384 samplePrefix) with
+             | .computeServerFinished _ h => eqB h (Hacl.sha384 samplePrefix) && h.size == 48
              | _ => false) }
     -- (3) signCertificateVerify wraps certVerifyContent over the hash of the carried prefix.
   , { name := "signCertificateVerify wraps certVerifyContent over the carried prefix hash"
-    , ok := (match resolveCryptoTranscript (CryptoOp.signCertificateVerify .ed25519 samplePrefix) with
+    , ok := (match resolveCryptoTranscript .sha256 (CryptoOp.signCertificateVerify .ed25519 samplePrefix) with
              | .signCertificateVerify _ inp => eqB inp (Flight.certVerifyContent (Hacl.sha256 samplePrefix))
              | _ => false) }
     -- (4) verifyFinished (client Finished) hashes the carried prefix.
   , { name := "verifyFinished hashes the carried prefix"
-    , ok := (match resolveCryptoTranscript (CryptoOp.verifyFinished .sha256 samplePrefix (ByteArray.mk #[1,2,3])) with
+    , ok := (match resolveCryptoTranscript .sha256 (CryptoOp.verifyFinished .sha256 samplePrefix (ByteArray.mk #[1,2,3])) with
              | .verifyFinished _ h _ => eqB h (Hacl.sha256 samplePrefix)
              | _ => false) }
     -- (5) traffic-secret HKDF hashes its carried prefix context; 'derived' keeps its own context.
   , { name := "traffic-secret HKDF hashes its carried prefix; 'derived' keeps its context"
-    , ok := (let bound := resolveCryptoTranscript (CryptoOp.hkdfExpandLabel .sha256 ⟨7,0⟩ "s hs traffic" samplePrefix 32)
-             let unbound := resolveCryptoTranscript (CryptoOp.hkdfExpandLabel .sha256 ⟨7,0⟩ "derived" samplePrefix 32)
+    , ok := (let bound := resolveCryptoTranscript .sha256 (CryptoOp.hkdfExpandLabel .sha256 ⟨7,0⟩ "s hs traffic" samplePrefix 32)
+             let unbound := resolveCryptoTranscript .sha256 (CryptoOp.hkdfExpandLabel .sha256 ⟨7,0⟩ "derived" samplePrefix 32)
              (match bound with
               | .hkdfExpandLabel _ _ _ c _ => eqB c (Hacl.sha256 samplePrefix)
               | _ => false)
@@ -229,7 +234,7 @@ def checks : List Check :=
                  | _ => false)) }
     -- (6) a non-transcript op (ECDHE) passes through resolution unchanged.
   , { name := "non-transcript ops pass through resolution unchanged"
-    , ok := (match resolveCryptoTranscript (CryptoOp.ecdheX25519 (ByteArray.mk #[9,9])) with
+    , ok := (match resolveCryptoTranscript .sha256 (CryptoOp.ecdheX25519 (ByteArray.mk #[9,9])) with
              | .ecdheX25519 p => eqB p (ByteArray.mk #[9,9])
              | _ => false) }
     -- (7) a .handshake-epoch message is sealed as a real protected record (outer 0x17) that

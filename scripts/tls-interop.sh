@@ -83,12 +83,14 @@ echo
 echo "=== Driver: blocking push (kroopt-live-server) ==="
 test_openssl kroopt-live-server "blocking" TLS_CHACHA20_POLY1305_SHA256
 test_openssl kroopt-live-server "blocking" TLS_AES_128_GCM_SHA256
+test_openssl kroopt-live-server "blocking" TLS_AES_256_GCM_SHA384
 test_python  kroopt-live-server "blocking"
 
 echo
 echo "=== Driver: non-blocking readiness reactor (kroopt-live-server-nb) ==="
 test_openssl kroopt-live-server-nb "reactor" TLS_CHACHA20_POLY1305_SHA256
 test_openssl kroopt-live-server-nb "reactor" TLS_AES_128_GCM_SHA256
+test_openssl kroopt-live-server-nb "reactor" TLS_AES_256_GCM_SHA384
 test_python  kroopt-live-server-nb "reactor"
 
 rm -f "$SOCK"

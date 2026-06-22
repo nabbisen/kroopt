@@ -122,8 +122,8 @@ verified assembly in 0.66.0-dev; it reuses the SHA-256 schedule) alongside
 is withheld until the SHA-384 key schedule lands; a config requiring it is rejected at validation
 rather than negotiated and then failed at the record layer. -/
 def realCapabilities : CryptoCapabilities :=
-  { suites := [.aes128GcmSha256, .chacha20Poly1305Sha256]
-    hashAlgorithms := [.sha256]
+  { suites := [.aes128GcmSha256, .aes256GcmSha384, .chacha20Poly1305Sha256]
+    hashAlgorithms := [.sha256, .sha384]
     groups := [.x25519]
     signatureSchemes := [.ed25519]
     randomSource := .osCsprng

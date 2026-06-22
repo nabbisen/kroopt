@@ -5,6 +5,49 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.72.0-dev] — AES-256-GCM-SHA384 negotiated end-to-end + OpenSSL-validated — 2026-06-14
+
+`TLS_AES_256_GCM_SHA384` now negotiates and serves a full TLS 1.3 handshake plus application-data
+round-trip against **real OpenSSL** — on both the blocking and non-blocking reactor drivers. This
+completes the third and last TLS 1.3 cipher suite (all of AES-128-GCM, AES-256-GCM, and
+ChaCha20-Poly1305 are now interop-validated) and is the payoff of the SHA-384 primitive (0.70) and
+hash-parameterized schedule (0.71) work.
+
+### Core (the proof-touching step — proofs intact)
+- `Kroopt/Core/CipherSuite.lean`: added a pure `HashAlgorithm.digestLen` (32/48) so the verified
+  core can size HKDF ops without the FFI-zone `KeySchedule.hashLen`.
+- `Kroopt/Core/KeyScheduleDriver.lean`: the driver now emits every HKDF-Extract / Expand-Label op
+  under `suite.hashAlg` and `digestLen` instead of hardcoded `.sha256`/`32` (the `expand` helper
+  takes the hash). Added the `emptyHashSha384` constant and `emptyHashFor` so the two
+  Derive-Secret(_, "derived") steps use the suite's empty hash. The driver's proofs
+  (`Kroopt/Proofs/KeyScheduleDriver.lean`) match the op constructors with the alg/length as
+  wildcards, so schedule-ops-only / monotone-progress / absorbing-complete are unaffected.
+- `Kroopt/Core/Handshake.lean`: `onClientHello` sets the transcript's `hashAlg` to the negotiated
+  suite's hash, and the post-ECDHE start passes the suite's empty hash. The Finished ops already
+  carried `s.transcript.hashAlg`, so they now compute under SHA-384 for the AES-256 suite.
+
+### Interpreter (impure execution — no proof surface)
+- `Kroopt/Conn/Interpreter.lean`: `resolveCryptoTranscript` hashes the core-carried transcript
+  prefix under the op's `HashAlgorithm` (and, for the alg-less CertificateVerify op, the negotiated
+  suite's hash looked up from the installed handshake keys) rather than hardcoded SHA-256.
+
+### Negotiation
+- `Kroopt/Parse/Handshake.lean`: `suiteOfU16` recognizes `0x1302` (TLS_AES_256_GCM_SHA384).
+- `Kroopt/Crypto/Provider.lean`: `realCapabilities` advertises `aes256GcmSha384` and `sha384`.
+
+### Tests
+- `kroopt-correspondence-test` (+1, **34**): a SHA-384 Finished op is shown to be hashed with
+  SHA-384 (48-byte digest), not SHA-256.
+- `kroopt-capabilities-test`: the real profile/provider now *accept* AES-256-GCM-SHA384 (was a
+  rejection assertion).
+- `scripts/tls-interop.sh`: AES-256-GCM-SHA384 added to the OpenSSL matrix on both drivers — OpenSSL
+  reports `Cipher is TLS_AES_256_GCM_SHA384`, the handshake completes, and app data round-trips.
+
+### Status
+- 94 public theorems unchanged; all 24 deterministic suites green; parser fuzz clean. All three TLS
+  1.3 suites negotiate and interop with OpenSSL. The verified core, not the interpreter, remains the
+  single transcript and key-schedule authority.
+
 ## [0.71.0-dev] — Hash-parameterized key schedule + provider (toward AES-256-GCM-SHA384) — 2026-06-14
 
 The second step toward `TLS_AES_256_GCM_SHA384`: the crypto *execution* layer now runs the key

@@ -35,9 +35,9 @@ def main : IO Unit := do
   let realAcceptsAes128 :=
     match validateServerConfigCapabilities realCapabilities aesConfig with
     | .ok () => true | _ => false
-  let realRejectsAes256 :=
+  let realAcceptsAes256 :=
     match validateServerConfigCapabilities realCapabilities aes256Config with
-    | .error (.unsupportedSuite _) => true | _ => false
+    | .ok () => true | _ => false
   let realRejectsEcdsa :=
     match validateServerConfigCapabilities realCapabilities ecdsaConfig with
     | .error (.unsupportedSignatureScheme _) => true | _ => false
@@ -49,11 +49,11 @@ def main : IO Unit := do
     | .ok () => true | _ => false
   let realIsOsCsprng :=
     match realCapabilities.randomSource with | .osCsprng => true | _ => false
-  -- the real *provider* (not just the constant) advertises the AES-256/SHA-384 boundary
+  -- the real *provider* now advertises AES-256-GCM-SHA384 (the SHA-384 schedule landed)
   let realProv := mkRealProvider testCfg
-  let provRejectsAes256 :=
+  let provAcceptsAes256 :=
     match validateServerConfigCapabilities realProv.capabilities aes256Config with
-    | .error (.unsupportedSuite _) => true | _ => false
+    | .ok () => true | _ => false
   -- deterministic randomness cannot come out of the real provider
   let provRandErrors :=
     match RealProvider.submit testCfg SecretArena.empty ⟨0⟩ (.randomBytes 32) with
@@ -64,12 +64,12 @@ def main : IO Unit := do
 
   let checks : List (String × Bool) :=
     [ ("real profile accepts TLS_AES_128_GCM_SHA256 (seal path suite-aware, SHA-256 schedule)", realAcceptsAes128)
-    , ("real profile still rejects TLS_AES_256_GCM_SHA384 (SHA-384 schedule not yet landed)", realRejectsAes256)
+    , ("real profile now accepts TLS_AES_256_GCM_SHA384 (SHA-384 schedule landed)", realAcceptsAes256)
     , ("real profile rejects an ECDSA signature scheme at config validation", realRejectsEcdsa)
     , ("real profile accepts the constrained ChaCha/Ed25519 config", realAcceptsGood)
     , ("the fake/test profile accepts AES-256 too (the two profiles still differ)", fakeAcceptsAes)
     , ("the real profile's random source is the OS CSPRNG", realIsOsCsprng)
-    , ("mkRealProvider advertises the AES-256/SHA-384 boundary (rejects AES-256)", provRejectsAes256)
+    , ("mkRealProvider advertises AES-256-GCM-SHA384 (accepts AES-256)", provAcceptsAes256)
     , ("a randomBytes op reaching the real provider is an error, not zeros", provRandErrors)
     , ("Hacl.randomBytes is fail-closed and typed (32-byte success)", entropyTypedOk) ]
   let mut passed := 0

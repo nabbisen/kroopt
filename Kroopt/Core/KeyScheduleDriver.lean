@@ -128,12 +128,25 @@ def start (suite : CipherSuite) (peerShare emptyHash hsTranscript : ByteArray) :
    CryptoOp.ecdheX25519 peerShare)
 
 /-- SHA-256 of the empty string (RFC 8446 §7.1 "empty hash"), used as the context
-for the two Derive-Secret(_, "derived") steps. A fixed protocol constant for the
-SHA-256 suites; computing it from the transcript module is a later refinement. -/
+for the two Derive-Secret(_, "derived") steps under a SHA-256 suite. -/
 def emptyHashSha256 : ByteArray :=
   ByteArray.mk #[0xe3, 0xb0, 0xc4, 0x42, 0x98, 0xfc, 0x1c, 0x14, 0x9a, 0xfb, 0xf4, 0xc8,
     0x99, 0x6f, 0xb9, 0x24, 0x27, 0xae, 0x41, 0xe4, 0x64, 0x9b, 0x93, 0x4c, 0xa4, 0x95,
     0x99, 0x1b, 0x78, 0x52, 0xb8, 0x55]
+
+/-- SHA-384 of the empty string, the "empty hash" for a SHA-384 suite. Like
+`emptyHashSha256`, a fixed public protocol constant (so the pure core need not call
+the hash provider for it). -/
+def emptyHashSha384 : ByteArray :=
+  ByteArray.mk #[0x38, 0xb0, 0x60, 0xa7, 0x51, 0xac, 0x96, 0x38, 0x4c, 0xd9, 0x32, 0x7e,
+    0xb1, 0xb1, 0xe3, 0x6a, 0x21, 0xfd, 0xb7, 0x11, 0x14, 0xbe, 0x07, 0x43, 0x4c, 0x0c,
+    0xc7, 0xbf, 0x63, 0xf6, 0xe1, 0xda, 0x27, 0x4e, 0xde, 0xbf, 0xe7, 0x6f, 0x65, 0xfb,
+    0xd5, 0x1a, 0xd2, 0xf1, 0x48, 0x98, 0xb9, 0x5b]
+
+/-- The empty-string transcript hash for a schedule hash algorithm. -/
+def emptyHashFor : HashAlgorithm → ByteArray
+  | .sha256 => emptyHashSha256
+  | .sha384 => emptyHashSha384
 
 /-- The handshake-key stage as entered post-ECDHE: the ECDHE op has already been
 emitted and answered (by the existing handshake), so this records the shared-secret
@@ -144,12 +157,12 @@ def startPostEcdhe (suite : CipherSuite) (emptyHash hsTranscript : ByteArray)
     (shared : SecretKeyHandle) : State × CryptoOp :=
   ({ phase := .awaitEarly, handles := { shared := some shared }, suite := suite,
      emptyHash := emptyHash, hsTranscript := hsTranscript },
-   CryptoOp.hkdfExtract .sha256 none none)
+   CryptoOp.hkdfExtract suite.hashAlg none none)
 
-/-- Helper: an HKDF-Expand-Label op for a 32-byte secret derivation. -/
-def expand (secret : SecretKeyHandle) (label : String) (ctx : ByteArray) :
+/-- Helper: an HKDF-Expand-Label op for a Hash.length secret derivation under `h`. -/
+def expand (h : HashAlgorithm) (secret : SecretKeyHandle) (label : String) (ctx : ByteArray) :
     CryptoOp :=
-  CryptoOp.hkdfExpandLabel .sha256 secret label ctx 32
+  CryptoOp.hkdfExpandLabel h secret label ctx h.digestLen
 
 /-- Consume the awaited crypto result, store the handle it yields, and emit the
 next operation in the schedule. An unexpected result for the current phase is a
@@ -160,22 +173,22 @@ def advance (s : State) (r : CryptoResult) : Except TlsError (State × List Cryp
   | .awaitShared, .ecdheComplete _ sh =>
       let h := { h with shared := some sh }
       .ok ({ s with phase := .awaitEarly, handles := h },
-           [CryptoOp.hkdfExtract .sha256 none none])
+           [CryptoOp.hkdfExtract s.suite.hashAlg none none])
   | .awaitEarly, .hkdfSecret e =>
       let h := { h with early := some e }
-      .ok ({ s with phase := .awaitDerivedHs, handles := h }, [expand e "derived" s.emptyHash])
+      .ok ({ s with phase := .awaitDerivedHs, handles := h }, [expand s.suite.hashAlg e "derived" s.emptyHash])
   | .awaitDerivedHs, .hkdfSecret d =>
       let h := { h with derivedHs := some d }
       .ok ({ s with phase := .awaitHandshake, handles := h },
-           [CryptoOp.hkdfExtract .sha256 (some d) h.shared])
+           [CryptoOp.hkdfExtract s.suite.hashAlg (some d) h.shared])
   | .awaitHandshake, .hkdfSecret hs =>
       let h := { h with handshake := some hs }
       .ok ({ s with phase := .awaitServerHs, handles := h },
-           [expand hs "s hs traffic" s.hsTranscript])
+           [expand s.suite.hashAlg hs "s hs traffic" s.hsTranscript])
   | .awaitServerHs, .hkdfSecret shs =>
       let h := { h with sHs := some shs }
       .ok ({ s with phase := .awaitClientHs, handles := h },
-           [expand (h.handshake.getD shs) "c hs traffic" s.hsTranscript])
+           [expand s.suite.hashAlg (h.handshake.getD shs) "c hs traffic" s.hsTranscript])
   | .awaitClientHs, .hkdfSecret chs =>
       let h := { h with cHs := some chs }
       .ok ({ s with phase := .awaitInstallWriteHs, handles := h },
@@ -192,15 +205,15 @@ def advance (s : State) (r : CryptoResult) : Except TlsError (State × List Cryp
   | .awaitDerivedMs, .hkdfSecret d =>
       let h := { h with derivedMs := some d }
       .ok ({ s with phase := .awaitMaster, handles := h },
-           [CryptoOp.hkdfExtract .sha256 (some d) none])
+           [CryptoOp.hkdfExtract s.suite.hashAlg (some d) none])
   | .awaitMaster, .hkdfSecret m =>
       let h := { h with master := some m }
       .ok ({ s with phase := .awaitServerAp, handles := h },
-           [expand m "s ap traffic" s.apTranscript])
+           [expand s.suite.hashAlg m "s ap traffic" s.apTranscript])
   | .awaitServerAp, .hkdfSecret sap =>
       let h := { h with sAp := some sap }
       .ok ({ s with phase := .awaitClientAp, handles := h },
-           [expand (h.master.getD sap) "c ap traffic" s.apTranscript])
+           [expand s.suite.hashAlg (h.master.getD sap) "c ap traffic" s.apTranscript])
   | .awaitClientAp, .hkdfSecret cap =>
       let h := { h with cAp := some cap }
       .ok ({ s with phase := .awaitInstallWriteAp, handles := h },
@@ -222,7 +235,7 @@ def resumeApplication (s : State) (apTranscript : ByteArray) :
     Except TlsError (State × List CryptoOp) :=
   if s.phase = .handshakeKeysInstalled then
     .ok ({ s with phase := .awaitDerivedMs, apTranscript := apTranscript },
-         [expand (s.handles.handshake.getD ⟨0, 0⟩) "derived" s.emptyHash])
+         [expand s.suite.hashAlg (s.handles.handshake.getD ⟨0, 0⟩) "derived" s.emptyHash])
   else
     .error .internalInvariantFailure
 

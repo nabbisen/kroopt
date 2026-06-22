@@ -15,6 +15,18 @@ inductive HashAlgorithm where
   | sha384
   deriving DecidableEq, Repr, Inhabited
 
+namespace HashAlgorithm
+
+/-- Output length in bytes of the transcript/HKDF hash: 32 for SHA-256, 48 for
+SHA-384. The pure-core counterpart of `KeySchedule.hashLen` (which lives in the
+FFI zone), so the verified core can size HKDF-Expand-Label ops without depending
+on the crypto provider. -/
+def digestLen : HashAlgorithm → Nat
+  | sha256 => 32
+  | sha384 => 48
+
+end HashAlgorithm
+
 /-- TLS 1.3 AEAD cipher suites. AES-128-GCM and ChaCha20-Poly1305 are the
 required initial set; AES-256-GCM is optional (requirements §9.3). -/
 inductive CipherSuite where

@@ -26,7 +26,7 @@ The driver is a fuel-bounded loop, so it can never spin on repeated `wouldBlock`
 namespace Kroopt.Conn
 
 open Kroopt (TlsError TransportError CryptoError)
-open Kroopt.Core (State InputEvent OutputAction HandshakeInfo CryptoOp)
+open Kroopt.Core (State InputEvent OutputAction HandshakeInfo CryptoOp HashAlgorithm)
 open Kroopt.Crypto (CryptoProvider SecretArena)
 
 /-- How many bytes a single `readTransport` requests. -/
@@ -69,17 +69,17 @@ bytes (`TranscriptState.prefixBytes`) in the op. The interpreter only computes t
 provider expects — it never reconstructs or re-accumulates the transcript. For HKDF, only the
 traffic-secret derivations carry a transcript prefix; other steps (e.g. the `derived` step) carry
 their own context and pass through. Non-transcript ops (ECDHE, AEAD) pass through unchanged. -/
-def resolveCryptoTranscript : CryptoOp → CryptoOp
+def resolveCryptoTranscript (hsHash : HashAlgorithm) : CryptoOp → CryptoOp
   | .signCertificateVerify scheme pfx =>
-      .signCertificateVerify scheme (Flight.certVerifyContent (Kroopt.Crypto.Hacl.sha256 pfx))
+      .signCertificateVerify scheme (Flight.certVerifyContent (Kroopt.Crypto.KeySchedule.hashOf hsHash pfx))
   | .computeServerFinished alg pfx =>
-      .computeServerFinished alg (Kroopt.Crypto.Hacl.sha256 pfx)
+      .computeServerFinished alg (Kroopt.Crypto.KeySchedule.hashOf alg pfx)
   | .verifyFinished alg pfx received =>
-      .verifyFinished alg (Kroopt.Crypto.Hacl.sha256 pfx) received
+      .verifyFinished alg (Kroopt.Crypto.KeySchedule.hashOf alg pfx) received
   | .hkdfExpandLabel alg secret label ctx len =>
       if label == "s hs traffic" || label == "c hs traffic"
          || label == "s ap traffic" || label == "c ap traffic" || label == "exp master" then
-        .hkdfExpandLabel alg secret label (Kroopt.Crypto.Hacl.sha256 ctx) len
+        .hkdfExpandLabel alg secret label (Kroopt.Crypto.KeySchedule.hashOf alg ctx) len
       else
         .hkdfExpandLabel alg secret label ctx len
   | op => op
@@ -215,7 +215,8 @@ def execAction {τ : Type} [Transport τ] (prov : CryptoProvider) (rt : RuntimeS
   | .enableWriteInterest _  => ({ rt with writeInterest := true }, Transport.enableWrite tr (Transport.fd tr), [])
   | .disableWriteInterest _ => ({ rt with writeInterest := false }, Transport.disableWrite tr (Transport.fd tr), [])
   | .callCrypto conn op req =>
-      match prov.submit rt.arena op (resolveRecordAAD (resolveCryptoTranscript req)) with
+      let hsHash := ((rt.arena.lookupInstalledSuite .write .handshake).map (·.hashAlg)).getD .sha256
+      match prov.submit rt.arena op (resolveRecordAAD (resolveCryptoTranscript hsHash req)) with
       | .ok (arena', r) =>
           if resultMatchesKind req.kind r then
             ({ rt with arena := arena' }, tr, [InputEvent.cryptoResult conn op r])

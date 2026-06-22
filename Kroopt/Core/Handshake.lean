@@ -173,7 +173,8 @@ def onClientHello (s : State) (vch : ValidClientHello) (chWire : ByteArray) : Hs
                       serverRandom := none
                       selectedCertDer := certDer
                       clientSessionId := vch.sessionId }
-      transcript := s.transcript.appendFramed .clientHello .read chWire }
+      transcript := { s.transcript.appendFramed .clientHello .read chWire with
+                      hashAlg := vch.selectedSuite.hashAlg } }
     let (oid, s) := s.allocOp .randomBytes .handshake (some .write)
     .ok ({ s with handshake := .requestedServerRandom },
          [OutputAction.callCrypto s.connId oid (CryptoOp.randomBytes 32)])
@@ -221,7 +222,7 @@ def onEcdheDone (s : State) (serverShare : ByteArray) (secret : SecretKeyHandle)
                       writeEpoch := installEpoch .handshake }
     let suite := s.negotiated.selectedSuite.getD .aes128GcmSha256
     let (ksd, earlyOp) := KeyScheduleDriver.startPostEcdhe suite
-                            KeyScheduleDriver.emptyHashSha256 hsTh secret
+                            (KeyScheduleDriver.emptyHashFor suite.hashAlg) hsTh secret
     let (oid, s) := s.allocOp earlyOp.kind .handshake (some .write)
     .ok ({ s with handshake := .derivedHandshakeSecrets, keySched := some ksd },
          [ OutputAction.writeHandshake s.connId .initial 0 shMsg,

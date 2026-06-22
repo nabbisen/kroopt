@@ -35,12 +35,12 @@ the vendored provider, so they map to `none` and are skipped by the overlap sele
 even if the client lists it first. -/
 def suiteOfU16 : UInt16 → Option CipherSuite
   | 0x1301 => some .aes128GcmSha256
+  | 0x1302 => some .aes256GcmSha384
   | 0x1303 => some .chacha20Poly1305Sha256
   | _      => none
-  -- 0x1302 (TLS_AES_256_GCM_SHA384) is intentionally not yet recognized: it needs the SHA-384 key
-  -- schedule + transcript, which a later increment adds. Recognizing it before that lands would let
-  -- the core negotiate a suite it cannot key. AES-128-GCM and ChaCha20-Poly1305 both use SHA-256 and
-  -- are fully servable end-to-end (the interpreter seal path is suite-aware as of 0.68.0-dev).
+  -- All three TLS 1.3 suites are servable end-to-end: AES-128-GCM / ChaCha20-Poly1305 (SHA-256)
+  -- and AES-256-GCM-SHA384 (the SHA-384 key schedule + transcript landed; the interpreter seal
+  -- path is suite-aware as of 0.68.0-dev, the schedule hash-parameterized as of 0.71.0-dev).
 
 /-- Parse a length-prefixed list of `UInt16` values from a byte slice, reusing
 the bounds-safe fuel combinator. -/
