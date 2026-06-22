@@ -5,6 +5,26 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.100.0-dev] — RFC 026 criterion 5: live interop reflected as TESTED in the matrix — 2026-06-15
+
+### Changed
+- **`docs/src/verification/theorem-inventory.md`** — the M10 (interop/E2E) section now records the
+  full TESTED live-interop surface: three independent clients (OpenSSL `s_client`, Python `ssl`, curl)
+  over blocking + non-blocking drivers; the suite/group breadth (AES-128/256-GCM, ChaCha20; x25519 and
+  P-256); app-data round-trip; graceful `close_notify`; the rejection case; and the captured-client
+  replay corpus including verified GREASE tolerance (RFC 8701). Browser-grade breadth noted as v0.4.
+  Also corrected a stale figure: the axiom gate audits **102** public theorems (was 98).
+- **`rfcs/proposed/026`** — Status updated: interop is now TESTED and reflected in the proof/trust/test
+  matrix (criterion 5 met); positive (1) and negative (2) criteria met; **browser** smoke breadth
+  (criterion 3) remains a v0.4 gate, documented as not-yet-claimed.
+
+### Notes
+- This is RFC 026 criterion 5 (matrix reflection). RFC 026 is not locked: criterion 3 (browser smoke,
+  before v0.4) remains open by design. The matrix now honestly states what live interop covers.
+
+Gate: build green; axioms 102 (matches the corrected doc figure); hygiene; all SUMMARY links resolve.
+Docs/RFC-only change; no `Kroopt/` source, proofs, or pure-zone code touched.
+
 ## [0.99.0-dev] — internal Metrics wired into the live driver (RFC 020 §10.2 optional follow-up) — 2026-06-15
 
 The architect-approved optional follow-up to the RFC 020 lock: make the tested operational counters

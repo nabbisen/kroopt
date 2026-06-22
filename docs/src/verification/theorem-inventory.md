@@ -244,10 +244,24 @@ M0 action-discipline proofs were updated for the new shape and continue to hold.
 No new core theorems — by design. M10 is interop/E2E work, classed TESTED in the
 trust matrix (`kroopt-https-test`: an HTTPS request served end-to-end through
 `TlsConn`, the same handler over plaintext and TLS, ALPN handoff, malformed and
-plaintext input never reaching the handler, redacted error views, metrics). The
-M0–M9 guarantees keep governing the running connection because the integration
-adds no protocol logic — the uniform `PlainConn` adapter is exactly the public
-`TlsConn` API. ~52 theorems total.
+plaintext input never reaching the handler, redacted error views, and the driven
+operational metrics). The M0–M9 guarantees keep governing the running connection
+because the integration adds no protocol logic — the uniform `PlainConn` adapter is
+exactly the public `TlsConn` API. ~52 theorems total.
+
+**Live interop breadth (TESTED, RFC 026/036).** Beyond the fake-transport E2E, the
+live harness (`scripts/tls-interop.sh`) drives a real socket against **three
+independent clients — OpenSSL 3.0 `s_client`, Python `ssl`, and curl 8.x** — over
+both the blocking and the non-blocking reactor driver, exercising: handshake across
+`TLS_AES_128_GCM_SHA256` / `TLS_AES_256_GCM_SHA384` / `TLS_CHACHA20_POLY1305_SHA256`
+and both **x25519 and P-256** groups; an application-data round-trip; a graceful
+`close_notify` (RFC 8446 §6.1) observed server-side via curl's HTTPS GET; and a
+rejection case (an x25519-only listener refusing a P-256-forced client). The offline
+captured-client corpus (`kroopt-replay-test`) replays committed real OpenSSL/Python
+ClientHellos plus malformed/edge captures deterministically, and confirms **GREASE
+tolerance** (RFC 8701: an unknown named group or cipher alongside valid values is
+ignored, the valid value selected). Browser-grade breadth remains v0.4
+(`docs/src/interop/constrained-vs-browser-grade.md`).
 
 ## M11 — resource-budget DoS bounds (RFC 019)
 
@@ -265,7 +279,7 @@ no axioms at all:
 The other hardening RFCs in this milestone are documentation and gates: the
 threat model (RFC 017), deferred-feature scope control (RFC 016, enforced via the
 parser and exercised by the hardening suite), and the proof gates (RFC 022 — the
-hygiene, dependency, and new axiom gates, plus CI). The axiom gate audits **98
+hygiene, dependency, and new axiom gates, plus CI). The axiom gate audits **102
 public theorems** with no `sorryAx` (plus the private helper lemmas they use); the
 per-milestone "~N total" figures above count the headline results enumerated
 in each section, not these supporting lemmas.

@@ -109,8 +109,17 @@ verify:
 full handshake against two independent clients: **OpenSSL 3.0 `s_client`** and **Python `ssl`**, both
 negotiating `TLS_CHACHA20_POLY1305_SHA256` and reaching `connected`. Each validates kroopt's wire bytes
 end to end (ServerHello, encrypted flight, presented certificate, CertificateVerify signature, server
-Finished) and kroopt verifies the client's Finished. Scope: handshake only, over a real OS socket (not
-yet iotakt), no app-data round-trip yet; the negative/fuzz matrix and browser/curl breadth remain.
+Finished) and kroopt verifies the client's Finished. **Interop now TESTED and reflected in the
+proof/trust/test matrix (0.99.0-dev, criterion 5; `docs/src/verification/theorem-inventory.md` M10):**
+three independent live clients — **OpenSSL 3.0 `s_client`, Python `ssl`, and curl 8.x** — across
+`TLS_AES_128_GCM_SHA256` / `TLS_AES_256_GCM_SHA384` / `TLS_CHACHA20_POLY1305_SHA256` and both **x25519
+and P-256**, over blocking and non-blocking reactor drivers; an **app-data round-trip**; a **graceful
+`close_notify`** observed server-side (RFC 8446 §6.1); a **rejection** case (x25519-only listener
+refusing a P-256 client); the committed captured-client **replay corpus** (real + malformed/edge,
+deterministic) including verified **GREASE tolerance** (RFC 8701). Positive criteria 1 and negative
+criteria 2 are met; criterion 5 (matrix reflection) is done here. Remaining: **browser** smoke breadth
+(criterion 3, a v0.4 gate; documented as not-yet-claimed in
+`docs/src/interop/constrained-vs-browser-grade.md`).
 
 ### Progress — application-data round-trip (0.50.0-dev)
 
