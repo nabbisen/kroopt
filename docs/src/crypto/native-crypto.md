@@ -1,5 +1,11 @@
 # Native crypto binding (v0.3): HACL\* through Lean FFI
 
+> **Capability note.** For the authoritative current capability and security posture, see
+> [current security state](../verification/current-security-state.md). Specific suite / group /
+> signature mentions or "pending"/"deferred" wording on this page may predate the current capability
+> matrix and are superseded there.
+
+
 This page documents the **v0.3 native crypto binding**: the real, reproducible,
 offline path that calls verified [HACL\*](https://github.com/hacl-star/hacl-star)
 primitives from Lean, and the *honest boundary* between what this milestone

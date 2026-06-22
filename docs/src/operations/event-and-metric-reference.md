@@ -2,8 +2,9 @@
 
 This page is the operator-facing reference for what kroopt emits about a connection: the diagnostic
 **event** surface that exists today, the **redaction** guarantee that bounds it, the typed **error
-categories** a caller sees, and the **metric** surface that is planned but not yet emitted. It is
-deliberately honest about that last distinction — events are real and tested; counters are design.
+categories** a caller sees, and the **metric** counters — a small set driven internally today, with
+export/histograms planned for v0.4. It is deliberately honest about that last distinction — events and
+the wired counters are real; export and the broader catalogue are design.
 
 ## Events emitted today
 
@@ -62,33 +63,39 @@ debug/trace metadata and are not part of the public API commitment — a coarse 
 signal and gives consumers a stable contract; TLS alert descriptions already carry protocol-level
 failure semantics where a peer needs them.
 
-## Metric surface (planned, not yet emitted)
+## Metric surface (counters driven internally; no export yet)
 
-kroopt does **not** currently emit operational counters; `recordMetric` is reserved on a separate
-channel and no metric backend is wired. The catalogue below is the **planned** operability surface for
-a later milestone, recorded here so jemmet and operators know what to expect and so the names are
-stable when they land. Treat everything in this section as design, not a guarantee.
+kroopt now maintains a small set of **internal** operational counters that the live driver updates
+during a real handshake (0.99.0-dev; RFC 020 §10.2): handshakes completed/failed, alerts sent, resource
+failures, and ALPN selected move as connections run. They live on internal runtime state — there is
+**no public accessor and no export format**: histograms, aggregation, and an export/backend surface are
+RFC 020 **v0.4** work. The broader catalogue below is the **planned** export surface, recorded so the
+names are stable when emission/export lands; treat anything beyond the five wired counters as design.
 
-| Planned metric | Labels | Meaning |
-|---|---|---|
-| `kroopt_connections_started_total` | — | connections wrapped by `TlsConn.server` |
-| `kroopt_handshakes_completed_total` | — | handshakes reaching `connected` |
-| `kroopt_handshakes_failed_total` | `reason` | handshakes ending in a terminal failure |
-| `kroopt_bytes_ciphertext_in_total` / `_out_total` | — | ciphertext moved over the transport |
-| `kroopt_bytes_plaintext_in_total` / `_out_total` | — | plaintext exchanged with the caller |
-| `kroopt_alerts_sent_total` / `_received_total` | `alert` | alerts by description |
-| `kroopt_resource_limit_failures_total` | `kind` | budget exhaustion by limit |
-| `kroopt_crypto_failures_total` | `kind` | crypto-operation failures by kind |
-| `kroopt_parser_failures_total` | `kind` | parser rejections by kind |
-| `kroopt_config_generation_current` | — | the active validated-config generation |
+| Metric | Status | Labels | Meaning |
+|---|---|---|---|
+| `kroopt_handshakes_completed_total` | wired (internal counter) | — | handshakes reaching `connected` |
+| `kroopt_handshakes_failed_total` | wired (internal counter) | `reason` | handshakes ending in terminal failure |
+| `kroopt_alerts_sent_total` | wired (internal counter) | `alert` | alerts sent |
+| `kroopt_resource_limit_failures_total` | wired (internal counter) | `kind` | budget exhaustion by limit |
+| `kroopt_alpn_selected_total` | wired (internal counter) | — | handshakes where ALPN was negotiated |
+| `kroopt_connections_started_total` | planned (v0.4) | — | connections wrapped by `TlsConn.server` |
+| `kroopt_bytes_ciphertext_in_total` / `_out_total` | planned (v0.4) | — | ciphertext moved over the transport |
+| `kroopt_bytes_plaintext_in_total` / `_out_total` | planned (v0.4) | — | plaintext exchanged with the caller |
+| `kroopt_alerts_received_total` | planned (v0.4) | `alert` | alerts received |
+| `kroopt_crypto_failures_total` | planned (v0.4) | `kind` | crypto-operation failures by kind |
+| `kroopt_parser_failures_total` | planned (v0.4) | `kind` | parser rejections by kind |
+| `kroopt_config_generation_current` | planned (v0.4) | — | the active validated-config generation |
 
-When these land, the same redaction rule applies: metric labels must never carry raw SNI or other
-attacker-controlled values — `reason`/`kind`/`alert` are bounded enumerations, not free-form strings.
+The same redaction rule applies to both the wired counters and the planned surface: labels must never
+carry raw SNI or other attacker-controlled values — `reason`/`kind`/`alert` are bounded enumerations,
+not free-form strings.
 
 ## Operational posture
 
 `debug_trace` is a diagnostic gate, not a production default: leave it off in production, matching the
 `LogPolicy` that keeps raw handshake data and transcript digests out of production logs. The event
-surface is what kroopt commits to today (tested, secret-free); the metric surface is the planned
-operability follow-on. Neither ever exposes a secret, and that property is enforced by the type system,
+surface is what kroopt commits to today (tested, secret-free); the wired counters move internally but
+are not yet exported; histograms/aggregation/export are the planned operability follow-on. Neither ever
+exposes a secret, and that property is enforced by the type system,
 not by reviewer vigilance alone.

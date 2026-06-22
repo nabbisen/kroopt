@@ -5,6 +5,48 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.101.0-dev] — security-review remediation A: capability-consistency sweep (HIGH-1) — 2026-06-15
+
+First increment of the v0.100.0 docs security-architecture review remediation. Addresses HIGH-1 (docs
+mixed current and older-milestone capability truth — the highest documentation risk) and the
+self-inflicted metrics contradiction. Architect decisions for HIGH-2 (delegate global DoS + declare
+explicitly) and HIGH-3 (strict reject) are recorded for the threat-model (C) and constrained-profile
+(D) increments to follow.
+
+### Added
+- **`docs/src/verification/current-security-state.md`** — the single source of truth for current
+  capability and posture: the **advertised/servable** suite/group/signature matrix with KAT-vs-wire
+  status (AES-128/256-GCM + ChaCha20; x25519 + P-256; **Ed25519 signatures only** — ECDSA-P256/RSA-PSS
+  signing code is present but not advertised and is config-rejected), live clients tested, a
+  PROVEN/TESTED/ASSUMED security-state table, the traffic-secret stable/v1 gate, and the "provider
+  advertises ≠ endpoint advertises" distinction. Slotted first under Verification in `SUMMARY.md`.
+
+### Fixed (stale capability claims)
+- **`architecture/record-protection.md`** — removed "no AES-GCM"; AES-GCM is now advertised and KAT'd
+  (NIST GCM TC4) and exercised in unit/correspondence tests (live wire interop still negotiates
+  ChaCha20-Poly1305).
+- **`crypto/provisioning.md`** — corrected "full OpenSSL/curl handshake gated behind pending work" →
+  live and tested.
+- **`verification/proof-assumptions.md`** & **`verification/theorem-inventory.md`** — corrected "native
+  shim build deferred until HACL\* vendored" → vendored, built, sanitizer/KAT-exercised. Signatures are
+  **Ed25519-only advertised** (ECDSA-P256/RSA-PSS code present but not a current capability).
+- **`interop/constrained-vs-browser-grade.md`** — separated advertised/KAT'd primitives from what the
+  live wire actually negotiates (ChaCha20-Poly1305 over x25519/P-256, Ed25519 cert); corrected the
+  prior Ed25519/ECDSA/RSA "wired" list.
+- **`operations/event-and-metric-reference.md`** — corrected the metrics surface: counters are **driven
+  internally** by the live driver (0.99.0-dev), not "planned/not emitted"; export/histograms remain v0.4.
+- Added a **capability-note banner** pointing to the current-security-state page on five
+  historical-leaning pages (`crypto/native-crypto.md`, `crypto/third-party.md`,
+  `architecture/handshake.md`, `architecture/live-handshake.md`, `architecture/cert-presentation.md`).
+
+### Notes
+- Remaining remediation: B (consolidated `trust-matrix.md` + crypto provenance table), C (threat-model:
+  global-DoS row per HIGH-2, memory-disclosure classification per HIGH-4, LOW-1 wording), D
+  (constrained-profile wording + HIGH-3 strict reject + cert lint + RFC 040 stale-result checklist).
+
+Gate: build green; all internal doc links resolve; zero residual stale phrasings outside the keystone's
+watch-word list. Docs-only change; no `Kroopt/` source, proofs, or pure-zone code touched.
+
 ## [0.100.0-dev] — RFC 026 criterion 5: live interop reflected as TESTED in the matrix — 2026-06-15
 
 ### Changed

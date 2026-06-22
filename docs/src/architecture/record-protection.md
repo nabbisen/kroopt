@@ -14,9 +14,13 @@ record on the wire, and back, using ChaCha20-Poly1305 (RFC 8446 §5.2):
   to recover the content and inner content type. No plaintext escapes a framing or
   authentication failure.
 
-The vendored HACL subset provides ChaCha20-Poly1305 (no AES-GCM), so this is the
-record cipher and these are self-consistent round-trips rather than a replay of RFC
-8448 §3 (which uses AES-128-GCM).
+When this page was first written the vendored HACL subset provided only ChaCha20-Poly1305, so the
+round-trips here use ChaCha20-Poly1305 and are self-consistent rather than a replay of RFC 8448 §3
+(which uses AES-128-GCM). The vendored provider now also implements AES-128/256-GCM (see
+[current security state](../verification/current-security-state.md)); the record path is AEAD-suite
+agnostic, and AES-GCM round-trips are exercised by NIST known-answer tests (GCM Test Case 4) and the
+record/correspondence suites — the live OpenSSL/curl wire interop currently negotiates
+ChaCha20-Poly1305.
 
 `Tests.Record13` (`kroopt-record13-test`, 11 checks) covers the round-trip, the wire
 structure (outer `application_data`, `0x0303`, length, tag-expanded size), that the

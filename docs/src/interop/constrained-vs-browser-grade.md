@@ -16,9 +16,14 @@ corpus:
 - **No HelloRetryRequest.** The client must present an initial `key_share` in a group kroopt
   supports; a ClientHello whose only `key_share` is in an unsupported group fails cleanly rather than
   triggering a retry.
-- **Wired primitives:** suites `TLS_AES_128_GCM_SHA256`, `TLS_AES_256_GCM_SHA384`, and
-  `TLS_CHACHA20_POLY1305_SHA256`; groups x25519 and secp256r1 (P-256); signatures Ed25519,
-  ECDSA-P256, and RSA-PSS (as the configured leaf allows).
+- **Advertised primitives** (servable; capability validation gates them): suites
+  `TLS_AES_128_GCM_SHA256`, `TLS_AES_256_GCM_SHA384`, and `TLS_CHACHA20_POLY1305_SHA256`; groups
+  x25519 and secp256r1 (P-256); signatures **Ed25519 only** (ECDSA-P256 and RSA-PSS signing code is
+  present but not advertised — a config requiring them is rejected). The AEAD suites and P-256 ECDH are
+  validated against NIST/RFC known-answer vectors.
+- **What the live wire actually negotiates here:** the **ChaCha20-Poly1305** suite over **both groups**
+  (x25519 and P-256) with an Ed25519 certificate. The AES-GCM suites are KAT'd but not yet driven over
+  the wire in this harness — AES-GCM interop is browser-grade follow-up.
 - **Three independent live clients:** `openssl s_client`, Python `ssl`, and `curl`, against both the
   blocking and the non-blocking reactor driver. The harness exercises the full constrained behaviour
   set — handshake, application-data exchange, an explicitly-observed **graceful `close_notify`**

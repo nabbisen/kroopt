@@ -1,5 +1,11 @@
 # Vendored crypto: provenance and licensing
 
+> **Capability note.** For the authoritative current capability and security posture, see
+> [current security state](../verification/current-security-state.md). Specific suite / group /
+> signature mentions or "pending"/"deferred" wording on this page may predate the current capability
+> matrix and are superseded there.
+
+
 kroopt is licensed under **Apache-2.0**. To make the native crypto build
 self-contained and offline-reproducible, it **vendors** a portable-C subset of
 [HACL\*](https://github.com/hacl-star/hacl-star) (Project Everest) under

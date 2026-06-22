@@ -1,5 +1,11 @@
 # Live step-driven real handshake
 
+> **Capability note.** For the authoritative current capability and security posture, see
+> [current security state](../verification/current-security-state.md). Specific suite / group /
+> signature mentions or "pending"/"deferred" wording on this page may predate the current capability
+> matrix and are superseded there.
+
+
 > **Update (RFC 031).** The separate `Tests/RealHandshake.lean` RD driver described below has been
 > **retired**. Its two seam substitutions are no longer needed: under RFC 031 the **production
 > interpreter** (`Kroopt.Conn.Interpreter`) drives the real `Kroopt.Core.step` to `connected` against

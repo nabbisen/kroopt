@@ -171,9 +171,11 @@ data, bad client Finished) fail deterministically and emit no plaintext.
 M6 adds the crypto provider boundary (RFC 008 / 009). The verification-first
 contribution is the **operation-id correlation guard**: `handleCryptoResult`
 processes a result only if its operation id is currently outstanding. The native
-HACL\*/EverCrypt shim is contracted (`Kroopt/Native/kroopt.h`) with its build
-deferred until HACL\* is vendored; the deterministic `Kroopt.Crypto.fakeProvider`
-stands in, and the correlation guarantee holds regardless of provider.
+HACL\*/EverCrypt shim is contracted (`Kroopt/Native/kroopt.h`) and is now vendored and
+built (exercised under sanitizers and known-answer tests; see
+[current security state](current-security-state.md)); the deterministic
+`Kroopt.Crypto.fakeProvider` stands in for the pure model tests, and the correlation
+guarantee holds regardless of provider.
 
 | # | Theorem | Property | RFC | Axioms | Status |
 |---|---------|----------|-----|--------|--------|

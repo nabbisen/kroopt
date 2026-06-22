@@ -90,6 +90,7 @@ step.
 
 `scripts/ed25519-interop.sh` validates the `CertificateVerify` signature *construction*
 cross-library (HACL\* ↔ OpenSSL). A full `openssl s_client` / `curl` handshake against a
-running kroopt server is gated behind the pending real-handshake work — real transcript
-hashing, the real server `Finished`, and the iotakt socket transport — and will be added
-when those land.
+running kroopt server — real transcript hashing, the real server `Finished`, and a real socket
+transport — is **live and tested**: see `scripts/tls-interop.sh` and
+[current security state](../verification/current-security-state.md). (This page predates that work;
+the cross-library signature check here remains the unit-level complement to the live interop.)

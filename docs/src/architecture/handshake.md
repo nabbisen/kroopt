@@ -1,5 +1,11 @@
 # Handshake state model
 
+> **Capability note.** For the authoritative current capability and security posture, see
+> [current security state](../verification/current-security-state.md). Specific suite / group /
+> signature mentions or "pending"/"deferred" wording on this page may predate the current capability
+> matrix and are superseded there.
+
+
 kroopt implements the TLS 1.3 **server** handshake without HelloRetryRequest
 (RFC 006). A client must present, in its initial ClientHello, a usable `key_share`
 for a group the listener's policy allows — x25519 or secp256r1 (RFC 039) — or the

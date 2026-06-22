@@ -1,5 +1,11 @@
 # Certificate presentation and interop validation
 
+> **Capability note.** For the authoritative current capability and security posture, see
+> [current security state](../verification/current-security-state.md). Specific suite / group /
+> signature mentions or "pending"/"deferred" wording on this page may predate the current capability
+> matrix and are superseded there.
+
+
 kroopt presents a server certificate as opaque DER (RFC 012): the verified core
 holds an abstract `CertificateChainHandle`, never the bytes, and the interpreter
 supplies the DER. The live handshake presents a **real, OpenSSL-parseable Ed25519

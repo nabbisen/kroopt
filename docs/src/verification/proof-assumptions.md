@@ -131,14 +131,15 @@ At M6 the crypto provider boundary lands (RFC 008 / 009). The operation-id
 correlation guard is *proved* in the core (`stale_crypto_result_rejected`), and
 Randomness is the OS CSPRNG only (ASSUMED), drawn through a fail-closed wrapper: an
 entropy failure aborts connection setup rather than proceeding with degraded entropy
-(RFC 034). The real provider advertises the AES-128/256-GCM and ChaCha20-Poly1305
-suites with SHA-256/384 over X25519 and secp256r1 (P-256), with Ed25519 signatures; a
-config requiring an out-of-profile signature scheme (ECDSA/RSA) is rejected at
-validation. capability validation is a total deterministic function. The native
-HACL\*/EverCrypt shim is **contracted** (`Kroopt/Native/kroopt.h`) but its build
-is deferred until HACL\* is vendored (Requirements Open Question 1); until then
-the deterministic `Kroopt.Crypto.fakeProvider` is used. This does not weaken any
-proof: the core's guarantees hold for *any* provider result, so the choice of
+(RFC 034). The real provider implements the AES-128/256-GCM and ChaCha20-Poly1305
+suites with SHA-256/384 over X25519 and secp256r1 (P-256), and **Ed25519** signatures — the only
+advertised signature scheme (ECDSA-P256 and RSA-PSS signing code and HACL\* bindings are present but
+not advertised, so a config requiring them is rejected at validation; see
+[current security state](current-security-state.md)). Capability validation is a total
+deterministic function. The native HACL\*/EverCrypt shim is contracted (`Kroopt/Native/kroopt.h`)
+and **vendored and built** — it is exercised under ASan/UBSan and known-answer tests; the
+deterministic `Kroopt.Crypto.fakeProvider` remains available for the pure model tests. The choice of
+provider does not weaken any proof: the core's guarantees hold for *any* provider result, so the
 provider is outside the proof boundary. Cryptographic correctness and
 constant-time behaviour of the primitives remain ASSUMED (inherited from
 HACL\*/EverCrypt), never proved here, exactly as the trust matrix states.
