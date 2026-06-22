@@ -35,6 +35,28 @@ private theorem hsFail_legal (s : State) (a : AlertDescription) (e : TlsError)
   unfold legalEdge
   simp [hnt]
 
+/-- `hsFail` emits only a `failWithAlert` and a `reportError` action — never application
+plaintext. (Supports fatalizing the defensively-unreachable failure arms of
+`handshakeOnGatingResult`; RFC 039 closure, Issue 3.) -/
+private theorem hsFail_no_emit (s : State) (a : AlertDescription) (e : TlsError)
+    (s' : State) (acts : List OutputAction)
+    (h : hsFail s a e = .ok (s', acts)) (c : ConnId) (bb : ByteArray) :
+    OutputAction.emitPlaintext c bb ∉ acts := by
+  unfold hsFail at h
+  simp only [Except.ok.injEq, Prod.mk.injEq] at h
+  obtain ⟨-, rfl⟩ := h
+  simp
+
+/-- `hsFail` accepts no application plaintext bytes (it only fails the connection). -/
+private theorem hsFail_no_accept (s : State) (a : AlertDescription) (e : TlsError)
+    (s' : State) (acts : List OutputAction)
+    (h : hsFail s a e = .ok (s', acts)) (c : ConnId) (n : Nat) :
+    OutputAction.acceptPlaintextBytes c n ∉ acts := by
+  unfold hsFail at h
+  simp only [Except.ok.injEq, Prod.mk.injEq] at h
+  obtain ⟨-, rfl⟩ := h
+  simp
+
 /-! ## RFC 039 §5: named-group selection is authorized
 
 The core never negotiates a group outside the endpoint's policy, and never invents a
@@ -545,6 +567,7 @@ theorem handshakeOnGatingResult_no_emit
     | exact hs_no_emit_onCertVerifySigned _ _ _ _ h c bb hmem
     | exact hs_no_emit_onServerFinishedMac _ _ _ _ h c bb hmem
     | exact hs_no_emit_onClientFinishedVerified _ _ _ _ _ h c bb hmem
+    | exact hsFail_no_emit _ _ _ _ _ h c bb hmem
     | (simp only [Except.ok.injEq, Prod.mk.injEq] at h
        obtain ⟨-, rfl⟩ := h
        simp only [List.not_mem_nil] at hmem))
@@ -715,6 +738,7 @@ theorem handshakeOnGatingResult_no_accept
     | exact hs_no_accept_onCertVerifySigned _ _ _ _ h c n hmem
     | exact hs_no_accept_onServerFinishedMac _ _ _ _ h c n hmem
     | exact hs_no_accept_onClientFinishedVerified _ _ _ _ _ h c n hmem
+    | exact hsFail_no_accept _ _ _ _ _ h c n hmem
     | (simp only [Except.ok.injEq, Prod.mk.injEq] at h
        obtain ⟨-, rfl⟩ := h
        simp only [List.not_mem_nil] at hmem))

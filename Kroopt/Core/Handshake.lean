@@ -485,14 +485,14 @@ def handshakeOnGatingResult (s0 : State) (op : OperationId) (r : CryptoResult) :
       else .ok (s, [])
   | .aeadSealed _ => .ok (s, [])
   | .aeadOpened _ => .ok (s, [])
-  -- Defensively-unreachable: the sole caller (`handleCryptoResultCorrelated`) consumes
-  -- `.verifyFailed` and `.failed` *fatally* before delegating here — it only ever passes the
-  -- gating results above. These no-op arms exist solely to make the match total. If this helper
-  -- is ever called directly with a failure result, these MUST become fatal (`hsFail …`) rather
-  -- than silently no-op; fatalizing is deferred only to avoid proof churn in
-  -- `handshakeOnGatingResult_no_emit` / `_no_accept` (RFC 039 closure, Issue 3).
-  | .verifyFailed => .ok (s, [])
-  | .failed _ => .ok (s, [])
+  -- Defensively fail-closed. The sole caller (`handleCryptoResultCorrelated`) consumes
+  -- `.verifyFailed` and `.failed` fatally before delegating here, so these arms are
+  -- unreachable in practice — but they now fatalize (matching the caller's mapping) rather
+  -- than silently no-op, so a future direct caller cannot turn a crypto failure into a
+  -- no-op (RFC 039 closure, Issue 3). `handshakeOnGatingResult_no_emit` / `_no_accept`
+  -- cover the new actions via `hsFail_no_emit` / `hsFail_no_accept`.
+  | .verifyFailed => hsFail s .badRecordMac (.crypto .authFailed)
+  | .failed e => hsFail s ((alertForCryptoFailure e).getD .internalError) (.crypto e)
 
 /-- Route a plaintext handshake record to the right transition by phase
 (RFC 006 §5, §10). In `start` it is the ClientHello (parsed and validated); in

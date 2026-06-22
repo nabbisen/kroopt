@@ -97,6 +97,19 @@ def checks : List Check :=
                == resultPhase (step s0 (.appClose conn .graceful)))
             && (countPlaintextEmits (step s0 (.appClose conn .graceful))
                == countPlaintextEmits (step s0 (.appClose conn .graceful))) }
+  -- 10. The defensively-unreachable failure arms of `handshakeOnGatingResult` fatalize
+  --     rather than silently no-op (RFC 039 closure, Issue 3): a crypto failure routed
+  --     directly here yields a terminal state and a fatal alert, never a no-op.
+  , { name := "handshakeOnGatingResult fails closed on a provider failure (RFC 039 Issue 3)"
+    , ok := (match handshakeOnGatingResult s0 ⟨0⟩ (.failed .providerInternal) with
+             | .ok (s', acts) =>
+                 s'.handshake.isTerminal
+                 && acts.any (fun a => match a with | .failWithAlert _ _ => true | _ => false)
+             | .error _ => false) }
+  , { name := "handshakeOnGatingResult fails closed on a verify failure (RFC 039 Issue 3)"
+    , ok := (match handshakeOnGatingResult s0 ⟨0⟩ .verifyFailed with
+             | .ok (s', _) => s'.handshake.isTerminal
+             | .error _ => false) }
   ]
 
 /-- Run all checks, print a report, and return nonzero on any failure. -/

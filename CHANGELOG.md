@@ -5,6 +5,32 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.83.0-dev] — RFC 039 Issue 3 hygiene: fatalize defensive crypto-failure arms — 2026-06-15
+
+Closes the deferred hygiene follow-up from the 0.82.0-dev closure review (RFC 039 Issue 3).
+The defensively-unreachable failure arms of `handshakeOnGatingResult` now fail closed instead
+of silently no-op, so a future direct caller cannot turn a crypto failure into a no-op.
+
+### Core
+- `handshakeOnGatingResult` `.verifyFailed` / `.failed e` arms changed from `.ok (s, [])` to
+  `hsFail …`, mirroring the live caller's mapping (`.verifyFailed → bad_record_mac`;
+  `.failed e → alertForCryptoFailure e`, i.e. `peerInvalidKeyShare → illegal_parameter`, else
+  `internal_error`). These arms remain unreachable in practice — the sole caller
+  (`handleCryptoResultCorrelated`) consumes both fatally first — but they are now fail-closed
+  by construction.
+
+### Proofs
+- Added private `hsFail_no_emit` / `hsFail_no_accept` (`hsFail` emits only `failWithAlert` +
+  `reportError`, never application plaintext) and threaded them into
+  `handshakeOnGatingResult_no_emit` / `_no_accept`, which now cover the fatalized arms. No
+  public theorem added — the axiom gate still audits **98** public theorems, no `sorryAx`,
+  axioms within the allowlist.
+
+### Tests
+- `kroopt-model-test` (**11**, +2): `handshakeOnGatingResult` routed a provider failure or a
+  verify failure directly now yields a terminal state and a fatal alert — never a no-op.
+
+
 ## [0.82.0-dev] — RFC 039 closure-review follow-up (crypto-failure taxonomy + docs) — 2026-06-15
 
 Post-closure hardening from the architect's review of the RFC 039 closure questions. RFC 039
