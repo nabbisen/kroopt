@@ -111,7 +111,13 @@ def submit (cfg : RealCryptoConfig) (a : SecretArena) (_ : OperationId) :
       | serverShare, some shared => do
           let (h, a') ← a.store shared
           .ok (a', .ecdheComplete serverShare h)
-      | _, none => .error .providerInternal
+      | serverShare, none =>
+          -- A `none` *after* the server public derived fine isolates the fault to the peer
+          -- point (off-curve / point at infinity) — a peer-controlled invalid key_share
+          -- (RFC 039 §4.8 → `illegal_parameter`). An empty server public means the server
+          -- ephemeral scalar itself failed — a genuine provider-internal fault.
+          if serverShare.isEmpty then .error .providerInternal
+          else .error .peerInvalidKeyShare
   | .hkdfExtract alg salt ikm => do
       let z := KeySchedule.zeros (KeySchedule.hashLen alg)
       let saltBytes ← match salt with | some h => need a h | none => .ok z

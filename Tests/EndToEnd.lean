@@ -339,6 +339,38 @@ def runBadFinished : Driver :=
     [InputEvent.transportBytes ⟨0, 0⟩ chRecord,
      InputEvent.transportBytes ⟨0, 0⟩ clientFinishedRecord]
 
+/-! ## ECDHE crypto-failure mapping (RFC 039 §4.8 closure, Issue 1). A scripted failure for the
+`ecdheP256` op exercises the typed split: a peer-invalid key_share → `illegal_parameter`, a
+genuine provider fault → `internal_error`. -/
+def fakeCryptoEcdheFail (e : CryptoError) : CryptoOp → CryptoResult
+  | .ecdheP256 _ => .failed e
+  | op => fakeCrypto op
+
+def step1EcdheFail (e : CryptoError) (d : Driver) (ev : InputEvent) : Driver × List InputEvent :=
+  match step d.st ev with
+  | .error _ => ({ d with errored := true }, [])
+  | .ok (s', acts) =>
+      acts.foldl
+        (fun (acc : Driver × List InputEvent) a =>
+          let (d', evs) := match a with
+            | .callCrypto c op req => (acc.1, [InputEvent.cryptoResult c op (fakeCryptoEcdheFail e req)])
+            | other => applyAction acc.1 other
+          (d', acc.2 ++ evs))
+        ({ d with st := s' }, [])
+
+def driveFuelEcdheFail (e : CryptoError) : Nat → Driver → List InputEvent → Driver
+  | 0, d, _ => d
+  | _, d, [] => d
+  | fuel + 1, d, ev :: rest =>
+      let (d', newEvs) := step1EcdheFail e d ev
+      driveFuelEcdheFail e fuel d' (newEvs ++ rest)
+
+def runEcdhePeerInvalid : Driver :=
+  driveFuelEcdheFail .peerInvalidKeyShare 64 fresh [InputEvent.transportBytes ⟨0, 0⟩ chRecordP256]
+
+def runEcdheProviderInternal : Driver :=
+  driveFuelEcdheFail .providerInternal 64 fresh [InputEvent.transportBytes ⟨0, 0⟩ chRecordP256]
+
 /-- Did the driver emit `a` as a fatal alert? (`AlertDescription` has `DecidableEq`, not
 `BEq`, so compare via `decide`.) -/
 def hasAlert (d : Driver) (a : AlertDescription) : Bool := d.alerts.any (fun x => decide (x = a))
@@ -405,6 +437,12 @@ def checks : List Check :=
     , ok := (sampleTraceStr.splitOn "29").length ≥ 2 }
   , { name := "RFC 039 §4.9: trace never leaks raw key_share bytes (0xBE=190 absent)"
     , ok := (sampleTraceStr.splitOn "190").length == 1 }
+  , { name := "RFC 039 §4.8: peer-invalid P-256 key_share (provider reject) → illegal_parameter"
+    , ok := hasAlert runEcdhePeerInvalid .illegalParameter
+            && runEcdhePeerInvalid.st.handshake != .connected }
+  , { name := "RFC 039 §4.8: genuine provider fault in ECDHE → internal_error (taxonomy split)"
+    , ok := hasAlert runEcdheProviderInternal .internalError
+            && runEcdheProviderInternal.st.handshake != .connected }
     -- negatives
   , { name := "malformed ClientHello fails, not connected"
     , ok := runMalformedCH.st.handshake.isTerminal && runMalformedCH.st.handshake != .connected }

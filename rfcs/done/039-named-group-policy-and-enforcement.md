@@ -471,3 +471,23 @@ Proof:
 2. **`supported_groups` vs `key_share` — resolved** (§4.6). Selection is key_share-driven
    (no HRR); a key_share group omitted from a present `supported_groups`, or a duplicate
    key_share group, is rejected as illegal/malformed. No longer an open question.
+
+## 13. Closure note (post-review, 0.82.0-dev)
+
+Three closure questions were raised at implementation and decided by architect review; the
+RFC remained closed and the decisions landed as 0.82.0-dev hardening:
+
+1. **Invalid peer ECDHE point alert (§4.8).** The §4.8 table's "provider rejects point →
+   `handshake_failure`" row is superseded: a peer key_share that passes wire-shape parsing
+   but is rejected by the provider (off-curve / point at infinity) is attacker input, not a
+   server fault, so it is a typed `CryptoError.peerInvalidKeyShare` → **`illegal_parameter`**.
+   A genuine provider/shim fault stays `internal_error`; "no acceptable group / no acceptable
+   key_share" stays `handshake_failure`. Verified end-to-end (off-curve point → provider
+   classifies `peerInvalidKeyShare` → core maps `illegal_parameter`).
+2. **`namedGroups` ordering.** Confirmed an **unordered allow-list**; server preference is
+   fixed by `Core.groupPreference` (x25519 before secp256r1). Documented; not configurable
+   order. Per-endpoint ranking would be a separate field in a future RFC.
+3. **Defensive unreachable arms.** The `.failed`/`.verifyFailed` arms in
+   `handshakeOnGatingResult` are marked defensively-unreachable (the sole caller consumes both
+   fatally first); fatalizing them is a deferred hygiene follow-up (avoids proof churn in the
+   no-emit / no-accept theorems).

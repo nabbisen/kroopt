@@ -485,6 +485,12 @@ def handshakeOnGatingResult (s0 : State) (op : OperationId) (r : CryptoResult) :
       else .ok (s, [])
   | .aeadSealed _ => .ok (s, [])
   | .aeadOpened _ => .ok (s, [])
+  -- Defensively-unreachable: the sole caller (`handleCryptoResultCorrelated`) consumes
+  -- `.verifyFailed` and `.failed` *fatally* before delegating here — it only ever passes the
+  -- gating results above. These no-op arms exist solely to make the match total. If this helper
+  -- is ever called directly with a failure result, these MUST become fatal (`hsFail …`) rather
+  -- than silently no-op; fatalizing is deferred only to avoid proof churn in
+  -- `handshakeOnGatingResult_no_emit` / `_no_accept` (RFC 039 closure, Issue 3).
   | .verifyFailed => .ok (s, [])
   | .failed _ => .ok (s, [])
 

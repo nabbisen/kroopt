@@ -66,6 +66,7 @@ def alertForCryptoFailure : CryptoError → Option AlertDescription
   | .invalidHandle        => none
   | .randomFailed         => none
   | .providerInternal     => none
+  | .peerInvalidKeyShare  => some .illegalParameter
 
 /-- The alert for an unexpected message in a given phase (RFC 013 §4). The phase
 is not currently needed to choose the alert, but the signature documents the

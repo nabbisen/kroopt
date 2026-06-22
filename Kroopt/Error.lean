@@ -75,6 +75,11 @@ inductive CryptoError where
   | invalidHandle
   | randomFailed
   | providerInternal
+  /-- A peer-supplied key_share that passed wire-shape parsing but was rejected by the
+  crypto provider (e.g. an off-curve / point-at-infinity P-256 point). This is attacker-
+  controlled handshake input, **not** a server fault, so it maps to `illegal_parameter`
+  rather than `internal_error` (RFC 039 §4.8). -/
+  | peerInvalidKeyShare
   deriving DecidableEq, Repr, Inhabited
 
 /-- Configuration-validation failures (RFC 011, 021). -/

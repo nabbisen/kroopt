@@ -34,6 +34,17 @@ lists, so kroopt can never select a protocol the client did not offer or the
 endpoint did not permit. kroopt negotiates the byte-level extension; jemmet still
 owns ALPN *policy* and picks the protocol handler from the reported result.
 
+## Named-group policy (RFC 039)
+
+Each endpoint carries a `namedGroups` policy (default `[x25519, secp256r1]`; a hardened
+listener sets `[x25519]`). It is an **allow-list, and its order is ignored** — it controls
+*which* ECDHE groups the listener may negotiate, not their ranking. Server preference is fixed
+by `Core.groupPreference` (currently x25519 before secp256r1), so `[secp256r1, x25519]` is the
+same policy as `[x25519, secp256r1]`: both still negotiate x25519 when the client offers it.
+Config validation rejects a policy that is empty, has a duplicate group, or names a group the
+crypto provider cannot perform. Per-endpoint ranking, if ever needed, would be a separate field
+(e.g. `groupPreference`), not a reinterpretation of `namedGroups`.
+
 ## Certificate presentation, not validation
 
 kroopt **presents** a configured chain and proves key possession via

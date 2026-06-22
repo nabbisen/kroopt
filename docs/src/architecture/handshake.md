@@ -92,7 +92,16 @@ and the **client** offers `key_share` entries. The parser surfaces the client's 
 offers (`findOfferedKeyShares`), and the verified core's total `selectGroup` walks the
 server preference `[x25519, secp256r1]` and takes the first group that is both
 endpoint-allowed and client-offered. No overlap is a clean `handshake_failure` (no HRR);
-the core never falls back to an unauthorized group. This is proven, not conventional:
+the core never falls back to an unauthorized group.
+
+`EndpointConfig.namedGroups` is an **allow-list, and its order is ignored**: it controls
+*which* groups a listener may negotiate, not their ranking. Server preference is fixed by
+`Core.groupPreference` (currently x25519 before secp256r1), so `[secp256r1, x25519]` and
+`[x25519, secp256r1]` are equivalent policies — both still negotiate x25519 when the client
+offers it. Per-endpoint ranking, if ever wanted, would be a separate field, not a reinterpretation
+of `namedGroups`.
+
+This is proven, not conventional:
 `selectGroup_authorized` shows any selected group is both allowed and offered, and
 `ecdhe_op_matches_selected_group` / `no_disallowed_group_crypto_op` show the ECDHE crypto
 op matches the recorded group and a disallowed group reaches neither selection nor a
@@ -107,10 +116,13 @@ and the provider performs on-curve point validation (HACL `Hacl_P256_ecp256dh_r`
 fail-closed), with any provider rejection a fatal handshake failure and no fabricated
 shared secret.
 
-**Alert mapping** is deterministic and non-leaking (RFC 013): no acceptable `key_share`
-under no-HRR and a provider point rejection map to `handshake_failure`; a duplicate
-`key_share` group, a group omitted from `supported_groups`, and a malformed P-256 point map
-to `illegal_parameter`. A "selected-but-disallowed" group is a non-event — the gate makes it
+**Alert mapping** is deterministic and non-leaking (RFC 013). No acceptable `key_share`
+under no-HRR maps to `handshake_failure`. A duplicate `key_share` group, a group omitted
+from `supported_groups`, a malformed P-256 point, and a peer `key_share` the provider rejects
+during ECDHE (off-curve / point at infinity) all map to `illegal_parameter` — the rejected
+point is attacker-controlled handshake input, not a server fault, so it is classified as a
+typed `peerInvalidKeyShare` (RFC 039 §4.8). A genuine provider or shim fault maps to
+`internal_error`. A "selected-but-disallowed" group is a non-event — the gate makes it
 unselectable, so there is no runtime state to alert on.
 
 **Tracing** is redaction-safe (RFC 039 §4.9 / RFC 018): the opt-in `NegotiationTrace` carries

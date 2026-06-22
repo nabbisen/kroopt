@@ -5,6 +5,50 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.82.0-dev] — RFC 039 closure-review follow-up (crypto-failure taxonomy + docs) — 2026-06-15
+
+Post-closure hardening from the architect's review of the RFC 039 closure questions. RFC 039
+stays closed in `done/`; this release applies the three decisions. No proof changed (the axiom
+gate still audits 98 public theorems).
+
+### Issue 1 — typed crypto-failure taxonomy (alert correctness)
+A peer-supplied key_share that passes wire-shape parsing but is rejected by the provider (an
+off-curve / point-at-infinity P-256 point) is **attacker input, not a server fault**, and now
+fails the handshake with `illegal_parameter` rather than `internal_error`.
+- New `CryptoError.peerInvalidKeyShare` (`Kroopt/Error.lean`); `alertForCryptoFailure` maps it
+  to `illegal_parameter`. `handleCryptoResultCorrelated` now routes a `.failed e` through
+  `alertForCryptoFailure` (peer-invalid → `illegal_parameter`; genuine provider/shim fault →
+  `internal_error`).
+- `RealProvider` ecdheP256 classifies the failure: a `none` shared secret **with a valid server
+  ephemeral public** isolates the fault to the peer point (`peerInvalidKeyShare`); an empty
+  server public is a server-ephemeral fault (`providerInternal`).
+- Tests: `kroopt-realprovider-test` (**35**, +1) — an off-curve P-256 point is classified
+  `peerInvalidKeyShare`; `kroopt-e2e-test` (**33**, +2) — the core maps a peer-invalid ECDHE
+  failure to `illegal_parameter` and a genuine provider fault to `internal_error`. Composed,
+  these establish off-curve point → fatal `illegal_parameter` end-to-end.
+
+### Issue 2 — `namedGroups` ordering (documentation)
+Confirmed `EndpointConfig.namedGroups` is an **unordered allow-list**; server preference is
+fixed by `Core.groupPreference` (x25519 before secp256r1). Documented explicitly in
+`architecture/handshake.md` and `architecture/config-cert.md`: list order is ignored, and
+`[secp256r1, x25519]` is the same policy as `[x25519, secp256r1]`. Per-endpoint ranking, if
+ever wanted, is a separate field, not a reinterpretation of `namedGroups`.
+
+### Issue 3 — defensive unreachable arms (hygiene)
+The unreachable `.failed`/`.verifyFailed` arms in `handshakeOnGatingResult` (the sole caller
+`handleCryptoResultCorrelated` consumes both fatally first) are now marked as
+defensively-unreachable with an explicit instruction to fatalize if ever called directly. Per
+the review, fatalizing now (Option A) was deferred to avoid non-trivial churn in
+`handshakeOnGatingResult_no_emit` / `_no_accept`; a hygiene follow-up will fatalize them with
+the supporting `hsFail` action-freeness lemmas.
+
+### Docs
+- `architecture/handshake.md`: corrected the alert-mapping paragraph (peer-rejected point →
+  `illegal_parameter`, not `handshake_failure`); added the allow-list ordering clarification.
+- `crypto/crypto-ffi-contract.md`: ECDH-rejection now distinguishes `peerInvalidKeyShare`
+  (`illegal_parameter`) from a genuine fault (`internal_error`).
+
+
 ## [0.81.0-dev] — RFC 039 finalized (§4.9 tracing, §8.12/§8.14/§8.16 acceptance) → done/ — 2026-06-14
 
 Closes RFC 039. The remaining acceptance items land — safe negotiation tracing, the P-256

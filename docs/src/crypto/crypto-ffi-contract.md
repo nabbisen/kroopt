@@ -80,9 +80,12 @@ and `.duplicateNamedGroup`), and the verified core selects the negotiated group 
 intersection of endpoint policy and client `key_share`, ordered by server preference — never
 inferred from parser reachability. P-256 point validation is layered: the parser checks wire
 shape (65 bytes, `0x04` prefix) while the provider performs on-curve validation inside
-`Hacl_P256_ecp256dh_r` (fail-closed `none` on an off-curve point or point at infinity), and
-the core treats any provider ECDH rejection as a fatal handshake failure — no `ecdheComplete`
-is fabricated. The hash dimension is likewise **derived-and-enforced**: required hashes are
+`Hacl_P256_ecp256dh_r` (fail-closed `none` on an off-curve point or point at infinity). With
+a valid server ephemeral, such a `none` isolates the fault to the peer point, so the provider
+classifies it as a typed `peerInvalidKeyShare` — the core fails the handshake with
+`illegal_parameter` (attacker input, not a server fault), while a genuine provider/shim fault
+(e.g. a bad server ephemeral) maps to `internal_error`; either way no `ecdheComplete` is
+fabricated. The hash dimension is likewise **derived-and-enforced**: required hashes are
 derived from the configured suites and validated against provider capability, not treated as
 informational. `scripts/tls-interop.sh` additionally exercises an x25519-only listener that
 refuses an OpenSSL `-groups P-256` client (RFC 039 §8.16).

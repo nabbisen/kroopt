@@ -216,6 +216,16 @@ def runChecks : Except Kroopt.CryptoError (List (String × Bool)) := do
   let getEq : Kroopt.Core.SecretKeyHandle → String → Bool :=
     fun h hex => (match a.get h with | some b => eqB b (hexToBytes hex) | none => false)
 
+  -- RFC 039 §4.8: a 65-byte, 0x04-prefixed but off-curve P-256 point passes wire-shape parsing
+  -- but is rejected by the provider; with a valid server ephemeral this isolates the fault to the
+  -- peer point, so the provider must classify it as `peerInvalidKeyShare` (→ illegal_parameter),
+  -- not `providerInternal`.
+  let offCurveP256 : ByteArray := (ByteArray.mk #[0x04]) ++ ByteArray.mk (Array.mkArray 64 0x01)
+  let p256PeerInvalidOk : Bool :=
+    match p SecretArena.empty oid (.ecdheP256 offCurveP256) with
+    | .error e => decide (e = Kroopt.CryptoError.peerInvalidKeyShare)
+    | .ok _    => false
+
   let checks : List (String × Bool) :=
     [ ("SHA-384 Early Secret via submit (.hkdfExtract .sha384) uses HKDF-Extract-384", early384Ok)
     , ("SHA-384 Expand-Label via submit (.hkdfExpandLabel .sha384) uses HKDF-Expand-384", expand384Ok)
@@ -224,6 +234,7 @@ def runChecks : Except Kroopt.CryptoError (List (String × Bool)) := do
     , ("AES-256-GCM-SHA384 install derives a 12-byte IV under SHA-384", aes256IvOk)
     , ("ECDHE returns server public share = RFC 8448 server_pub", eqB srvShare (hexToBytes serverPub))
     , ("ECDHE shared secret (in arena) = RFC 8448 shared", getEq sharedH ecdhe)
+    , ("ECDHE off-curve P-256 point classified as peerInvalidKeyShare (RFC 039 §4.8)", p256PeerInvalidOk)
     , ("Early Secret (in arena) = RFC 8448", getEq earlyH early)
     , ("Derive-Secret(Early,\"derived\") (in arena) = RFC 8448", getEq derivedH derivedHs)
     , ("Handshake Secret (in arena) = RFC 8448", getEq hsH handshake)

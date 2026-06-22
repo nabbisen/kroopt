@@ -242,7 +242,10 @@ def handleCryptoResultCorrelated (s : State) (op : OperationId) (r : CryptoResul
       -- AEAD / Finished verification failure ⇒ fatal, never plaintext (RFC 004 §12).
       recordFailAlert s .badRecordMac (.crypto .authFailed)
   | .failed e =>
-      recordFailAlert s .internalError (.crypto e)
+      -- A peer-invalid key_share is attacker input → `illegal_parameter`; a genuine
+      -- provider/shim fault has no peer-facing alert and maps to `internal_error`
+      -- (RFC 039 §4.8). Either way: fatal, never plaintext.
+      recordFailAlert s ((alertForCryptoFailure e).getD .internalError) (.crypto e)
   | .randomBytes b => handshakeOnGatingResult s op (.randomBytes b)
   | .finishedMac vd => handshakeOnGatingResult s op (.finishedMac vd)
   | .ecdheComplete srv h => handshakeOnGatingResult s op (.ecdheComplete srv h)
