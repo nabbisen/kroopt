@@ -80,9 +80,8 @@ GREASE tolerance is tested only for a named-group and a cipher-suite GREASE valu
 | Browser-grade interop | NOT CLAIMED |
 | Global / listener-level DoS | per-connection bounds owned by kroopt; **listener-wide admission is an iotakt/jemmet responsibility** (see [threat model](threat-model.md)) |
 
-The full claim-by-claim detail currently lives across the
-[theorem inventory](theorem-inventory.md), [proof assumptions](proof-assumptions.md), and
-[threat model](threat-model.md); consolidating it into a single `trust-matrix.md` is the next step.
+The full claim-by-claim matrix (status · evidence · owner · remaining gap · release gate) is the
+[trust matrix](trust-matrix.md).
 
 ## Traffic-secret zeroization — the standing stable/v1 gate
 

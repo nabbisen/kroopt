@@ -45,6 +45,7 @@
 # Verification
 
 - [Current security state](verification/current-security-state.md)
+- [Trust matrix](verification/trust-matrix.md)
 - [Theorem inventory](verification/theorem-inventory.md)
 - [Proof assumptions register](verification/proof-assumptions.md)
 - [Proof gates, CI, and Lean hygiene](verification/proof-gates.md)

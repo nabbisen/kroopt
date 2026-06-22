@@ -5,6 +5,42 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.102.0-dev] — security-review remediation B: consolidated trust matrix + crypto provenance (MEDIUM-1/2) — 2026-06-15
+
+Second increment of the v0.100.0 docs security review remediation. Adds the single consolidated trust
+matrix (MEDIUM-1) and the current cryptographic provenance table (MEDIUM-2), both grounded in the
+source — every theorem name, suite, and KAT vector cited was verified to resolve to a real declaration
+/ executable / vector.
+
+### Added
+- **`docs/src/verification/trust-matrix.md`** — the consolidated claim-by-claim matrix
+  (`Claim · Status · Evidence · Owner · Remaining gap · Release gate`), grouped into core protocol
+  safety, negotiation/config, secrets/observability, borrowed crypto, and boundary/integration. Cites
+  real theorem names (`no_plaintext_emit_unless_connected`, `nonce_unique_within_epoch`,
+  `stale_crypto_result_rejected`, …), real suites, and the proof-hygiene baseline (102 theorems, no
+  `sorryAx`). Records the HIGH-2 global-DoS delegation and the HIGH-4 traffic-secret v1 gate as rows.
+  Linked second under Verification in `SUMMARY.md`; the keystone now points to it.
+
+### Fixed / changed (`crypto/third-party.md`)
+- Replaced the stale **"What is vendored"** section: it claimed "No vale assembly and no EverCrypt
+  dispatch layer are included," but the tree now vendors `EverCrypt_AEAD` + the **Vale verified AES-GCM
+  assembly**, plus P-256 and RSA-PSS. Now lists the accurate current inventory.
+- Added a **cryptographic provenance table** (`Primitive · Implementation · Vendored · KAT · Wire
+  interop · Constant-time`) covering all primitive families, with HACL\* 0.4.5 pin, the C/Vale compiler
+  flags, ASan/UBSan coverage, known-unsupported primitives, and the advertised-vs-bound distinction
+  (Ed25519 advertised; ECDSA-P256/RSA-PSS bound only).
+- Extended the **licenses** table to include the MIT `EverCrypt_*` sources.
+
+### Surfaced (licensing finding from B)
+- The Vale `.S` assembly files (`aesgcm-x86_64-linux.S`, `cpuid-x86_64-linux.S`) ship **without per-file
+  license headers**, and the vendored `Kroopt/Native/hacl/LICENSE` note still under-declares the tree
+  ("No vale assembly and no EverCrypt dispatch layer are included" — stale). Their upstream Project
+  Everest / Vale license should be confirmed and the vendored `LICENSE` note refreshed before stable.
+  Flagged in `third-party.md` as a tracked NOTICE-accuracy follow-up; does not block pre-stable testing.
+
+Gate: build green; all internal doc links resolve; every theorem/suite cited in the matrix verified to
+exist. Docs-only change (no `Kroopt/` source, proofs, or pure-zone code touched).
+
 ## [0.101.0-dev] — security-review remediation A: capability-consistency sweep (HIGH-1) — 2026-06-15
 
 First increment of the v0.100.0 docs security-architecture review remediation. Addresses HIGH-1 (docs
