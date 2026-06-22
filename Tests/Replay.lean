@@ -99,6 +99,12 @@ def noKeyShareCH  : ByteArray := recordWrap (buildExts mfSuites (extTls13 ++ grp
 def dupExtCH      : ByteArray := recordWrap (buildExts mfSuites (extTls13 ++ extTls13 ++ grpX25519 ++ sigEd25519 ++ ksX25519))
 def unknownGrpCH  : ByteArray := recordWrap (buildExts mfSuites (extTls13 ++ grpUnknown ++ sigEd25519 ++ ksX25519))
 
+-- ── committed GREASE-tolerance captures (RFC 036 §4): unknown/reserved values alongside valid ones
+-- must be *ignored* (RFC 8701), not fatal — a browser-grade prerequisite, verified here. ──
+def grpGreaseX25519 : ByteArray := hx "00 0a 00 06 00 04 0a 0a 00 1d"   -- supported_groups: GREASE 0x0a0a, x25519
+def greaseGrpCH     : ByteArray := recordWrap (buildExts (hx "13 01") (extTls13 ++ grpGreaseX25519 ++ sigEd25519 ++ ksX25519))
+def greaseSuiteCH   : ByteArray := recordWrap (buildExts (hx "0a 0a 13 01") (extTls13 ++ grpX25519 ++ sigEd25519 ++ ksX25519))
+
 -- ── committed real-client captures (RFC 036 §2) ──
 -- Genuine TLS 1.3 ClientHello records captured from `openssl s_client` and Python `ssl` (OpenSSL).
 -- Already full records (outer `16 03 01`); sanitized — client random + key_share are public.
@@ -217,6 +223,12 @@ def checks : List Check :=
     , ok := let r := replay [dupExtCH]; failedIllegal r.1 && r.2 == 0 }
   , { name := "edge: ClientHello offering only an unsupported group → deterministic reject (illegal_parameter)"
     , ok := let r := replay [unknownGrpCH]; failedIllegal r.1 && r.2 == 0 }
+
+    -- ── GREASE tolerance (RFC 036 §4 / RFC 8701): unknown values alongside valid ones are ignored ──
+  , { name := "GREASE: unknown named group (0x0a0a) alongside x25519 → ignored, x25519 selected, full flight"
+    , ok := let r := replay [greaseGrpCH]; groupIsX25519 r.1 && reachedFlight r.1 }
+  , { name := "GREASE: unknown cipher (0x0a0a) before TLS_AES_128_GCM_SHA256 → ignored, aes128 selected, full flight"
+    , ok := let r := replay [greaseSuiteCH]; suiteIs r.1 .aes128GcmSha256 && reachedFlight r.1 }
 
     -- ── debug_trace runtime wiring (RFC 036 §3) ──
   , { name := "debug_trace OFF by default → no trace recorded (no production overhead/leak)"

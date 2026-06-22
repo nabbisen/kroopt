@@ -93,6 +93,25 @@ PY
   if [ "$hs" -ne 0 ] || [ "$app" -ne 0 ]; then echo "    $PYOUT" | head -2; echo "    --- server ---"; cat "$SRVOUT"; fi
 }
 
+# curl HTTPS GET against the reactor's `http` mode: exercises a real third client (curl), an
+# application-data exchange, AND an explicitly-observed graceful close_notify (RFC 8446 §6.1).
+# ALPN is observed only — this is not an end-to-end HTTP/2 claim (constrained interop, RFC 036 §4).
+test_curl_http() {
+  start_server kroopt-live-server-nb http
+  BODY=$(curl -sS --unix-socket "$SOCK" --tlsv1.3 --tls-max 1.3 -k https://localhost/ 2>/dev/null || true)
+  await_server
+  grep -q "HANDSHAKE_OK reached connected" "$SRVOUT"; hs=$?
+  echo "$BODY" | grep -q "TLS 1.3 terminated" \
+    && grep -q "HTTP_RESP 200 sent over TLS" "$SRVOUT"; body=$?
+  grep -q "CLOSE_NOTIFY sent (graceful)" "$SRVOUT"; closed=$?
+  check "curl [reactor http] TLS 1.3 handshake" "$hs"
+  check "curl [reactor http] HTTPS GET -> 200 body over TLS" "$body"
+  check "curl [reactor http] graceful close_notify observed (RFC 8446 6.1)" "$closed"
+  if [ "$hs" -ne 0 ] || [ "$body" -ne 0 ] || [ "$closed" -ne 0 ]; then
+    echo "    body: $BODY"; echo "    --- server ---"; cat "$SRVOUT"
+  fi
+}
+
 echo
 echo "=== Driver: blocking push (kroopt-live-server) ==="
 test_openssl kroopt-live-server "blocking" TLS_CHACHA20_POLY1305_SHA256
@@ -110,10 +129,14 @@ test_openssl kroopt-live-server-nb "reactor" TLS_AES_256_GCM_SHA384
 test_openssl kroopt-live-server-nb "reactor P-256" TLS_CHACHA20_POLY1305_SHA256 P-256
 test_python  kroopt-live-server-nb "reactor"
 
+echo
+echo "=== Client: curl (HTTPS GET, graceful close) ==="
+test_curl_http
+
 rm -f "$SOCK"
 echo
 if [ "$fail" -eq 0 ]; then
-  echo "ALL live TLS 1.3 interop checks passed (OpenSSL + Python; blocking + non-blocking reactor; handshake + app data)."
+  echo "ALL live TLS 1.3 interop checks passed (OpenSSL + Python + curl; blocking + non-blocking reactor; handshake + app data + graceful close)."
 else
   echo "$fail live interop check(s) FAILED."
   exit 1

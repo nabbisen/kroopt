@@ -5,6 +5,33 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.95.0-dev] — RFC 036 close-out substantiation: GREASE tolerance + live curl + graceful close — 2026-06-15
+
+Per the architect's close-out review (plan **B / committed-canonical / +close +curl / verify-GREASE**),
+this makes every "tested today" interop claim real, ahead of the RFC 036 lock (docs + re-scope, next).
+
+### Added
+- **`Tests/Replay.lean`** (now 18 checks) — two committed **GREASE-tolerance** captures, verified
+  before claiming (RFC 8701): a GREASE named group (`0x0a0a`) alongside x25519, and a GREASE cipher
+  (`0x0a0a`) before `TLS_AES_128_GCM_SHA256`, are each **ignored** — the valid value is selected and the
+  handshake reaches full flight. (A ClientHello offering *only* an unknown group still rejects, per the
+  0.94 malformed corpus; the difference is precisely "alongside valid.")
+- **`scripts/tls-interop.sh`** — a `test_curl_http` scenario: a live **curl** HTTPS GET against the
+  reactor's `http` mode, asserting the TLS 1.3 handshake, a 200 body received over TLS, and an
+  explicitly-observed **graceful `close_notify`** (RFC 8446 §6.1). ALPN is observation-only — not an
+  end-to-end HTTP/2 claim. The constrained live set now spans OpenSSL + Python + curl and
+  handshake + data + **close** + rejection.
+
+### Notes
+- These are the substantiating tests behind the criterion-4 documentation; the RFC 036 **lock** (the
+  docs page + the in-RFC note relocating durable live-transcript archival to M38) is the next
+  increment. Durable archival itself (committed canonical secret-free traces + ephemeral raw client
+  witnesses + normalization) is an M38 deliverable per the review.
+
+Gate: build green; 27 suites green (incl. `replay`); hygiene; axioms 102, no `sorryAx`; fuzz 20000;
+sanitizer clean; live OpenSSL + Python + **curl** interop green (handshake + data + graceful close +
+rejection). No `Kroopt/` source, proofs, or pure-zone code touched.
+
 ## [0.94.0-dev] — RFC 036 §2 malformed/edge capture corpus — 2026-06-15
 
 Completes RFC 036 acceptance criterion 1: the committed captured-ClientHello corpus now spans
