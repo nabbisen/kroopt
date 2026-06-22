@@ -37,15 +37,24 @@ server_reached_connected() {
 echo
 echo "=== Client 1: OpenSSL s_client ==="
 start_server
-OUT=$(timeout 15 openssl s_client -unix "$SOCK" -tls1_3 \
+OUT=$(printf 'ping from openssl\n' | timeout 15 openssl s_client -unix "$SOCK" -tls1_3 \
         -ciphersuites TLS_CHACHA20_POLY1305_SHA256 -groups x25519 \
-        </dev/null 2>&1 || true)
+        2>&1 || true)
 if echo "$OUT" | grep -q "New, TLSv1.3, Cipher is TLS_CHACHA20_POLY1305_SHA256" \
    && server_reached_connected; then
   echo "  OpenSSL completed a TLS 1.3 handshake (ChaCha20-Poly1305): ok"
 else
-  echo "  OpenSSL interop FAILED"
+  echo "  OpenSSL handshake FAILED"
   echo "$OUT" | grep -iE 'error|alert' | head -3
+  echo "  --- server output ---"; cat "$SRVOUT"
+  fail=$((fail+1))
+fi
+if echo "$OUT" | grep -q "kroopt: hello over TLS 1.3" \
+   && grep -q "APP_RECV .* decrypted from client" "$SRVOUT" \
+   && grep -q "APP_SENT" "$SRVOUT"; then
+  echo "  OpenSSL app-data round-trip (client record decrypted, server response read): ok"
+else
+  echo "  OpenSSL app-data round-trip FAILED"
   echo "  --- server output ---"; cat "$SRVOUT"
   fail=$((fail+1))
 fi
@@ -66,16 +75,28 @@ s.connect(sock_path)
 try:
     ss = ctx.wrap_socket(s, server_hostname="example.com")
     print("PYTHON_OK", ss.version(), ss.cipher()[0])
+    ss.sendall(b"ping from python\n")
+    data = ss.recv(1024)
+    sys.stdout.write("PYTHON_APP " + repr(data) + "\n")
     ss.close()
 except Exception as e:
     print("PYTHON_FAIL", repr(e))
 PY
 )
-echo "  $PYOUT" | head -1
+echo "  $(echo "$PYOUT" | grep -E 'PYTHON_OK|PYTHON_APP|PYTHON_FAIL' | head -2 | tr '\n' ' ')"
 if echo "$PYOUT" | grep -q "PYTHON_OK TLSv1.3" && server_reached_connected; then
   echo "  Python ssl completed a TLS 1.3 handshake: ok"
 else
-  echo "  Python ssl interop FAILED"
+  echo "  Python ssl handshake FAILED"
+  echo "  --- server output ---"; cat "$SRVOUT"
+  fail=$((fail+1))
+fi
+if echo "$PYOUT" | grep -q "kroopt: hello over TLS 1.3" \
+   && grep -q "APP_RECV .* decrypted from client" "$SRVOUT" \
+   && grep -q "APP_SENT" "$SRVOUT"; then
+  echo "  Python app-data round-trip (client record decrypted, server response read): ok"
+else
+  echo "  Python app-data round-trip FAILED"
   echo "  --- server output ---"; cat "$SRVOUT"
   fail=$((fail+1))
 fi

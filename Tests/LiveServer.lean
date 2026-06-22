@@ -98,6 +98,37 @@ partial def driveToConnected (fd : UInt32) (prov : CryptoProvider)
         let _ ← sockWrite fd rt'.outbound
       driveToConnected fd prov core' { rt' with outbound := ByteArray.empty }
 
+/-- After `connected`, read one application-data record from the client (the core decrypts it under
+the client application-traffic key) and then seal a fixed response and write it back (under the server
+application-traffic key). This exercises the *post-handshake* app-data record path — open and seal —
+with an independent client, beyond the handshake itself. -/
+def exchangeAppData (fd : UInt32) (prov : CryptoProvider)
+    (core : State) (rt : RuntimeState) : IO (State × RuntimeState) := do
+  -- Read the client's application-data record (decrypt + buffer), then request delivery of the
+  -- buffered plaintext — app-data delivery is demand-driven (only `appRecvRequested` emits it).
+  let rec ← readRecord fd
+  let (core, rt) :=
+    if rec.size < 5 then (core, rt)
+    else
+      let (c, r, _) :=
+        driveEvents prov 2048 core rt nullTransport
+          [InputEvent.transportBytes conn0 rec, InputEvent.appRecvRequested conn0]
+      (c, { r with outbound := ByteArray.empty })
+  match rt.plaintextOut with
+  | some b => IO.println s!"APP_RECV {b.size} bytes decrypted from client"
+  | none   => IO.println "APP_RECV no plaintext delivered"
+  -- Seal and send a fixed application-data response under the server traffic key.
+  let resp := String.toUTF8 "kroopt: hello over TLS 1.3\n"
+  let (core', rt', _) :=
+    driveEvents prov 2048 core { rt with plaintextOut := none } nullTransport
+      [InputEvent.appSend conn0 resp]
+  if !rt'.outbound.isEmpty then
+    let _ ← sockWrite fd rt'.outbound
+    IO.println s!"APP_SENT {rt'.outbound.size} bytes sealed to client"
+  else
+    IO.println "APP_SEND produced no record"
+  pure (core', { rt' with outbound := ByteArray.empty })
+
 def serve (args : List String) : IO Unit := do
   let path := args.headD "/tmp/kroopt-tls.sock"
   let ephR ← Hacl.randomBytes 32
@@ -125,9 +156,11 @@ def serve (args : List String) : IO Unit := do
       IO.println "ACCEPT FAILED"
       sockClose lfd
       return
-    let (core, _rt) ← driveToConnected cfd prov s0 {}
+    let (core, rt) ← driveToConnected cfd prov s0 {}
     match core.handshake with
-    | .connected => IO.println "HANDSHAKE_OK reached connected"
+    | .connected =>
+        IO.println "HANDSHAKE_OK reached connected"
+        let _ ← exchangeAppData cfd prov core rt
     | h          => IO.println s!"HANDSHAKE_INCOMPLETE final phase {phaseName h}"
     sockClose cfd
     sockClose lfd

@@ -111,3 +111,11 @@ negotiating `TLS_CHACHA20_POLY1305_SHA256` and reaching `connected`. Each valida
 end to end (ServerHello, encrypted flight, presented certificate, CertificateVerify signature, server
 Finished) and kroopt verifies the client's Finished. Scope: handshake only, over a real OS socket (not
 yet iotakt), no app-data round-trip yet; the negative/fuzz matrix and browser/curl breadth remain.
+
+### Progress — application-data round-trip (0.50.0-dev)
+
+Beyond the handshake, the live server now completes a post-handshake application-data round-trip with both
+OpenSSL `s_client` and Python `ssl`: each client sends an application record (decrypted server-side under
+the client traffic key) and reads kroopt's sealed response (under the server traffic key). Delivery is
+demand-driven per RFC 004 §9 (`transportBytes` buffers, `appRecvRequested` delivers, `appSend` responds).
+Still deferred: curl/browser breadth, a negative/fuzz interop matrix, and graceful `close_notify`.

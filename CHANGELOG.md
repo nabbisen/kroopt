@@ -5,6 +5,36 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.50.0-dev] — RFC 026/004: live application-data round-trip with OpenSSL + Python — 2026-06-13
+
+Building on the 0.49.0-dev handshake interop, the live server now exercises the **post-handshake
+application-data path** with the same two independent clients — not just the handshake. After reaching
+`connected`, `Tests/LiveServer.lean` reads one application-data record from the client, decrypts it under
+the client application-traffic key, and seals a fixed response under the server application-traffic key
+and writes it back:
+
+- The exchange threads the live `RuntimeState` (carrying the `SecretArena` with the derived
+  application-traffic keys) out of `driveToConnected`, so the post-handshake seal/open use the real
+  installed keys. Delivery of received plaintext is **demand-driven**, exactly as the core models it
+  (RFC 004 §9): receiving the record decrypts and buffers it (no handler emits `emitPlaintext`), and the
+  buffered plaintext is delivered only when the application requests a read — so the driver feeds
+  `transportBytes` then `appRecvRequested`, and the response goes out via an explicit `appSend`.
+- `scripts/tls-interop.sh` now drives a full request/response: OpenSSL `s_client` and Python `ssl` each
+  send a line of application data after the handshake and read the server's reply. Both observe kroopt's
+  sealed response (`kroopt: hello over TLS 1.3`) and the server confirms it decrypted each client's record
+  (`APP_RECV … decrypted from client`) and sealed its own (`APP_SENT …`). This validates the application
+  record path — server-side seal *and* open under TLS 1.3 traffic keys — against two independent stacks,
+  closing the handshake-only gap noted at 0.49.0-dev.
+
+The verified core and the four repo gates are untouched (this is interop-harness work): the full build,
+all 4 gates (36 pure-zone files, 94 theorems), all 24 suites, parser fuzz (40000), the HACL\*↔OpenSSL and
+Record13↔Python crypto-interop scripts, and the ASan/UBSan sanitizer harness all stay green, alongside the
+live `kroopt server ↔ OpenSSL + Python` handshake **and** app-data interop.
+
+Next in the arc: an `iotakt`-driven production network path (the socket helpers remain test-only glue),
+readiness-driven non-blocking progress (`O_NONBLOCK` + partial read/write), and jemmet HTTPS E2E
+(RFC 015) — the v0.3 acceptance target.
+
 ## [0.49.0-dev] — RFC 010/012/026: live TLS 1.3 interop (OpenSSL + Python) over a real socket — 2026-06-13
 
 ### RFC 010 (ACTIVE) — the verified core drives a handshake over a real OS socket
