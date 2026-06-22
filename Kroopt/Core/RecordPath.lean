@@ -264,10 +264,15 @@ def handleAppSend (s : State) (b : ByteArray) : RecordStepResult :=
       let n := min b.size maxPlaintextFragment
       let frag := b.extract 0 n
       let inner := frag ++ ByteArray.mk #[ContentType.applicationData.toByte]
+      -- Seal under the *current* write sequence (the read path is symmetric: a record uses the
+      -- current epoch seq, which advances only after the record is accounted for). Capturing the
+      -- metadata before the advance makes the first application record seq 0, not 1 (RFC 005 §7.1;
+      -- RFC 8446 §5.3 — the per-epoch sequence starts at 0).
+      let sealMeta := writeMeta s
       let (oid, s) := s.allocOp .aeadSeal .application (some .write)
       let s := { s with writeEpoch := { s.writeEpoch with seq := sq } }
       .ok (s, [ OutputAction.callCrypto s.connId oid
-                  (CryptoOp.aeadSeal (writeMeta s) (ByteArray.mk #[]) inner),
+                  (CryptoOp.aeadSeal sealMeta (ByteArray.mk #[]) inner),
                 OutputAction.acceptPlaintextBytes s.connId n ])
 
 end Kroopt.Core

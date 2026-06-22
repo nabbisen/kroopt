@@ -27,7 +27,7 @@ sequence).
 
 ## End to end with the live handshake
 
-`Tests.RealHandshake` now closes the loop: after the live `step`-driven handshake
+`Tests.Correspondence` (RFC 031) closes the loop: after the live `step`-driven handshake
 reaches `connected`, it derives the server application-traffic key/IV from the
 secret the handshake produced and protects a real application-data record with
 `Record13`, confirming it round-trips and that the record body is genuine
@@ -45,7 +45,7 @@ record layer is standards-compliant, not merely self-consistent.
 
 ## The flight is encrypted on the wire
 
-`Tests.RealHandshake` now applies record protection across the whole live handshake,
+`Tests.Correspondence` (RFC 031) applies record protection across the whole live handshake,
 in the interpreter layer where the production driver will host it. The ServerHello
 goes in the clear; the rest of the server flight (EncryptedExtensions, Certificate,
 CertificateVerify, Finished) is sealed as four real `TLSCiphertext` records under the

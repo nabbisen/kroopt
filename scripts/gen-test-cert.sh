@@ -4,7 +4,7 @@
 # Builds a self-signed Ed25519 X.509 certificate whose subject public key is
 # kroopt's certificate key (the RFC 8032 §7.1 Test 1 key, also used for the
 # CertificateVerify signature). The DER is embedded as `certDer` in
-# Tests/RealHandshake.lean so the live handshake presents a real, parseable
+# Tests/RealFixtures.lean so the live handshake presents a real, parseable
 # certificate. Re-running produces a fresh serial/SKI/validity window; the
 # embedded fixture is one such cert.
 set -euo pipefail

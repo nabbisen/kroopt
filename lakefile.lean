@@ -36,72 +36,90 @@ test executables so vector definitions live in one audited place. -/
 lean_lib «KrooptTestVectors» where
   globs := #[.one `Tests.Vectors.Ed25519Rfc8032]
 
+/-- Shared real-handshake fixtures (x25519 share, Ed25519 cert, ClientHello, `RealCryptoConfig`)
+imported by the correspondence tests, so they live in exactly one place (RFC 031 §5). -/
+lean_lib «KrooptTestSupport» where
+  globs := #[.one `Tests.RealFixtures]
+
 /-- Deterministic, Lean-only model test: drives `Kroopt.Core.step` directly
 with scripted input events and asserts the resulting state/action behaviour
 (RFC 014 §5). No sockets, no real time, no real crypto. -/
 @[default_target]
 lean_exe «kroopt-model-test» where
   root := `Tests.Model
+  moreLinkArgs := #["-Wl,--gc-sections"]
 
 /-- Deterministic parser unit + negative tests (RFC 003 §11). -/
 @[default_target]
 lean_exe «kroopt-parse-test» where
   root := `Tests.Parse
+  moreLinkArgs := #["-Wl,--gc-sections"]
 
 /-- Unit and negative tests for the TLS 1.3 record model (RFC 004 §13). -/
 @[default_target]
 lean_exe «kroopt-record-test» where
   root := `Tests.Record
+  moreLinkArgs := #["-Wl,--gc-sections"]
 
 /-- Unit and negative tests for sequence/nonce/key-separation (RFC 005 §10). -/
 @[default_target]
 lean_exe «kroopt-nonce-test» where
   root := `Tests.Nonce
+  moreLinkArgs := #["-Wl,--gc-sections"]
 
 /-- Synthetic handshake trace + transcript tests (RFC 006 §12, RFC 007 §10). -/
 @[default_target]
 lean_exe «kroopt-handshake-test» where
   root := `Tests.Handshake
+  moreLinkArgs := #["-Wl,--gc-sections"]
 
 /-- Full handshake end-to-end through `step` with fake crypto/transport (RFC 014). -/
 @[default_target]
 lean_exe «kroopt-e2e-test» where
   root := `Tests.EndToEnd
+  moreLinkArgs := #["-Wl,--gc-sections"]
 
 /-- Crypto provider capability + operation-id correlation tests (RFC 008). -/
 @[default_target]
 lean_exe «kroopt-crypto-test» where
   root := `Tests.Crypto
+  moreLinkArgs := #["-Wl,--gc-sections"]
 
 /-- TlsConn API + non-blocking interpreter tests (RFC 010). -/
 @[default_target]
 lean_exe «kroopt-conn-test» where
   root := `Tests.Conn
+  moreLinkArgs := #["-Wl,--gc-sections"]
 
 /-- SNI/ALPN configuration + certificate-presentation tests (RFC 011, 012). -/
 @[default_target]
 lean_exe «kroopt-config-test» where
   root := `Tests.Config
+  moreLinkArgs := #["-Wl,--gc-sections"]
 
 /-- Alerts, close_notify, and terminal-policy tests (RFC 013). -/
 @[default_target]
 lean_exe «kroopt-close-test» where
   root := `Tests.Close
+  moreLinkArgs := #["-Wl,--gc-sections"]
 
 /-- jemmet integration + end-to-end HTTPS acceptance tests (RFC 015). -/
 @[default_target]
 lean_exe «kroopt-https-test» where
   root := `Tests.E2EHttps
+  moreLinkArgs := #["-Wl,--gc-sections"]
 
 /-- Resource-budget + deferred-feature scope-control tests (RFC 019, 016). -/
 @[default_target]
 lean_exe «kroopt-hardening-test» where
   root := `Tests.Hardening
+  moreLinkArgs := #["-Wl,--gc-sections"]
 
 /-- Bounded smoke fuzzer for the parser primitives (RFC 003 §11, RFC 023). -/
 @[default_target]
 lean_exe «kroopt-parse-fuzz» where
   root := `Tests.Fuzz
+  moreLinkArgs := #["-Wl,--gc-sections"]
 
 /-- v0.3 native crypto: compile the vendored HACL* portable-C subset and the
 Lean FFI glue into a static library linked into the FFI-using executables.
@@ -179,8 +197,8 @@ lean_exe «kroopt-flight-test» where
   root := `Tests.Flight
   moreLinkArgs := #["-Wl,--gc-sections"]
 
-lean_exe «kroopt-realhandshake-test» where
-  root := `Tests.RealHandshake
+lean_exe «kroopt-correspondence-test» where
+  root := `Tests.Correspondence
   moreLinkArgs := #["-Wl,--gc-sections"]
 
 lean_exe «kroopt-record13-test» where

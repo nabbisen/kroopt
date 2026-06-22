@@ -61,11 +61,11 @@ inductive OutputAction where
   | writeTransport (conn : ConnId) (b : ByteArray)
   /-- Emit a typed server-flight handshake message; the interpreter serializes it
   (RFC 032). No production path dispatches on the message's first byte. -/
-  | writeHandshake (conn : ConnId) (msg : HandshakeOut)
+  | writeHandshake (conn : ConnId) (epoch : Epoch) (seq : UInt64) (msg : HandshakeOut)
   /-- Emit the server Certificate from a configured chain *handle* (RFC 032 §4). The
   core holds only the opaque handle; the interpreter resolves it to DER and serializes,
   so the DER never enters the pure core. -/
-  | writeCertificate (conn : ConnId) (chain : CertificateChainHandle)
+  | writeCertificate (conn : ConnId) (epoch : Epoch) (seq : UInt64) (chain : CertificateChainHandle)
   /-- Register write interest with the transport. -/
   | enableWriteInterest (conn : ConnId)
   /-- Drop write interest (queue empty). -/
@@ -133,17 +133,17 @@ def isPlaintextAccept : OutputAction → Bool
 @[simp] theorem isPlaintextEmit_closeTransport (c : ConnId) (m : CloseMode) :
     isPlaintextEmit (closeTransport c m) = false := rfl
 
-@[simp] theorem isPlaintextEmit_writeHandshake (c : ConnId) (m : HandshakeOut) :
-    isPlaintextEmit (writeHandshake c m) = false := rfl
+@[simp] theorem isPlaintextEmit_writeHandshake (c : ConnId) (e : Epoch) (s : UInt64) (m : HandshakeOut) :
+    isPlaintextEmit (writeHandshake c e s m) = false := rfl
 
-@[simp] theorem isOrdinaryTransportWrite_writeHandshake (c : ConnId) (m : HandshakeOut) :
-    isOrdinaryTransportWrite (writeHandshake c m) = false := rfl
+@[simp] theorem isOrdinaryTransportWrite_writeHandshake (c : ConnId) (e : Epoch) (s : UInt64) (m : HandshakeOut) :
+    isOrdinaryTransportWrite (writeHandshake c e s m) = false := rfl
 
-@[simp] theorem isPlaintextEmit_writeCertificate (c : ConnId) (h : CertificateChainHandle) :
-    isPlaintextEmit (writeCertificate c h) = false := rfl
+@[simp] theorem isPlaintextEmit_writeCertificate (c : ConnId) (e : Epoch) (s : UInt64) (h : CertificateChainHandle) :
+    isPlaintextEmit (writeCertificate c e s h) = false := rfl
 
-@[simp] theorem isOrdinaryTransportWrite_writeCertificate (c : ConnId) (h : CertificateChainHandle) :
-    isOrdinaryTransportWrite (writeCertificate c h) = false := rfl
+@[simp] theorem isOrdinaryTransportWrite_writeCertificate (c : ConnId) (e : Epoch) (s : UInt64) (h : CertificateChainHandle) :
+    isOrdinaryTransportWrite (writeCertificate c e s h) = false := rfl
 
 /-- If an action is classified as a plaintext emit, it is literally an
 `emitPlaintext`. Lets proofs reduce "emits plaintext" to a membership fact about

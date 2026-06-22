@@ -113,6 +113,14 @@ def snapshot (ts : TranscriptState) : TranscriptSnapshot × TranscriptState :=
   (⟨ts.snapshotCounter, ts.hashAlg, ts.events.length⟩,
    { ts with snapshotCounter := ts.snapshotCounter + 1 })
 
+/-- The exact committed bytes of the prefix a snapshot pins: the concatenation, in order, of
+the wire bytes of the first `snap.eventCount` events (RFC 007 §7–§8). This is the single
+transcript authority a transcript-bound crypto op is hashed over — it includes the inbound
+ClientHello and every server-flight message committed before the snapshot, so the interpreter
+never reconstructs or re-accumulates the transcript itself (RFC 031 §3). -/
+def prefixBytes (ts : TranscriptState) (snap : TranscriptSnapshot) : ByteArray :=
+  (ts.events.take snap.eventCount).foldl (fun acc e => acc ++ e.wireBytes) (ByteArray.mk #[])
+
 end TranscriptState
 
 /-- The purpose a transcript-bound input serves. -/

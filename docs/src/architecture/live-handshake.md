@@ -1,5 +1,15 @@
 # Live step-driven real handshake
 
+> **Update (RFC 031).** The separate `Tests/RealHandshake.lean` RD driver described below has been
+> **retired**. Its two seam substitutions are no longer needed: under RFC 031 the **production
+> interpreter** (`Kroopt.Conn.Interpreter`) drives the real `Kroopt.Core.step` to `connected` against
+> the real provider directly, with the **core itself** as the single transcript authority (RFC 031 §3)
+> and real records sealed by the interpreter (RFC 031 §2). The live handshake — reaching `connected`,
+> the five-message flight, record protection, the protected client Finished, app-data round-trip, and
+> the negative controls — is now demonstrated end-to-end by `Tests/Correspondence.lean`
+> (`kroopt-correspondence-test`). The shared fixtures live in `Tests/RealFixtures.lean`. The
+> description below is retained as design history of the original M29 driver.
+
 M26–M28 built the wire serializers, the server-Finished KAT, and the server-flight
 assembler. M29 connects them to the **verified core state machine**: it drives the
 real `Kroopt.Core.step` through a server handshake against the **real** crypto

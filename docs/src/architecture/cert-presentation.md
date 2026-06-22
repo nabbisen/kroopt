@@ -11,7 +11,7 @@ X.509 certificate** instead of a placeholder.
 public key is kroopt's certificate key — the RFC 8032 §7.1 Test 1 key that also
 signs the CertificateVerify — by wrapping the raw seed as an RFC 8410 PKCS#8 key and
 issuing a 100-year `CN=kroopt.test` cert with a matching `subjectAltName`. The
-351-byte DER is embedded as `certDer` in `Tests/RealHandshake.lean`, so the
+351-byte DER is embedded as `certDer` in `Tests/RealFixtures.lean`, so the
 Certificate message in the live flight carries a certificate a real client can parse
 and whose leaf key matches the CertificateVerify signature.
 

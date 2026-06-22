@@ -176,7 +176,7 @@ def onEcdheDone (s : State) (serverShare : ByteArray) (secret : SecretKeyHandle)
                    0x0304
     let ts := s.transcript.appendFramed .serverHello .write (serializeHandshakeOut shMsg)
     let (snap, ts) := ts.snapshot
-    let hsTh := ByteArray.mk #[snap.id.toUInt8]
+    let hsTh := ts.prefixBytes snap
     let s := { s with transcript := ts
                       negotiated := { s.negotiated with serverShare := some serverShare }
                       readEpoch := installEpoch .handshake
@@ -186,7 +186,7 @@ def onEcdheDone (s : State) (serverShare : ByteArray) (secret : SecretKeyHandle)
                             KeyScheduleDriver.emptyHashSha256 hsTh secret
     let (oid, s) := s.allocOp earlyOp.kind .handshake (some .write)
     .ok ({ s with handshake := .derivedHandshakeSecrets, keySched := some ksd },
-         [ OutputAction.writeHandshake s.connId shMsg,
+         [ OutputAction.writeHandshake s.connId .initial 0 shMsg,
            OutputAction.callCrypto s.connId oid earlyOp ])
   else
     hsFail s .unexpectedMessage (.protocol .illegalMessageForState)
@@ -221,11 +221,11 @@ def onHsScheduleResult (s : State) (r : CryptoResult) : HsResult :=
             let (oid, s) := s.allocOp .signCertificateVerify .handshake (some .write)
             let scheme := s.negotiated.selectedSigScheme.getD .ed25519
             .ok ({ s with handshake := .requestedCertificateVerifySignature },
-                 [ OutputAction.writeHandshake s.connId eeMsg,
-                   OutputAction.writeCertificate s.connId certHandle,
+                 [ OutputAction.writeHandshake s.connId .handshake 0 eeMsg,
+                   OutputAction.writeCertificate s.connId .handshake 1 certHandle,
                    OutputAction.callCrypto s.connId oid
                      (CryptoOp.signCertificateVerify scheme
-                       (ByteArray.mk #[snap.id.toUInt8])) ])
+                       (ts.prefixBytes snap)) ])
           else
             .ok ({ s with keySched := some ksd }, [])
   else
@@ -241,11 +241,11 @@ def onCertVerifySigned (s : State) (sig : ByteArray) : HsResult :=
       .certificateVerify (sigSchemeToU16 (s.negotiated.selectedSigScheme.getD .ed25519)) sig
     let ts := s.transcript.appendFramed .certificateVerify .write (serializeHandshakeOut cvMsg)
     let (snap, ts) := ts.snapshot
-    let cvTh := ByteArray.mk #[snap.id.toUInt8]
+    let cvTh := ts.prefixBytes snap
     let s := { s with transcript := ts }
     let (oid, s) := s.allocOp .computeServerFinished .handshake (some .write)
     .ok ({ s with handshake := .requestedServerFinishedMac },
-         [ OutputAction.writeHandshake s.connId cvMsg,
+         [ OutputAction.writeHandshake s.connId .handshake 2 cvMsg,
            OutputAction.callCrypto s.connId oid
              (CryptoOp.computeServerFinished s.transcript.hashAlg cvTh) ])
   else
@@ -263,14 +263,14 @@ def onServerFinishedMac (s : State) (verifyData : ByteArray) : HsResult :=
       let ts := s.transcript.appendFramed .finished .write
                   (serializeHandshakeOut (.finished verifyData))
       let (snap, ts) := ts.snapshot
-      let apTh := ByteArray.mk #[snap.id.toUInt8]
+      let apTh := ts.prefixBytes snap
       match KeyScheduleDriver.resumeApplication ksd apTh with
       | .error e => hsFail s .internalError e
       | .ok (ksd, op :: _) =>
           let s := { s with transcript := ts }
           let (oid, s) := s.allocOp op.kind .application (some .write)
           .ok ({ s with handshake := .sentCertificateVerify, keySched := some ksd },
-               [ OutputAction.writeHandshake s.connId (.finished verifyData),
+               [ OutputAction.writeHandshake s.connId .handshake 3 (.finished verifyData),
                  OutputAction.callCrypto s.connId oid op ])
       | .ok (_, []) => hsFail s .internalError (.protocol .illegalMessageForState)
   else
@@ -316,7 +316,7 @@ def onClientFinishedBytes (s : State) (cfWire : ByteArray) : HsResult :=
     .ok ({ s with handshake := .requestedClientFinishedVerify },
          [ OutputAction.callCrypto s.connId oid
              (CryptoOp.verifyFinished s.transcript.hashAlg
-               (ByteArray.mk #[snap.id.toUInt8]) cfWire) ])
+               (ts.prefixBytes snap) cfWire) ])
   else
     hsFail s .unexpectedMessage (.protocol .illegalMessageForState)
 

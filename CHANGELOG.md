@@ -3,6 +3,284 @@
 All notable changes to kroopt are recorded here. RFC lifecycle transitions are
 governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycle-policy.md).
 
+## [Unreleased]
+
+## [0.47.0-dev] — RFC 031 (production-interpreter correspondence) milestone: `RealHandshake` retired — 2026-06-13
+
+### RFC 031 — `RealHandshake` reduced to nothing: the production interpreter owns the real handshake
+
+The RFC 031 milestone criterion (§5/§7.5): the bespoke `Tests/RealHandshake.lean` RD driver — with its
+own flight assembly, transcript substitution, and record sealing — is **deleted**. Everything it was
+built to exercise is now demonstrated by the **production interpreter** (`Kroopt.Conn.Interpreter`)
+driving the real `Kroopt.Core.step` to `connected`, in `Tests/Correspondence.lean`.
+
+- Deleted `Tests/RealHandshake.lean` (461 lines) and its `kroopt-realhandshake-test` executable. No
+  alternative protocol driver remains in the test tree — the only handshake driver is the production one.
+- Extracted the shared real fixtures (x25519 client share, server ECDHE private, ServerHello Random,
+  Ed25519 certificate key + OpenSSL-parseable X.509 DER, `RealCryptoConfig`, ClientHello) into
+  `Tests/RealFixtures.lean` (new `KrooptTestSupport` lib), so they live in exactly one place.
+- Migrated the unique coverage into `Tests/Correspondence.lean` (now 25 checks), all production-driven:
+  - a wrong client Finished is rejected — the real `verifyFinished` MAC check fails and the handshake
+    does not reach `connected`, while the correct one does (check 21);
+  - RFC 033 reassembly: a ClientHello split across two records reassembles to the same state as one
+    record (22); an over-large reassembly buffer fails the connection (23); `frameHandshakeMessage`
+    frames/reports-incomplete/splits-coalesced (24);
+  - the certificate fixture is a well-formed DER object (25).
+- The Ed25519 CertificateVerify *signing* path (RFC 8446 §4.4.3) remains gated cross-library by
+  `scripts/ed25519-interop.sh` (HACL* ↔ OpenSSL); the record layer by `scripts/record-interop.sh`.
+- Architecture docs updated: `live-handshake.md` carries an RFC 031 note that the RD driver is retired
+  and the live handshake is demonstrated by `Tests.Correspondence`; `cert-presentation.md` and
+  `record-protection.md` repointed to `Tests.RealFixtures` / `Tests.Correspondence`.
+
+No production code changed in this step — it is a test-tree consolidation. Verification: full build;
+4 gates (92 theorems; 36 pure-zone files); 23 test suites (the retired exe drops the count from 24);
+fuzz 40000; both interop scripts.
+
+**RFC 031 status.** Slices 1–9 plus the `RealHandshake` retirement land the protocol-correspondence
+substance: real records sealed by the interpreter (§2), the core as single transcript authority (§3),
+the crypto-op-id wrong-kind guard tested (§4), the §6 correspondence suite with the negative-bypass set,
+and the §5/§7.5 driver-removal criterion. The §5 runtime **ledger** and the **async** §4 refinements
+(duplicate/stale/after-terminal results) remain deferred: in the current synchronous interpreter the
+properties they would witness are already pinned by the direct §6 checks, and the ledger's negative-space
+value (no *unauthorized* effect) is best built alongside the async-crypto work where stale/duplicate
+effects first become possible.
+
+### RFC 031 slice 9 — §6 negative-bypass set: no application data accepted outside `connected`
+
+Two more §6 negative-bypass checks, asserting at the interpreter layer that no application plaintext
+is accepted outside the `connected` state — the only path to the interpreter's `acceptedBytes` is the
+core's `acceptPlaintextBytes` action, which the core emits only from `connected`.
+
+- `Tests/Correspondence.lean` (now 20 checks):
+  - check 19 — an application send before `connected` (driven against a fresh handshaking state)
+    accepts zero plaintext (`acceptedBytes == 0`); the core fails the send cleanly and emits no
+    `acceptPlaintextBytes`;
+  - check 20 — an application send after a graceful close has begun likewise accepts zero plaintext.
+
+Together with slice 8 (wrong-kind crypto result → terminal; no plaintext emitted before `connected`),
+the §6 negative-bypass set now covers the core bypass surfaces: wrong-kind results, early plaintext
+emission, and early/after-close plaintext acceptance. No production code changed — tests pin existing
+core guarantees as observed through the production interpreter. Proofs untouched (92 theorems);
+`conn`/`https`/`e2e` unaffected. No release: the correspondence ledger (§5), the async §4 refinements,
+and reducing `RealHandshake` remain before the RFC 031 milestone.
+
+### RFC 031 slice 8 — §4 wrong-kind crypto-result guard tested; first §6 negative-bypass checks
+
+The interpreter's §4 wrong-kind crypto-result guard (`resultMatchesKind`, wired into the `callCrypto`
+arm) — which terminates with an internal-invariant failure rather than forward a provider result
+whose kind cannot answer the requested op — now has explicit correspondence coverage, alongside the
+first §6 negative-bypass checks.
+
+- `Tests/Correspondence.lean` (now 18 checks):
+  - check 16 — a provider that answers an ECDHE op with a signature result drives the interpreter
+    to a terminal internal-invariant failure and forwards nothing (the mismatched result never
+    reaches the core's result-kind dispatch);
+  - check 17 — the guard is not over-eager: a correct-kind result is forwarded to the core unchanged
+    and does not terminate the connection;
+  - check 18 (§6) — through the entire server flight (paused at `sentServerFinished`, before
+    `connected`), the interpreter has emitted no application plaintext.
+
+No production code changed — these tests pin existing behaviour. Proofs untouched (92 theorems);
+`conn`/`https`/`e2e` unaffected. The remaining §4 refinements (duplicate-result → fatal,
+stale cross-generation → ignored+metric, result-after-terminal → released) concern asynchronous
+crypto results, which the current synchronous interpreter never produces, so they land with the
+async-crypto work. No release: those refinements, the correspondence ledger (§5), the rest of the
+negative-bypass set (§6), and reducing `RealHandshake` remain before the RFC 031 milestone.
+
+### RFC 031 slice 7 — complete the post-`connected` application-data wire path
+
+The post-`connected` application send now produces a real `TLSCiphertext` record through the
+production interpreter, fixing both gaps slice 6 surfaced:
+
+- `Kroopt/Core/RecordPath.lean`: `handleAppSend` now seals under the **current** write sequence and
+  advances afterwards (the read path is symmetric), so the first application record uses sequence
+  number 0, not 1 (RFC 8446 §5.3 — a per-epoch sequence starts at 0). The state still advances by one
+  per record, so the nonce/sequence proofs are unchanged (92 theorems).
+- `Kroopt/Conn/Interpreter.lean`: the `writeTransport` arm — which the core emits only for sealed
+  application ciphertext — now frames that ciphertext as a `TLSCiphertext` record by prepending the
+  5-byte record header (`Record13.recordAAD` over the on-wire length, identical to the AEAD AAD the
+  seal bound). All record framing now lives in the interpreter, the same place the handshake flight
+  is framed via `Record13`.
+- `Tests/Correspondence.lean` (now 15 checks): check 15 drives a real application send through the
+  production interpreter, captures the produced record, and opens it with `Record13.openRecord` at
+  sequence 0 — recovering the application plaintext. This exercises the sequence fix, record-header
+  framing, and AAD together end to end.
+
+`conn`/`https`/`e2e` unaffected (the fake provider's stub seal/open ignore the framing and keys).
+Proofs untouched (92 theorems). No release: the crypto-op-id lifecycle (§4), correspondence ledger
+(§5), negative-bypass tests (§6), and reducing `RealHandshake` remain before the RFC 031 milestone.
+
+### RFC 031 slice 6 — symmetric aeadSeal AAD; post-`connected` app-data path scoped
+
+`resolveRecordAAD` now binds the record-header AAD (RFC 8446 §5.2) for outbound `aeadSeal` ops as
+well as inbound `aeadOpen`, reconstructing it from the on-wire ciphertext length (`plaintext.size`
+plus the 16-byte Poly1305 tag, matching `Record13.sealRecord`'s `ctLen := inner.size + 16`).
+
+- `Kroopt/Conn/Interpreter.lean`: `resolveRecordAAD` gains the `aeadSeal` arm.
+- `Tests/Correspondence.lean` (now 14 checks): check 14 asserts `resolveRecordAAD` binds
+  `recordAAD (plaintext.size + 16)` for an `aeadSeal` op. (The AAD value was also confirmed by a
+  crypto round-trip during development — driving a real post-`connected` application send and
+  opening the produced ciphertext with the reconstructed AAD.)
+
+Driving a real application send through the production interpreter surfaced that the
+post-`connected` application-data *wire* path is incomplete, independent of the AAD: (1) the core's
+`aeadSealed` handler writes the bare sealed bytes via `writeTransport` with **no 5-byte record
+header**, and (2) `handleAppSend` advances the write sequence with `seq.next` **before** sealing, so
+the first application record is sealed at sequence number 1 instead of 0 (a TLS 1.3 violation — the
+first record of an epoch must be seq 0). Both are masked by the fake provider (which ignores keys,
+nonces, and AAD). Fixing them together — record-header framing for app ciphertext and the
+first-record sequence number — with a full-record round-trip correspondence test is the next slice.
+
+Proofs untouched (92 theorems). `conn`/`https`/`e2e` unaffected (fake provider ignores AAD). No
+release: the app-data path, crypto-op-id lifecycle (§4), correspondence ledger (§5), negative-bypass
+tests (§6), and reducing `RealHandshake` remain before the RFC 031 milestone.
+
+### RFC 031 slice 5 — the production interpreter drives a full real handshake to `connected`
+
+The §6.1/§7.2 headline: the production interpreter (`driveEvents`), given a real crypto provider,
+now drives a complete TLS 1.3 handshake from an inbound ClientHello all the way to `connected` —
+real ECDHE, real HKDF key schedule, a real Ed25519 CertificateVerify signature, real Finished
+MACs, real record sealing, and a real inbound AEAD-open of the client's Finished. No test driver
+substitutes any step; the bytes on the wire are the real flight.
+
+- `Tests/Correspondence.lean` (now 13 checks): a real-ish provider (real crypto, with the
+  ServerHello Random supplied as fixed test entropy since the pure provider draws none) drives the
+  interpreter over `FakeTransport`. Check 12 asserts the handshake reaches `connected`; check 13
+  asserts the wire flight is a cleartext ServerHello record (`0x16`) followed by four sealed
+  protected records (`0x17`) for EncryptedExtensions/Certificate/CertificateVerify/Finished. The
+  client Finished is computed from the interpreter's installed client handshake-traffic secret and
+  the core's through-server-Finished transcript, sealed as a real `0x17` record, and opened by the
+  core's `aeadOpen` op through the real provider.
+
+- `Kroopt/Conn/Interpreter.lean`: **inbound AEAD-open AAD fix.** Driving a real sealed record
+  through production surfaced that the core's record path hands `aeadOpen` an empty AAD, while the
+  seal side (`Record13.sealRecord`) binds the record header as AAD per RFC 8446 §5.2 — so a real
+  AEAD provider rejected every inbound protected record. The record header is a wire-framing detail
+  the interpreter owns, so the new `resolveRecordAAD` reconstructs it from the on-wire ciphertext
+  length (mirroring `Record13.recordAAD`) when forwarding `aeadOpen`. The fake provider ignores the
+  AAD, so `conn`/`https`/`e2e` are unaffected; the real provider now opens the client Finished.
+
+Proofs untouched (92 theorems). The post-`connected` outbound `aeadSeal` AAD is the same shape and
+is the next small follow-up. This is not yet the full RFC 031 milestone (the crypto-op-id lifecycle,
+the correspondence ledger, negative-bypass tests, and reducing `RealHandshake` remain), so no release
+is cut.
+
+### RFC 031 slice 4 — the interpreter hashes the core's carried transcript prefix
+
+The production interpreter now resolves every transcript-bound crypto op by hashing the
+**prefix bytes the core carried in it** (slice 3), and no longer maintains a transcript of its
+own. This removes the slice-1 local accumulation that was outbound-only and missing the inbound
+ClientHello, so the production path is now hashed over the complete, ClientHello-inclusive
+transcript — the precondition for correct signatures/MACs against the real provider.
+
+- `Kroopt/Conn/Interpreter.lean`: `resolveCryptoTranscript` drops its `transcript` parameter and
+  hashes the op's carried field instead (`signCertificateVerify` input, `computeServerFinished` /
+  `verifyFinished` transcript hash, and the traffic-secret `hkdfExpandLabel` contexts); `RuntimeState.transcript`
+  and its accumulation in `writeHandshake`/`writeCertificate` are removed. The interpreter is now
+  a pure hasher over core-supplied bytes — it never reconstructs the transcript.
+- `Tests/Correspondence.lean` (11 checks): the resolution checks now feed an op carrying a known
+  prefix and assert the resolved value is the SHA-256 of exactly those bytes; the wire-record,
+  sealing, sequence, and ClientHello-inclusive checks are retained.
+
+`conn`/`https`/`e2e` are unchanged — the fake provider ignores the resolved hash, and the
+core-carried prefix is correct in the fake flow too (the core commits the parsed ClientHello and
+the server messages regardless of provider). Proofs untouched (92 theorems).
+
+### RFC 031 slice 3 — the core is the single transcript authority (ClientHello-inclusive)
+
+The handshake transcript is held by the verified core, which commits the inbound ClientHello
+and every server-flight message to its `TranscriptState.events` with exact wire bytes. Until
+now the core passed only an *abstract* snapshot id (`#[snap.id]`) into transcript-bound crypto
+ops, and the byte-accurate hash was reconstructed downstream — in the test driver from its own
+seeded transcript, and (slices 1–2) in the production interpreter from an outbound-only
+accumulation that was **missing the ClientHello prefix**. This slice makes the core carry the
+real committed prefix bytes, so the authority lives in one place and the ClientHello is never
+dropped.
+
+- `Core/Transcript.lean`: new `TranscriptState.prefixBytes (snap)` reconstructs the exact bytes
+  a snapshot pins — the concatenation of the first `snap.eventCount` committed events' wire
+  bytes (ClientHello + the server messages committed before the snapshot).
+- `Core/Handshake.lean`: the five transcript-bound op sites (handshake-traffic schedule,
+  CertificateVerify, server Finished MAC, application-traffic schedule, client-Finished
+  verification) now carry `ts.prefixBytes snap` instead of `#[snap.id]`. The snapshot pinning is
+  already proved correct (`Proofs/Transcript.lean`: `snapshot_eventCount`,
+  `snapshot_then_append_is_before`), so each op covers exactly the right prefix — including the
+  client-Finished case, whose snapshot is taken before its own message is committed.
+- The handshake legality proofs are unaffected (they discard the action list and reason only
+  about the state), so the 92-theorem audit is unchanged.
+- `Tests/Correspondence.lean`: new check (12 total) drives the core to the CertificateVerify op
+  and asserts its carried prefix begins with the inbound ClientHello and extends past it — i.e.
+  the op is hashed over `CH ++ ServerHello ++ EncryptedExtensions ++ Certificate`.
+
+Nothing consumes the carried bytes yet — the interpreter still resolves against its own
+accumulation, and the fake provider ignores the value — so `conn`/`https` are unchanged. The
+next slice switches the interpreter to hash the core's carried prefix (and drops the incomplete
+local accumulation), which is the precondition for reaching `connected` with the real provider.
+
+### RFC 031 slice 2 — real record sealing in the production interpreter
+
+The production interpreter now emits the **real encrypted flight**: a cleartext ServerHello
+record followed by sealed EncryptedExtensions / Certificate / CertificateVerify / Finished
+protected records, under the core-authorized write epoch and sequence number — no longer the
+test driver's message-type heuristic and self-tracked `writeSeq` (the "alternative assembly"
+RFC 031 §3 forbids).
+
+- `Core/Action.lean`: `writeHandshake` and `writeCertificate` now carry `(epoch : Epoch)`
+  and `(seq : UInt64)`. The core authorizes both: ServerHello is `.initial`/0 (cleartext);
+  EncryptedExtensions/Certificate/CertificateVerify/Finished are `.handshake` at sequence
+  0/1/2/3 (the flight order is fixed — no HRR — so the sequence numbers are constant literals
+  in `Core/Handshake.lean`, decided by the core rather than counted by the interpreter). The
+  four classifier `@[simp]` theorems are updated for the new arity; the proofs are otherwise
+  untouched.
+- `Kroopt/Conn/Interpreter.lean`: `writeHandshake`/`writeCertificate` realize each message as
+  the wire bytes its epoch demands — `handshakeWire` frames the `.initial` ServerHello as a
+  cleartext handshake record and seals `.handshake`-epoch messages with `Record13.sealRecord`
+  under the server handshake-traffic key looked up from the arena, at the action's sequence
+  number. The transcript still commits the *plaintext* message bytes, so the single transcript
+  authority (slice 1) is preserved while the wire carries real records. A keyless arena (the
+  transitional fake-provider path) falls back to a cleartext record rather than crashing.
+- `Tests/Correspondence.lean`: grown to 11 checks — a sealed handshake-epoch message opens
+  back to its plaintext under the installed key, honours the core-authorized sequence number
+  (opens at seq 3, fails at seq 0), falls back to cleartext without a key, and keeps the
+  ServerHello cleartext.
+
+No proof change (92 public theorems; the action edits are binder-only at the classifier
+theorems). The fake-provider `conn`/`https`/`e2e` suites are unaffected: they assert outbound
+size/drain, not wire content, and the keyless fallback keeps them driving to `connected`.
+
+### RFC 031 slice 1 — single transcript authority in the production interpreter
+
+Begins RFC 031 (production-interpreter correspondence): the byte-accurate handshake moves
+from the `Tests/RealHandshake.lean` driver into the production interpreter
+(`Kroopt/Conn/Interpreter.lean`). This first slice establishes the **single transcript
+authority** (RFC 031 §3): the interpreter accumulates exactly the serialized
+handshake-message bytes it writes to the wire and binds every transcript-dependent crypto op
+to the SHA-256 of those same bytes — never an independently assembled trace.
+
+- `Kroopt/Conn/Interpreter.lean`:
+  - `RuntimeState.transcript : ByteArray` accumulates the authorized handshake-message bytes.
+  - `writeHandshake` / `writeCertificate` commit their serialized bytes to `transcript` as
+    well as the wire, so the bytes written and the bytes hashed are one sequence.
+  - new `resolveCryptoTranscript` substitutes the real `Hacl.sha256` of the current
+    accumulated transcript into transcript-bound ops (`signCertificateVerify` via
+    `certVerifyContent`, `computeServerFinished`, `verifyFinished`, and the traffic-secret
+    `hkdfExpandLabel` contexts) before submission; non-transcript ops pass through. The flow
+    ordering guarantees the accumulated transcript is at the correct point for each op, so no
+    snapshot-id mapping is needed.
+  - imports `Kroopt.Crypto.Hacl` and `Kroopt.Conn.Flight`; the interpreter is the impure
+    layer and may compute real hashes.
+- `Tests/Correspondence.lean` (new, RFC 031 §6 — grows with the RFC): 7 checks validating
+  that the interpreter accumulates the serialized bytes as the transcript, that the wire
+  bytes equal the hashed bytes, and that each transcript-bound op resolves to the real hash
+  of exactly those bytes. New suite `kroopt-correspondence-test`.
+- `lakefile.lean`: importing the HACL FFI into the widely-imported interpreter forces every
+  interpreter-driving exe to link the native crypto lib; added `-Wl,--gc-sections` to those
+  exe targets (conn, https, e2e, and the unit suites) to prune the unused HACL sections.
+
+No behaviour change for the existing fake-provider `conn`/`https` suites: the fake provider
+ignores the resolved transcript reference. Proofs untouched (92 public theorems); the change
+is runtime-only.
+
 ## [0.46.0-dev] — RFC 032 RESOLVED: typed flight assembly, no first-byte dispatch — 2026-06-12
 
 Milestone release (RFC 032 "no first-byte dispatch" theme complete; RFC moved to
@@ -10,6 +288,8 @@ Milestone release (RFC 032 "no first-byte dispatch" theme complete; RFC moved to
 serialized by a single source; the transcript is committed over those serialized bytes; a CI
 gate forbids placeholder framers / first-byte dispatch in production. Accumulated over
 session slices 4a–4d plus §5/§7 (below).
+
+## [0.46.0-dev] — RFC 032 RESOLVED: transcript over serialized bytes + typed flight + CI gate — 2026-06-12
 
 ### RFC 032 slice 4a — server ECDHE share captured into the core
 

@@ -1,6 +1,10 @@
 import Kroopt.Core.Step
 import Kroopt.Crypto.Provider
+import Kroopt.Crypto.Hacl
+import Kroopt.Crypto.KeySchedule
 import Kroopt.Conn.Transport
+import Kroopt.Conn.Flight
+import Kroopt.Conn.Record13
 import Kroopt.Parse.Wire
 
 /-!
@@ -22,7 +26,7 @@ The driver is a fuel-bounded loop, so it can never spin on repeated `wouldBlock`
 namespace Kroopt.Conn
 
 open Kroopt (TlsError TransportError CryptoError)
-open Kroopt.Core (State InputEvent OutputAction HandshakeInfo)
+open Kroopt.Core (State InputEvent OutputAction HandshakeInfo CryptoOp)
 open Kroopt.Crypto (CryptoProvider SecretArena)
 
 /-- How many bytes a single `readTransport` requests. -/
@@ -58,6 +62,95 @@ partial def drainOutbound {τ : Type} [Transport τ] (rt : RuntimeState) (tr : �
     | (.wouldBlock, tr') => (rt, tr')
     | (.error e, tr') => ({ rt with lastError := some (.transport e), terminal := true }, tr')
 
+/-- Resolve a transcript-bound crypto op by hashing the **prefix bytes the core carried in it**
+(RFC 031 §3). The verified core is the single transcript authority: it commits the inbound
+ClientHello and every server message to its transcript and passes the exact committed-prefix
+bytes (`TranscriptState.prefixBytes`) in the op. The interpreter only computes the hash the
+provider expects — it never reconstructs or re-accumulates the transcript. For HKDF, only the
+traffic-secret derivations carry a transcript prefix; other steps (e.g. the `derived` step) carry
+their own context and pass through. Non-transcript ops (ECDHE, AEAD) pass through unchanged. -/
+def resolveCryptoTranscript : CryptoOp → CryptoOp
+  | .signCertificateVerify scheme pfx =>
+      .signCertificateVerify scheme (Flight.certVerifyContent (Kroopt.Crypto.Hacl.sha256 pfx))
+  | .computeServerFinished alg pfx =>
+      .computeServerFinished alg (Kroopt.Crypto.Hacl.sha256 pfx)
+  | .verifyFinished alg pfx received =>
+      .verifyFinished alg (Kroopt.Crypto.Hacl.sha256 pfx) received
+  | .hkdfExpandLabel alg secret label ctx len =>
+      if label == "s hs traffic" || label == "c hs traffic"
+         || label == "s ap traffic" || label == "c ap traffic" || label == "exp master" then
+        .hkdfExpandLabel alg secret label (Kroopt.Crypto.Hacl.sha256 ctx) len
+      else
+        .hkdfExpandLabel alg secret label ctx len
+  | op => op
+
+/-- Fill in the record-header AAD (RFC 8446 §5.2) for an AEAD record op. The core routes the
+record and hands the provider the plaintext/ciphertext, but the record header — which is the AEAD's
+additional data — is a wire-framing detail the interpreter owns: it is exactly the header
+`Record13.sealRecord` binds on the seal side. We reconstruct it from the on-wire ciphertext length
+so that the provider's seal and open agree with the framing; without it, a real AEAD provider
+produces records a peer rejects and rejects every inbound protected record.
+
+  * `aeadOpen`: the ciphertext is already the on-wire payload, so its length is the header length.
+  * `aeadSeal`: the on-wire ciphertext is the plaintext plus the 16-byte Poly1305 tag, matching
+    `Record13.sealRecord`'s `ctLen := inner.size + 16`. -/
+def resolveRecordAAD : CryptoOp → CryptoOp
+  | .aeadOpen meta _ ct => .aeadOpen meta (Record13.recordAAD ct.size) ct
+  | .aeadSeal meta _ pt => .aeadSeal meta (Record13.recordAAD (pt.size + 16)) pt
+  | op => op
+
+/-- Whether a provider result is a well-formed answer to a crypto op of the given kind (RFC 031
+§4 — the operation-id lifecycle's *same operation kind* requirement, enforced at the interpreter
+layer). A typed `failed` error answers any op; `verifyFailed` answers an open or a Finished verify
+(an adversarial outcome, not a malformed result). Anything else is a provider misbehaving: the
+interpreter must not feed a mismatched result into the verified core as if it answered the op. -/
+def resultMatchesKind : Kroopt.Core.CryptoOpKind → Kroopt.Core.CryptoResult → Bool
+  | _,                        .failed _        => true
+  | .randomBytes,             .randomBytes _   => true
+  | .ecdhe,                   .ecdheComplete _ _ => true
+  | .hkdfExtract,             .hkdfSecret _    => true
+  | .hkdfExpand,              .hkdfSecret _    => true
+  | .installTrafficKeys,      .keysInstalled   => true
+  | .aeadSeal,                .aeadSealed _    => true
+  | .aeadOpen,                .aeadOpened _    => true
+  | .aeadOpen,                .verifyFailed    => true
+  | .verifyFinished,          .verified        => true
+  | .verifyFinished,          .verifyFailed    => true
+  | .signCertificateVerify,   .signature _     => true
+  | .computeServerFinished,   .finishedMac _   => true
+  | _, _ => false
+
+/-- Frame a cleartext TLS 1.3 handshake record (`content_type = handshake`, legacy record
+version `0x0303`). The ServerHello travels in such a record — it precedes the encrypted flight. -/
+def plaintextHandshakeRecord (plain : ByteArray) : ByteArray :=
+  ByteArray.mk #[(22 : UInt8), 0x03, 0x03] ++ Kroopt.Parse.Wire.be16 plain.size.toUInt16 ++ plain
+
+/-- Seal one handshake-flight message as a real TLS 1.3 protected record under the server
+handshake-traffic key installed in the arena, at the core-authorized sequence number `seq`
+(RFC 031 §3 — the interpreter MAY seal but the epoch/seq come from the core). Returns `none`
+when no handshake write key is installed; that is the transitional fake-provider path, whose
+bytes never reach a real wire. -/
+def sealHandshakeRecord (arena : SecretArena) (seq : UInt64) (plain : ByteArray) : Option ByteArray :=
+  match arena.lookupBaseSecret .write .handshake with
+  | none => none
+  | some sid =>
+    match arena.getById sid with
+    | none => none
+    | some secret =>
+        let key := Kroopt.Crypto.KeySchedule.trafficKey .chacha20Poly1305Sha256 secret
+        let iv  := Kroopt.Crypto.KeySchedule.trafficIv secret
+        some (Record13.sealRecord key iv seq plain .handshake 0)
+
+/-- Realize a flight message as the wire bytes its core-authorized epoch demands: a
+`.handshake`-epoch message becomes a sealed protected record (or, transitionally, a cleartext
+record if no key is installed); the `.initial`-epoch ServerHello becomes a cleartext handshake
+record. The transcript itself lives in the core (RFC 031 §3) — over plaintext messages — so
+the interpreter only frames/seals the wire; it does not maintain a transcript. -/
+def handshakeWire (arena : SecretArena) (epoch : Kroopt.Core.Epoch) (seq : UInt64) (plain : ByteArray) : ByteArray :=
+  match epoch with
+  | .handshake => (sealHandshakeRecord arena seq plain).getD (plaintextHandshakeRecord plain)
+  | _ => plaintextHandshakeRecord plain
+
 /-- Execute one action (RFC 010 §6). Dispatches on the action **variant only** —
 no protocol-state branching. Returns the updated runtime/transport and any
 follow-up `InputEvent`s to feed back to the core. -/
@@ -71,25 +164,45 @@ def execAction {τ : Type} [Transport τ] (prov : CryptoProvider) (rt : RuntimeS
       | (.error e, tr')    => ({ rt with lastError := some (.transport e) }, tr',
                                [InputEvent.transportEof conn])
   | .writeTransport _ b =>
-      let (rt', tr') := drainOutbound { rt with outbound := rt.outbound ++ b } tr
+      -- The core emits `writeTransport` only for application-data ciphertext the provider has
+      -- sealed (RFC 004 §6) — the bare AEAD output, with no record header. Frame it as a
+      -- `TLSCiphertext` record here, where the interpreter owns wire framing (the handshake flight
+      -- is framed the same way via `Record13`). The 5-byte header is exactly the AEAD AAD the seal
+      -- bound (`Record13.recordAAD` over the on-wire ciphertext length), so open and wire agree.
+      let record := Record13.recordAAD b.size ++ b
+      let (rt', tr') := drainOutbound { rt with outbound := rt.outbound ++ record } tr
       (rt', tr', [])
-  | .writeHandshake _ msg =>
-      -- Realize the typed handshake message via the shared serializer (RFC 032);
-      -- no first-byte dispatch. Drains like any other authorized write.
-      let (rt', tr') := drainOutbound { rt with outbound := rt.outbound ++ Kroopt.Core.serializeHandshakeOut msg } tr
+  | .writeHandshake _ epoch seq msg =>
+      -- Realize the typed handshake message via the shared serializer (RFC 032); no
+      -- first-byte dispatch. The wire carries the real record for the core-authorized epoch/seq
+      -- (plaintext ServerHello, sealed encrypted flight). The transcript is the core's, not the
+      -- interpreter's.
+      let plain := Kroopt.Core.serializeHandshakeOut msg
+      let wire := handshakeWire rt.arena epoch seq plain
+      let (rt', tr') := drainOutbound
+        { rt with outbound := rt.outbound ++ wire } tr
       (rt', tr', [])
-  | .writeCertificate _ _ =>
+  | .writeCertificate _ epoch seq _ =>
       -- The interpreter owns Certificate serialization from the chain handle (RFC 032 §4).
-      -- Until the configured DER is wired into the runtime (RFC 031), production serializes
-      -- a structurally-valid empty Certificate rather than the old 4-byte placeholder.
-      let cert := Kroopt.Parse.Wire.certificate (ByteArray.mk #[]) (ByteArray.mk #[])
-      let (rt', tr') := drainOutbound { rt with outbound := rt.outbound ++ cert } tr
+      -- Until the configured DER is wired in, production serializes a structurally-valid empty
+      -- Certificate; it is sealed under the handshake epoch like the rest of the flight.
+      let plain := Kroopt.Parse.Wire.certificate (ByteArray.mk #[]) (ByteArray.mk #[])
+      let wire := handshakeWire rt.arena epoch seq plain
+      let (rt', tr') := drainOutbound
+        { rt with outbound := rt.outbound ++ wire } tr
       (rt', tr', [])
   | .enableWriteInterest _  => ({ rt with writeInterest := true }, Transport.enableWrite tr (Transport.fd tr), [])
   | .disableWriteInterest _ => ({ rt with writeInterest := false }, Transport.disableWrite tr (Transport.fd tr), [])
   | .callCrypto conn op req =>
-      match prov.submit rt.arena op req with
-      | .ok (arena', r) => ({ rt with arena := arena' }, tr, [InputEvent.cryptoResult conn op r])
+      match prov.submit rt.arena op (resolveRecordAAD (resolveCryptoTranscript req)) with
+      | .ok (arena', r) =>
+          if resultMatchesKind req.kind r then
+            ({ rt with arena := arena' }, tr, [InputEvent.cryptoResult conn op r])
+          else
+            -- The provider answered with a result whose kind cannot answer this op (RFC 031 §4):
+            -- an internal-invariant violation. Terminate; never feed the mismatched result into
+            -- the verified core, where it would be dispatched on the result kind alone.
+            ({ rt with arena := arena', lastError := some .internalInvariantFailure, terminal := true }, tr, [])
       | .error e        => (rt, tr, [InputEvent.cryptoResult conn op (.failed e)])
   | .emitPlaintext _ b        => ({ rt with plaintextOut := some b }, tr, [])
   | .acceptPlaintextBytes _ n => ({ rt with acceptedBytes := rt.acceptedBytes + n }, tr, [])
