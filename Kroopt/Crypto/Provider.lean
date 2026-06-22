@@ -141,6 +141,9 @@ def fakeSubmit (a : SecretArena) (_ : OperationId) :
   | .ecdheX25519 _ => do
       let (h, a') ← a.store (ByteArray.mk (Array.mkArray 32 0))
       .ok (a', .ecdheComplete (ByteArray.mk (Array.mkArray 32 0)) h)
+  | .ecdheP256 _ => do
+      let (h, a') ← a.store (ByteArray.mk (Array.mkArray 32 0))
+      .ok (a', .ecdheComplete (ByteArray.mk (Array.mkArray 65 0)) h)
   | .hkdfExtract _ _ _ => do
       let (h, a') ← a.store (ByteArray.mk (Array.mkArray 32 0)); .ok (a', .hkdfSecret h)
   | .hkdfExpandLabel _ _ _ _ _ => do

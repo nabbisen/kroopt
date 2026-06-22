@@ -29,8 +29,8 @@ def b (l : List UInt8) : ByteArray := ByteArray.mk l.toArray
 
 /-! ## A valid ClientHello, record-framed -/
 
-def keyShareEntry : List UInt8 := [0x00, 0x1d, 0, 4, 1, 2, 3, 4]
-def extKeyShare : List UInt8 := [0, 51, 0, 10, 0, 8] ++ keyShareEntry
+def keyShareEntry : List UInt8 := [0x00, 0x1d, 0, 32] ++ List.replicate 32 0x07  -- 32-byte x25519 share (RFC 8446 §4.2.8.2)
+def extKeyShare : List UInt8 := [0, 51, 0, 38, 0, 36] ++ keyShareEntry
 def extSigAlgs : List UInt8 := [0, 0x0d, 0, 4, 0, 2, 0x08, 0x07]  -- signature_algorithms: ed25519
 def extSupVer : List UInt8 := [0, 43, 0, 3, 2, 0x03, 0x04]
 def extsBody : List UInt8 := extSupVer ++ extKeyShare ++ extSigAlgs
@@ -55,6 +55,7 @@ def clientFinishedRecord : ByteArray := record ([20] ++ [0, 0, 32] ++ List.repli
 
 def fakeCrypto : CryptoOp → CryptoResult
   | .ecdheX25519 _ => .ecdheComplete (ByteArray.mk (Array.mkArray 32 0)) ⟨1, 0⟩
+  | .ecdheP256 _ => .ecdheComplete (ByteArray.mk (Array.mkArray 65 0)) ⟨1, 0⟩
   | .signCertificateVerify _ _ => .signature (b (List.replicate 64 0xCD))
   | .verifyFinished _ _ _ => .verified
   | .aeadSeal _ _ pt => .aeadSealed pt

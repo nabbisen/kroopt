@@ -85,6 +85,7 @@ the core orchestrates while the provider holds the bytes:
 inductive CryptoOp where
   | randomBytes (len : Nat)
   | ecdheX25519 (peerShare : ByteArray)
+  | ecdheP256 (peerShare : ByteArray)
   | hkdfExtract (alg : HashAlgorithm) (salt : Option SecretKeyHandle) (ikm : Option SecretKeyHandle)
   | hkdfExpandLabel (alg : HashAlgorithm) (secret : SecretKeyHandle)
       (label : String) (context : ByteArray) (len : Nat)
@@ -104,6 +105,7 @@ namespace CryptoOp
 def kind : CryptoOp → CryptoOpKind
   | randomBytes _              => .randomBytes
   | ecdheX25519 _              => .ecdhe
+  | ecdheP256 _                => .ecdhe
   | hkdfExtract _ _ _          => .hkdfExtract
   | hkdfExpandLabel _ _ _ _ _  => .hkdfExpand
   | installTrafficKeys _ _ _ _ => .installTrafficKeys

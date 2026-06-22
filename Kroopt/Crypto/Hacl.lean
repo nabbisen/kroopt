@@ -32,6 +32,17 @@ opaque x25519Public (priv : ByteArray) : ByteArray
 @[extern "kroopt_ffi_x25519_shared"]
 opaque x25519SharedRaw (priv peer : ByteArray) : ByteArray
 
+/-- P-256 (secp256r1) public key from a 32-byte scalar, as the 65-byte uncompressed wire point
+`0x04 || X || Y`. Empty on failure (bad scalar / point at infinity). -/
+@[extern "kroopt_ffi_p256_public"]
+opaque p256Public (priv : ByteArray) : ByteArray
+
+/-- P-256 ECDH: 33-byte result `status(1) || sharedX(32)` from a 32-byte scalar and the peer's
+65-byte uncompressed point. `status = 0` on success; the TLS 1.3 shared secret is `sharedX` (RFC
+8446 §7.4.2). -/
+@[extern "kroopt_ffi_p256_shared"]
+opaque p256SharedRaw (priv peer : ByteArray) : ByteArray
+
 @[extern "kroopt_ffi_aead_seal"]
 opaque chachaPolySeal (key nonce aad pt : ByteArray) : ByteArray
 
@@ -85,6 +96,12 @@ def randomBytes (len : UInt32) : IO RandomResult := do
 secret, which TLS 1.3 must reject. -/
 def x25519Shared (priv peer : ByteArray) : Option ByteArray :=
   let r := x25519SharedRaw priv peer
+  if r.size == 33 ∧ r.get! 0 == 0 then some (r.extract 1 33) else none
+
+/-- P-256 ECDH. `none` on failure (wrong-size inputs, malformed peer point, or point at
+infinity); otherwise the 32-byte shared secret (the X-coordinate, per RFC 8446 §7.4.2). -/
+def p256Shared (priv peer : ByteArray) : Option ByteArray :=
+  let r := p256SharedRaw priv peer
   if r.size == 33 ∧ r.get! 0 == 0 then some (r.extract 1 33) else none
 
 /-- ChaCha20-Poly1305 open. `none` on authentication failure (no plaintext is

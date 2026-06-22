@@ -176,9 +176,14 @@ def onServerRandomDone (s : State) (random : ByteArray) : HsResult :=
   if s.handshake = .requestedServerRandom then
     let s := { s with negotiated := { s.negotiated with serverRandom := some random } }
     let (oid, s) := s.allocOp .ecdhe .handshake (some .read)
+    -- RFC 8446 §4.2.8: the ECDHE primitive is selected by the negotiated group. kroopt
+    -- negotiates x25519 (default) or secp256r1; the client share carries the matching point.
+    let peer := s.negotiated.clientShare.getD (ByteArray.mk #[])
+    let op := match s.negotiated.selectedGroup with
+              | some .secp256r1 => CryptoOp.ecdheP256 peer
+              | _               => CryptoOp.ecdheX25519 peer
     .ok ({ s with handshake := .requestedEcdhe },
-         [OutputAction.callCrypto s.connId oid
-            (CryptoOp.ecdheX25519 (s.negotiated.clientShare.getD (ByteArray.mk #[])))])
+         [OutputAction.callCrypto s.connId oid op])
   else
     hsFail s .unexpectedMessage (.protocol .illegalMessageForState)
 

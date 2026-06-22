@@ -79,6 +79,15 @@ def submit (cfg : RealCryptoConfig) (a : SecretArena) (_ : OperationId) :
           let (h, a') ← a.store shared
           .ok (a', .ecdheComplete serverShare h)
       | _, none => .error .providerInternal
+  | .ecdheP256 peerShare =>
+      -- secp256r1 ECDHE (RFC 8446 §4.2.8). The ephemeral scalar is the same 32-byte secret
+      -- drawn for x25519; a random value is a valid P-256 scalar with overwhelming probability,
+      -- and HACL fails closed (empty public / `none` shared) on the negligible bad-scalar case.
+      match Hacl.p256Public cfg.ephemeralPrivate, Hacl.p256Shared cfg.ephemeralPrivate peerShare with
+      | serverShare, some shared => do
+          let (h, a') ← a.store shared
+          .ok (a', .ecdheComplete serverShare h)
+      | _, none => .error .providerInternal
   | .hkdfExtract _ salt ikm => do
       let saltBytes ← match salt with | some h => need a h | none => .ok z32
       let ikmBytes  ← match ikm  with | some h => need a h | none => .ok z32

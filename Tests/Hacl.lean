@@ -110,6 +110,25 @@ def main : IO UInt32 := do
   let r1 ← (do match ← randomBytes 32 with | .bytes b => pure b | .error _ => pure ByteArray.empty)
   let r2 ← (do match ← randomBytes 32 with | .bytes b => pure b | .error _ => pure ByteArray.empty)
 
+  -- P-256 (secp256r1) ECDH — NIST CAVP KAS ECC-CDH primitive vector (curve P-256, first row).
+  -- Our private d, peer public 0x04||QCAVSx||QCAVSy, expected shared X-coordinate Z.
+  let p256_d    := "7d7dc5f71eb29ddaf80d6214632eeae03d9058af1fb6d22ed80badb62bc1a534"
+  let p256_qx   := "700c48f77f56584c5cc632ca65640db91b6bacce3a4df6b42ce7cc838833d287"
+  let p256_qy   := "db71e509e3fd9b060ddb20ba5c51dcc5948d46fbf640dfe0441782cab85fa4ac"
+  let p256_z    := "46fc62106420ff012e54a434fbdd2d25ccc5852060561e68040dd7778997bd7b"
+  let p256Peer  := (hexToBytes "04") ++ hexToBytes p256_qx ++ hexToBytes p256_qy
+  let p256Kat   := p256Shared (hexToBytes p256_d) p256Peer
+  -- DH self-consistency: pubA = d·G, pubB = e·G, then d·pubB == e·pubA (e = scalar 2).
+  let p256PrivB := rep 31 0x00 |>.push 0x02
+  let p256PubA  := p256Public (hexToBytes p256_d)
+  let p256PubB  := p256Public p256PrivB
+  let p256ShAB  := p256Shared (hexToBytes p256_d) p256PubB
+  let p256ShBA  := p256Shared p256PrivB p256PubA
+  -- fail-closed (RFC 037 §2): wrong-size scalar / malformed peer point.
+  let p256BadPriv := p256Shared (rep 31 0x01) p256Peer
+  let p256BadPeer := p256Shared (hexToBytes p256_d) (rep 65 0x05)   -- first byte ≠ 0x04
+  let p256PubBad  := p256Public (rep 31 0x01)
+
   let checks : List Check :=
     [ { name := "SHA-256(\"abc\") matches FIPS 180-4 vector"
       , ok := bytesEq (sha256 "abc".toUTF8) (hexToBytes sha256_abc) }
@@ -122,6 +141,19 @@ def main : IO UInt32 := do
                | some s => bytesEq s (hexToBytes x25519_out) | none => false) }
     , { name := "X25519 public key is 32 bytes"
       , ok := (x25519Public (hexToBytes x25519_priv)).size == 32 }
+    , { name := "P-256 ECDH matches NIST CAVP ECC-CDH P-256 vector"
+      , ok := (match p256Kat with | some s => bytesEq s (hexToBytes p256_z) | none => false) }
+    , { name := "P-256 public key is the 65-byte uncompressed point 0x04||X||Y"
+      , ok := p256PubA.size == 65 ∧ p256PubA.get! 0 == 0x04 }
+    , { name := "P-256 ECDH is symmetric (d·(e·G) == e·(d·G)), self-consistency"
+      , ok := (match p256ShAB, p256ShBA with
+               | some a, some b => bytesEq a b | _, _ => false) }
+    , { name := "P-256 ECDH rejects a wrong-size scalar, fails closed (RFC 037 §2)"
+      , ok := p256BadPriv.isNone }
+    , { name := "P-256 ECDH rejects a malformed peer point, fails closed (RFC 037 §2)"
+      , ok := p256BadPeer.isNone }
+    , { name := "P-256 public derivation rejects a wrong-size scalar (RFC 037 §2)"
+      , ok := p256PubBad.size == 0 }
     , { name := "ChaCha20-Poly1305 seal/open round-trips"
       , ok := (match opened with | some p => bytesEq p pt | none => false) }
     , { name := "ChaCha20-Poly1305 rejects a tampered ciphertext"

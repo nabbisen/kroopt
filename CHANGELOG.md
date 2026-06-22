@@ -5,6 +5,39 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.53.0-dev] — RFC (v0.4 breadth): secp256r1 (P-256) ECDHE as a second key-exchange group — 2026-06-14
+
+First algorithm-breadth increment of the v0.4 line: kroopt now negotiates **P-256 (secp256r1) ECDHE**
+in addition to x25519, validated end-to-end against OpenSSL over the live iotakt loop. The change is
+purely additive — the structural proofs are group-agnostic (no proof references any `NamedGroup`), so all
+94 theorems and their axiom profile are unchanged.
+
+- **Vendored crypto (assumed, not hand-rolled).** `Hacl_P256.c` + `Hacl_Bignum256.c` from the HACL\*
+  distribution are vendored into `Kroopt/Native/hacl/` and registered in the `krooptCrypto` extern lib.
+  Two FFI entry points (`kroopt_ffi_p256_public`, `kroopt_ffi_p256_shared`) bridge to
+  `Hacl_P256_ecp256dh_i`/`_r`; the wire `key_share` is the uncompressed point `0x04‖X‖Y` (65 bytes) and
+  the shared secret is the X-coordinate (32 bytes, RFC 8446 §7.4.2). Both fail closed on wrong-size or
+  malformed input (RFC 037 §2).
+- **KAT (`Tests/Hacl.lean`, now 32 checks).** A NIST CAVP ECC-CDH P-256 vector for standards
+  conformance, plus DH symmetry (d·(e·G) == e·(d·G)) self-consistency and three fail-closed checks.
+- **Core wiring.** `CryptoOp.ecdheP256` joins `ecdheX25519`; `onServerRandomDone` emits the op matching
+  the negotiated group. The ClientHello parser's `findKeyShare` (replacing `findX25519Share`) selects the
+  best offered group — x25519 preferred, else secp256r1 — and validates the chosen point's wire length
+  before negotiation. The ServerHello already echoes `namedGroupToU16 selectedGroup` (→ 0x0017).
+- **Provider wiring.** The real and fake `CryptoProvider`s handle `ecdheP256`; the real one uses
+  `Hacl.p256Public`/`p256Shared` over the ephemeral scalar already drawn at the IO layer.
+- **Hardening (incidental).** Key-share wire lengths are now validated at parse time (x25519 = 32 bytes,
+  secp256r1 = 65-byte uncompressed point); the four fake-handshake fixtures were updated to present
+  well-formed 32-byte x25519 shares.
+- **Validation.** All 24 suites green (364 checks); parser fuzz clean at 40 000 iterations; all gates
+  green. Live interop over the real iotakt `EventLoop`: `openssl s_client -groups P-256` →
+  `Server Temp Key: ECDH, prime256v1` + HANDSHAKE_OK; `curl --curves P-256` → HTTP/1.1 200 with the
+  correct body and graceful close. x25519 regression-clean (`Server Temp Key: X25519`, HANDSHAKE_OK).
+
+Crypto remains ASSUMED (vendored HACL\*), protocol PROVEN, wire TESTED + interop-validated. The cipher
+suite (TLS_CHACHA20_POLY1305_SHA256) and server-auth signature (Ed25519) are unchanged; this increment
+widens the key-exchange dimension only.
+
 ## [0.52.0-dev] — RFC 015/013: HTTPS termination end-to-end (curl + Python) + graceful close_notify — 2026-06-13
 
 The v0.3 vision realised end to end: a Lean edge server **terminates TLS 1.3 itself and answers an HTTP

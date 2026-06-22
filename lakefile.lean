@@ -145,6 +145,8 @@ extern_lib krooptCrypto (pkg : NPackage _package.name) := do
     ("hacl/Hacl_HKDF.c",               "Hacl_HKDF.o"),
     ("hacl/Hacl_HMAC.c",               "Hacl_HMAC.o"),
     ("hacl/Hacl_Ed25519.c",            "Hacl_Ed25519.o"),
+    ("hacl/Hacl_P256.c",               "Hacl_P256.o"),
+    ("hacl/Hacl_Bignum256.c",          "Hacl_Bignum256.o"),
     ("hacl/Lib_Memzero0.c",            "Lib_Memzero0.o"),
     ("kroopt_ffi.c",                   "kroopt_ffi.o"),
     ("kroopt_socket.c",                "kroopt_socket.o")]

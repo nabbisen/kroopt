@@ -26,6 +26,7 @@
 #include "Hacl_HKDF.h"
 #include "Hacl_HMAC.h"
 #include "Hacl_Ed25519.h"
+#include "Hacl_P256.h"
 
 static inline uint8_t *ba_ptr(b_lean_obj_arg a) { return lean_sarray_cptr(a); }
 static inline size_t   ba_len(b_lean_obj_arg a) { return lean_sarray_size(a); }
@@ -196,4 +197,33 @@ LEAN_EXPORT lean_object *kroopt_ffi_random(uint32_t len, lean_object *w) {
   }
   free(tmp);
   return lean_io_result_mk_ok(r);
+}
+
+
+/* ── P-256 (secp256r1) ECDHE — RFC 8446 §4.2.8 / §7.4.2 (v0.4 group breadth) ──
+   Wire key_share is the uncompressed point 0x04||X||Y (65 bytes); HACL works on the
+   raw 64-byte X||Y. The ECDH shared secret is the 32-byte X-coordinate. */
+LEAN_EXPORT lean_object *kroopt_ffi_p256_public(b_lean_obj_arg priv) {
+  if (ba_len(priv) != 32) return mk_ba(0);
+  lean_object *r = mk_ba(65);
+  uint8_t *out = lean_sarray_cptr(r);
+  out[0] = 0x04;
+  bool ok = Hacl_P256_ecp256dh_i(out + 1, ba_ptr(priv));
+  if (!ok) return mk_ba(0);   /* point at infinity / bad scalar: empty result */
+  return r;
+}
+
+LEAN_EXPORT lean_object *kroopt_ffi_p256_shared(b_lean_obj_arg priv, b_lean_obj_arg peer) {
+  lean_object *r = mk_ba(33);
+  uint8_t *q = lean_sarray_cptr(r);
+  /* priv must be 32 bytes; peer must be a 65-byte uncompressed point. Reject otherwise
+     (status 1), never read out of bounds. */
+  if (ba_len(priv) != 32 || ba_len(peer) != 65 || ba_ptr(peer)[0] != 0x04) {
+    q[0] = 1; memset(q + 1, 0, 32); return r;
+  }
+  uint8_t shared[64];
+  bool ok = Hacl_P256_ecp256dh_r(shared, ba_ptr(peer) + 1, ba_ptr(priv));
+  q[0] = ok ? 0 : 1;
+  if (ok) memcpy(q + 1, shared, 32); else memset(q + 1, 0, 32);
+  return r;
 }

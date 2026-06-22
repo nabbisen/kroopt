@@ -88,9 +88,12 @@ def offersTls13 (exts : List RawExtension) : Bool :=
       let body := d.extract 1 d.size
       (u16sOfBytes body).contains 0x0304
 
-/-- Extract the client's X25519 (group 0x001d) `key_share`, if present. The
-`key_share` extension data is a u16-length-prefixed list of `KeyShareEntry`. -/
-def findX25519Share (exts : List RawExtension) : Option ByteArray :=
+/-- Extract the client's best-supported ECDHE `key_share`. kroopt supports x25519
+(group 0x001d, 32-byte share) and secp256r1 (group 0x0017, 65-byte uncompressed point
+`0x04 || X || Y`), preferring x25519. The `key_share` extension data is a
+u16-length-prefixed list of `KeyShareEntry`; the chosen point's wire length is validated
+here so a malformed share is rejected before negotiation (RFC 8446 §4.2.8). -/
+def findKeyShare (exts : List RawExtension) : Option (NamedGroup × ByteArray) :=
   match findExt exts 51 with
   | none => none
   | some d =>
@@ -100,7 +103,15 @@ def findX25519Share (exts : List RawExtension) : Option ByteArray :=
           match (Reader.ofBytes entriesBytes).takeCountedItems maxKeyShares parseKeyShareEntry with
           | .error _ => none
           | .ok (entries, _) =>
-              (entries.find? (fun e => e.fst == 0x001d)).map Prod.snd
+              let x25519 : Option (NamedGroup × ByteArray) :=
+                match (entries.find? (fun e => e.fst == 0x001d)).map Prod.snd with
+                | some s => if s.size == 32 then some (.x25519, s) else none
+                | none   => none
+              let p256 : Option (NamedGroup × ByteArray) :=
+                match (entries.find? (fun e => e.fst == 0x0017)).map Prod.snd with
+                | some s => if s.size == 65 ∧ s.get! 0 == 0x04 then some (.secp256r1, s) else none
+                | none   => none
+              x25519.orElse (fun _ => p256)
 
 /-- Pick the first offered cipher suite kroopt supports. -/
 def selectSuite (offered : List UInt16) : Option CipherSuite :=
@@ -154,12 +165,12 @@ def parseClientHello (input : ByteArray) : Except ParseError (Kroopt.Core.WireBo
              | .ok (exts, _) => pure exts
   if hasDuplicateExt exts then throw .valueOutOfRange
   if !offersTls13 exts then throw .valueOutOfRange
-  let some share := findX25519Share exts | throw .valueOutOfRange
+  let some (grp, share) := findKeyShare exts | throw .valueOutOfRange
   let some suite := selectSuite (u16sOfBytes suitesBytes) | throw .valueOutOfRange
   let some sigScheme := selectSigScheme (offeredSigSchemes exts) | throw .valueOutOfRange
   let vch : ValidClientHello :=
     { selectedSuite := suite
-      selectedGroup := .x25519
+      selectedGroup := grp
       clientShare := share
       selectedSigScheme := sigScheme
       sni := findExt exts 0
