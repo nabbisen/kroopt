@@ -23,6 +23,15 @@ After the handshake, kroopt reports the negotiated ALPN through
 handler. kroopt negotiates the byte-level extension and nothing more — it never
 selects a handler or inspects HTTP bytes. A plaintext connection reports no ALPN.
 
+The behaviour jemmet should rely on, choosing the `requireOverlap` mode: a client
+that sends **no** ALPN extension negotiates no protocol (`negotiatedProtocol` is
+absent) and the handshake proceeds — jemmet falls back to HTTP/1.1. A client that
+**offers** ALPN with no protocol the endpoint allows fails the handshake with a
+fatal `no_application_protocol` (alert 120) and never reaches a handler. When
+there is overlap, the server's preference order wins. (The two lenient modes
+instead proceed with no protocol on a non-overlapping offer; pick them only if
+serving an unnegotiated default is preferable to failing.)
+
 ## Negative inputs never reach the handler
 
 The security-critical acceptance cases all hold: plaintext HTTP sent to the TLS

@@ -27,7 +27,7 @@ def vch : ValidClientHello :=
     offeredShares := [(.x25519, bytes (List.replicate 32 0x07))]
     offeredSigSchemes := [.ed25519]
     sni := some (bytes [0x65, 0x78]) -- "ex"
-    alpn := [bytes [0x68, 0x32]]
+    alpn := some [bytes [0x68, 0x32]]
     sessionId := ByteArray.empty }   -- "h2"
 
 def s0 : State := State.initial ⟨0, 0⟩ ⟨0⟩ .sha256
@@ -94,6 +94,19 @@ def s0Ed : State :=
 endpoint that can only sign Ed25519. -/
 def vchRsaOnly : ValidClientHello := { vch with offeredSigSchemes := [.rsaPssRsaeSha256] }
 
+/-- A `requireOverlap` endpoint that allows only `http/1.1`; the shared `vch` offers only `h2`, so
+ALPN negotiation finds no overlap and (under the strict mode) the handshake must fail with
+`no_application_protocol` before any ServerHello/random action (RFC 7301 §3.2). -/
+def s0EdRequireOverlap : State :=
+  { State.initial ⟨0, 0⟩ ⟨0⟩ .sha256 with
+    serverConfig :=
+      { (default : Kroopt.Core.ValidatedServerConfig) with
+        alpnMode := .requireOverlap
+        defaultEndpoint := some
+          { (default : Kroopt.Core.EndpointConfig) with
+            signatureSchemes := [.ed25519]
+            allowedAlpn := [⟨"http/1.1".toUTF8⟩] } } }
+
 def checks : List Check :=
   [ { name := "full synthetic handshake reaches connected"
     , ok := (match runHandshake with
@@ -109,6 +122,16 @@ def checks : List Check :=
   , { name := "onClientHello with no signature-scheme overlap fails with handshake_failure (RFC 8446 §9.2)"
     , ok := (match onClientHello s0Ed vchRsaOnly chWire with
              | .ok ({ handshake := .failed .handshakeFailure, .. }, _) => true
+             | _ => false) }
+  , { name := "alpnNoOverlapRequireOverlapFailsNoApplicationProtocol (RFC 7301 §3.2)"
+    , ok := (match onClientHello s0EdRequireOverlap vch chWire with
+             | .ok ({ handshake := .failed .noApplicationProtocol, .. }, _) => true
+             | _ => false) }
+  , { name := "alpnNoOverlapDoesNotEmitServerHello: no random/ServerHello action on no-overlap"
+    , ok := (match onClientHello s0EdRequireOverlap vch chWire with
+             | .ok (_, acts) =>
+                 acts.all (fun a => match a with
+                   | .callCrypto .. => false | .writeTransport .. => false | _ => true)
              | _ => false) }
   , { name := "onClientHello with a matching scheme advances past start (no spurious failure)"
     , ok := (match onClientHello s0Ed vch chWire with

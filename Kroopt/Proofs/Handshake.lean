@@ -185,29 +185,62 @@ theorem onClientHello_selectedGroup_allowed
         simp only [Except.ok.injEq, Prod.mk.injEq] at h
         obtain ⟨rfl, -⟩ := h
         simp only [reduceCtorEq] at hsucc
-      · cases hsel : selectGroup vch.offeredShares
-            ((Option.map (fun x => x.namedGroups) (selectEndpoint s.serverConfig vch.sni)).getD []) with
-        | none =>
+      · cases hdec : negotiateAlpn s.serverConfig.alpnMode (vch.alpn.map (·.map AlpnProtocol.mk))
+            ((Option.map (fun x => x.allowedAlpn) (selectEndpoint s.serverConfig vch.sni)).getD []) with
+        | noOverlap =>
+          simp only [hdec] at h
           unfold hsFail at h
-          simp only [hsel, Except.ok.injEq, Prod.mk.injEq] at h
+          simp only [Except.ok.injEq, Prod.mk.injEq] at h
           obtain ⟨rfl, -⟩ := h
           simp only [reduceCtorEq] at hsucc
-        | some gp =>
-          obtain ⟨selGroup, selShare⟩ := gp
-          simp only [hsel] at h
-          simp only [allocOpOrFail_eq, TranscriptState.snapshot, KeyScheduleDriver.startPostEcdhe] at h
-          split at h
-          · -- budget overflow: fails closed; never reaches requestedServerRandom
+        | notOffered =>
+          simp only [hdec] at h
+          cases hsel : selectGroup vch.offeredShares
+              ((Option.map (fun x => x.namedGroups) (selectEndpoint s.serverConfig vch.sni)).getD []) with
+          | none =>
             unfold hsFail at h
-            simp only [Except.ok.injEq, Prod.mk.injEq] at h
+            simp only [hsel, Except.ok.injEq, Prod.mk.injEq] at h
             obtain ⟨rfl, -⟩ := h
             simp only [reduceCtorEq] at hsucc
-          · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+          | some gp =>
+            obtain ⟨selGroup, selShare⟩ := gp
+            simp only [hsel] at h
+            simp only [allocOpOrFail_eq, TranscriptState.snapshot, KeyScheduleDriver.startPostEcdhe] at h
+            split at h
+            · unfold hsFail at h
+              simp only [Except.ok.injEq, Prod.mk.injEq] at h
+              obtain ⟨rfl, -⟩ := h
+              simp only [reduceCtorEq] at hsucc
+            · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+              obtain ⟨rfl, -⟩ := h
+              refine ⟨selGroup, rfl, ?_⟩
+              have ha := (selectGroup_authorized hsel).1
+              rw [hep] at ha
+              exact ha
+        | selected p =>
+          simp only [hdec] at h
+          cases hsel : selectGroup vch.offeredShares
+              ((Option.map (fun x => x.namedGroups) (selectEndpoint s.serverConfig vch.sni)).getD []) with
+          | none =>
+            unfold hsFail at h
+            simp only [hsel, Except.ok.injEq, Prod.mk.injEq] at h
             obtain ⟨rfl, -⟩ := h
-            refine ⟨selGroup, rfl, ?_⟩
-            have ha := (selectGroup_authorized hsel).1
-            rw [hep] at ha
-            exact ha
+            simp only [reduceCtorEq] at hsucc
+          | some gp =>
+            obtain ⟨selGroup, selShare⟩ := gp
+            simp only [hsel] at h
+            simp only [allocOpOrFail_eq, TranscriptState.snapshot, KeyScheduleDriver.startPostEcdhe] at h
+            split at h
+            · unfold hsFail at h
+              simp only [Except.ok.injEq, Prod.mk.injEq] at h
+              obtain ⟨rfl, -⟩ := h
+              simp only [reduceCtorEq] at hsucc
+            · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+              obtain ⟨rfl, -⟩ := h
+              refine ⟨selGroup, rfl, ?_⟩
+              have ha := (selectGroup_authorized hsel).1
+              rw [hep] at ha
+              exact ha
   · unfold hsFail at h
     simp only [Except.ok.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h
@@ -248,20 +281,43 @@ theorem onClientHello_legal
     · have hx := hsFail_legal _ _ _ _ _ h hnt; exact hx
     · split at h
       · have hx := hsFail_legal _ _ _ _ _ h hnt; exact hx
-      · cases hsel : selectGroup vch.offeredShares
-            ((Option.map (fun x => x.namedGroups) (selectEndpoint s.serverConfig vch.sni)).getD []) with
-        | none =>
-          simp only [hsel] at h
-          have hl := hsFail_legal _ _ _ _ _ h hnt
-          exact hl
-        | some gp =>
-          obtain ⟨selGroup, selShare⟩ := gp
-          simp only [hsel, allocOpOrFail_eq] at h
-          split at h
-          · have hx := hsFail_legal _ _ _ _ _ h hnt; exact hx
-          simp only [Except.ok.injEq, Prod.mk.injEq] at h
-          obtain ⟨hs, -⟩ := h
-          rw [← hs, hcond]; rfl
+      · cases hdec : negotiateAlpn s.serverConfig.alpnMode (vch.alpn.map (·.map AlpnProtocol.mk))
+            ((Option.map (fun x => x.allowedAlpn) (selectEndpoint s.serverConfig vch.sni)).getD []) with
+        | noOverlap =>
+          simp only [hdec] at h
+          have hx := hsFail_legal _ _ _ _ _ h hnt; exact hx
+        | notOffered =>
+          simp only [hdec] at h
+          cases hsel : selectGroup vch.offeredShares
+              ((Option.map (fun x => x.namedGroups) (selectEndpoint s.serverConfig vch.sni)).getD []) with
+          | none =>
+            simp only [hsel] at h
+            have hl := hsFail_legal _ _ _ _ _ h hnt
+            exact hl
+          | some gp =>
+            obtain ⟨selGroup, selShare⟩ := gp
+            simp only [hsel, allocOpOrFail_eq] at h
+            split at h
+            · have hx := hsFail_legal _ _ _ _ _ h hnt; exact hx
+            simp only [Except.ok.injEq, Prod.mk.injEq] at h
+            obtain ⟨hs, -⟩ := h
+            rw [← hs, hcond]; rfl
+        | selected p =>
+          simp only [hdec] at h
+          cases hsel : selectGroup vch.offeredShares
+              ((Option.map (fun x => x.namedGroups) (selectEndpoint s.serverConfig vch.sni)).getD []) with
+          | none =>
+            simp only [hsel] at h
+            have hl := hsFail_legal _ _ _ _ _ h hnt
+            exact hl
+          | some gp =>
+            obtain ⟨selGroup, selShare⟩ := gp
+            simp only [hsel, allocOpOrFail_eq] at h
+            split at h
+            · have hx := hsFail_legal _ _ _ _ _ h hnt; exact hx
+            simp only [Except.ok.injEq, Prod.mk.injEq] at h
+            obtain ⟨hs, -⟩ := h
+            rw [← hs, hcond]; rfl
   · have hx := hsFail_legal _ _ _ _ _ h hnt; exact hx
 
 /-- `onEcdheDone` moves along a legal edge. -/
@@ -479,26 +535,57 @@ private theorem hs_no_emit_onClientHello
         obtain ⟨-, rfl⟩ := h
         simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
           or_self, or_false] at hmem
-      · cases hsel : selectGroup vch.offeredShares
-            ((Option.map (fun x => x.namedGroups) (selectEndpoint s.serverConfig vch.sni)).getD []) with
-        | none =>
-          simp only [hsel, Except.ok.injEq, Prod.mk.injEq] at h
-          obtain ⟨-, rfl⟩ := h
-          simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
-            or_self, or_false] at hmem
-        | some gp =>
-          obtain ⟨selGroup, selShare⟩ := gp
-          simp only [hsel, allocOpOrFail_eq] at h
-          split at h
-          · try unfold hsFail at h
-            simp only [Except.ok.injEq, Prod.mk.injEq] at h
-            obtain ⟨-, rfl⟩ := h
-            simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
-              or_self, or_false] at hmem
+      · cases hdec : negotiateAlpn s.serverConfig.alpnMode (vch.alpn.map (·.map AlpnProtocol.mk))
+            ((Option.map (fun x => x.allowedAlpn) (selectEndpoint s.serverConfig vch.sni)).getD []) with
+        | noOverlap =>
+          simp only [hdec] at h
           simp only [Except.ok.injEq, Prod.mk.injEq] at h
           obtain ⟨-, rfl⟩ := h
-          simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
-            or_self, or_false] at hmem
+          simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq, or_self, or_false] at hmem
+        | notOffered =>
+          simp only [hdec] at h
+          cases hsel : selectGroup vch.offeredShares
+                ((Option.map (fun x => x.namedGroups) (selectEndpoint s.serverConfig vch.sni)).getD []) with
+            | none =>
+              simp only [hsel, Except.ok.injEq, Prod.mk.injEq] at h
+              obtain ⟨-, rfl⟩ := h
+              simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+                or_self, or_false] at hmem
+            | some gp =>
+              obtain ⟨selGroup, selShare⟩ := gp
+              simp only [hsel, allocOpOrFail_eq] at h
+              split at h
+              · try unfold hsFail at h
+                simp only [Except.ok.injEq, Prod.mk.injEq] at h
+                obtain ⟨-, rfl⟩ := h
+                simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+                  or_self, or_false] at hmem
+              simp only [Except.ok.injEq, Prod.mk.injEq] at h
+              obtain ⟨-, rfl⟩ := h
+              simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+                or_self, or_false] at hmem
+        | selected p =>
+          simp only [hdec] at h
+          cases hsel : selectGroup vch.offeredShares
+                ((Option.map (fun x => x.namedGroups) (selectEndpoint s.serverConfig vch.sni)).getD []) with
+            | none =>
+              simp only [hsel, Except.ok.injEq, Prod.mk.injEq] at h
+              obtain ⟨-, rfl⟩ := h
+              simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+                or_self, or_false] at hmem
+            | some gp =>
+              obtain ⟨selGroup, selShare⟩ := gp
+              simp only [hsel, allocOpOrFail_eq] at h
+              split at h
+              · try unfold hsFail at h
+                simp only [Except.ok.injEq, Prod.mk.injEq] at h
+                obtain ⟨-, rfl⟩ := h
+                simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+                  or_self, or_false] at hmem
+              simp only [Except.ok.injEq, Prod.mk.injEq] at h
+              obtain ⟨-, rfl⟩ := h
+              simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+                or_self, or_false] at hmem
   · simp only [Except.ok.injEq, Prod.mk.injEq] at h
     obtain ⟨-, rfl⟩ := h
     simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
@@ -684,26 +771,57 @@ private theorem hs_no_accept_generic_onClientHello
         obtain ⟨-, rfl⟩ := h
         simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
           or_self, or_false] at hmem
-      · cases hsel : selectGroup vch.offeredShares
-            ((Option.map (fun x => x.namedGroups) (selectEndpoint s.serverConfig vch.sni)).getD []) with
-        | none =>
-          simp only [hsel, Except.ok.injEq, Prod.mk.injEq] at h
-          obtain ⟨-, rfl⟩ := h
-          simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
-            or_self, or_false] at hmem
-        | some gp =>
-          obtain ⟨selGroup, selShare⟩ := gp
-          simp only [hsel, allocOpOrFail_eq] at h
-          split at h
-          · try unfold hsFail at h
-            simp only [Except.ok.injEq, Prod.mk.injEq] at h
-            obtain ⟨-, rfl⟩ := h
-            simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
-              or_self, or_false] at hmem
+      · cases hdec : negotiateAlpn s.serverConfig.alpnMode (vch.alpn.map (·.map AlpnProtocol.mk))
+            ((Option.map (fun x => x.allowedAlpn) (selectEndpoint s.serverConfig vch.sni)).getD []) with
+        | noOverlap =>
+          simp only [hdec] at h
           simp only [Except.ok.injEq, Prod.mk.injEq] at h
           obtain ⟨-, rfl⟩ := h
-          simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
-            or_self, or_false] at hmem
+          simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq, or_self, or_false] at hmem
+        | notOffered =>
+          simp only [hdec] at h
+          cases hsel : selectGroup vch.offeredShares
+                ((Option.map (fun x => x.namedGroups) (selectEndpoint s.serverConfig vch.sni)).getD []) with
+            | none =>
+              simp only [hsel, Except.ok.injEq, Prod.mk.injEq] at h
+              obtain ⟨-, rfl⟩ := h
+              simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+                or_self, or_false] at hmem
+            | some gp =>
+              obtain ⟨selGroup, selShare⟩ := gp
+              simp only [hsel, allocOpOrFail_eq] at h
+              split at h
+              · try unfold hsFail at h
+                simp only [Except.ok.injEq, Prod.mk.injEq] at h
+                obtain ⟨-, rfl⟩ := h
+                simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+                  or_self, or_false] at hmem
+              simp only [Except.ok.injEq, Prod.mk.injEq] at h
+              obtain ⟨-, rfl⟩ := h
+              simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+                or_self, or_false] at hmem
+        | selected p =>
+          simp only [hdec] at h
+          cases hsel : selectGroup vch.offeredShares
+                ((Option.map (fun x => x.namedGroups) (selectEndpoint s.serverConfig vch.sni)).getD []) with
+            | none =>
+              simp only [hsel, Except.ok.injEq, Prod.mk.injEq] at h
+              obtain ⟨-, rfl⟩ := h
+              simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+                or_self, or_false] at hmem
+            | some gp =>
+              obtain ⟨selGroup, selShare⟩ := gp
+              simp only [hsel, allocOpOrFail_eq] at h
+              split at h
+              · try unfold hsFail at h
+                simp only [Except.ok.injEq, Prod.mk.injEq] at h
+                obtain ⟨-, rfl⟩ := h
+                simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+                  or_self, or_false] at hmem
+              simp only [Except.ok.injEq, Prod.mk.injEq] at h
+              obtain ⟨-, rfl⟩ := h
+              simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+                or_self, or_false] at hmem
   · simp only [Except.ok.injEq, Prod.mk.injEq] at h
     obtain ⟨-, rfl⟩ := h
     simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
@@ -886,26 +1004,57 @@ private theorem hs_no_aeadOpen_onClientHello
         obtain ⟨-, rfl⟩ := h
         simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
           or_self, or_false, and_false, OutputAction.callCrypto.injEq] at hmem
-      · cases hsel : selectGroup vch.offeredShares
-            ((Option.map (fun x => x.namedGroups) (selectEndpoint s.serverConfig vch.sni)).getD []) with
-        | none =>
-          simp only [hsel, Except.ok.injEq, Prod.mk.injEq] at h
-          obtain ⟨-, rfl⟩ := h
-          simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
-            or_self, or_false, and_false, OutputAction.callCrypto.injEq] at hmem
-        | some gp =>
-          obtain ⟨selGroup, selShare⟩ := gp
-          simp only [hsel, allocOpOrFail_eq] at h
-          split at h
-          · try unfold hsFail at h
-            simp only [Except.ok.injEq, Prod.mk.injEq] at h
-            obtain ⟨-, rfl⟩ := h
-            simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
-              or_self, or_false, and_false, OutputAction.callCrypto.injEq] at hmem
+      · cases hdec : negotiateAlpn s.serverConfig.alpnMode (vch.alpn.map (·.map AlpnProtocol.mk))
+            ((Option.map (fun x => x.allowedAlpn) (selectEndpoint s.serverConfig vch.sni)).getD []) with
+        | noOverlap =>
+          simp only [hdec] at h
           simp only [Except.ok.injEq, Prod.mk.injEq] at h
           obtain ⟨-, rfl⟩ := h
-          simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
-            or_self, or_false, and_false, OutputAction.callCrypto.injEq] at hmem
+          simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq, or_self, or_false, and_false, OutputAction.callCrypto.injEq] at hmem
+        | notOffered =>
+          simp only [hdec] at h
+          cases hsel : selectGroup vch.offeredShares
+                ((Option.map (fun x => x.namedGroups) (selectEndpoint s.serverConfig vch.sni)).getD []) with
+            | none =>
+              simp only [hsel, Except.ok.injEq, Prod.mk.injEq] at h
+              obtain ⟨-, rfl⟩ := h
+              simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+                or_self, or_false, and_false, OutputAction.callCrypto.injEq] at hmem
+            | some gp =>
+              obtain ⟨selGroup, selShare⟩ := gp
+              simp only [hsel, allocOpOrFail_eq] at h
+              split at h
+              · try unfold hsFail at h
+                simp only [Except.ok.injEq, Prod.mk.injEq] at h
+                obtain ⟨-, rfl⟩ := h
+                simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+                  or_self, or_false, and_false, OutputAction.callCrypto.injEq] at hmem
+              simp only [Except.ok.injEq, Prod.mk.injEq] at h
+              obtain ⟨-, rfl⟩ := h
+              simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+                or_self, or_false, and_false, OutputAction.callCrypto.injEq] at hmem
+        | selected p =>
+          simp only [hdec] at h
+          cases hsel : selectGroup vch.offeredShares
+                ((Option.map (fun x => x.namedGroups) (selectEndpoint s.serverConfig vch.sni)).getD []) with
+            | none =>
+              simp only [hsel, Except.ok.injEq, Prod.mk.injEq] at h
+              obtain ⟨-, rfl⟩ := h
+              simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+                or_self, or_false, and_false, OutputAction.callCrypto.injEq] at hmem
+            | some gp =>
+              obtain ⟨selGroup, selShare⟩ := gp
+              simp only [hsel, allocOpOrFail_eq] at h
+              split at h
+              · try unfold hsFail at h
+                simp only [Except.ok.injEq, Prod.mk.injEq] at h
+                obtain ⟨-, rfl⟩ := h
+                simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+                  or_self, or_false, and_false, OutputAction.callCrypto.injEq] at hmem
+              simp only [Except.ok.injEq, Prod.mk.injEq] at h
+              obtain ⟨-, rfl⟩ := h
+              simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+                or_self, or_false, and_false, OutputAction.callCrypto.injEq] at hmem
   · simp only [Except.ok.injEq, Prod.mk.injEq] at h
     obtain ⟨-, rfl⟩ := h
     simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,

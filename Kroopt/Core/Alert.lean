@@ -43,6 +43,7 @@ def alertForProtocolError : ProtocolError → AlertDescription
   | .badFinished                   => .decryptError
   | .closeNotifyReceived           => .closeNotify
   | .sequenceOverflow              => .internalError
+  | .noApplicationProtocol         => .noApplicationProtocol
 
 /-- Map a parser error to its alert (RFC 013 §4). Categories only — never the
 offending bytes. Deterministic and total; no parse error is benign. -/

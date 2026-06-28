@@ -424,20 +424,44 @@ theorem onClientHello_pp
     · split at h
       · simp only [Except.ok.injEq, Prod.mk.injEq] at h
         obtain ⟨rfl, -⟩ := h; right; rfl
-      · cases hsel : selectGroup vch.offeredShares
-            ((Option.map (fun x => x.namedGroups) (selectEndpoint s.serverConfig vch.sni)).getD []) with
-        | none =>
-          simp only [hsel, Except.ok.injEq, Prod.mk.injEq] at h
-          obtain ⟨rfl, -⟩ := h; right; rfl
-        | some gp =>
-          obtain ⟨selGroup, selShare⟩ := gp
-          simp only [hsel, allocOpOrFail_eq] at h
-          split at h
-          · unfold hsFail at h
-            simp only [Except.ok.injEq, Prod.mk.injEq] at h
-            obtain ⟨rfl, -⟩ := h; right; rfl
+      · cases hdec : negotiateAlpn s.serverConfig.alpnMode (vch.alpn.map (·.map AlpnProtocol.mk))
+            ((Option.map (fun x => x.allowedAlpn) (selectEndpoint s.serverConfig vch.sni)).getD []) with
+        | noOverlap =>
+          simp only [hdec] at h
           simp only [Except.ok.injEq, Prod.mk.injEq] at h
-          obtain ⟨rfl, -⟩ := h; left; rfl
+          obtain ⟨rfl, -⟩ := h; right; rfl
+        | notOffered =>
+          simp only [hdec] at h
+          cases hsel : selectGroup vch.offeredShares
+                ((Option.map (fun x => x.namedGroups) (selectEndpoint s.serverConfig vch.sni)).getD []) with
+            | none =>
+              simp only [hsel, Except.ok.injEq, Prod.mk.injEq] at h
+              obtain ⟨rfl, -⟩ := h; right; rfl
+            | some gp =>
+              obtain ⟨selGroup, selShare⟩ := gp
+              simp only [hsel, allocOpOrFail_eq] at h
+              split at h
+              · unfold hsFail at h
+                simp only [Except.ok.injEq, Prod.mk.injEq] at h
+                obtain ⟨rfl, -⟩ := h; right; rfl
+              simp only [Except.ok.injEq, Prod.mk.injEq] at h
+              obtain ⟨rfl, -⟩ := h; left; rfl
+        | selected p =>
+          simp only [hdec] at h
+          cases hsel : selectGroup vch.offeredShares
+                ((Option.map (fun x => x.namedGroups) (selectEndpoint s.serverConfig vch.sni)).getD []) with
+            | none =>
+              simp only [hsel, Except.ok.injEq, Prod.mk.injEq] at h
+              obtain ⟨rfl, -⟩ := h; right; rfl
+            | some gp =>
+              obtain ⟨selGroup, selShare⟩ := gp
+              simp only [hsel, allocOpOrFail_eq] at h
+              split at h
+              · unfold hsFail at h
+                simp only [Except.ok.injEq, Prod.mk.injEq] at h
+                obtain ⟨rfl, -⟩ := h; right; rfl
+              simp only [Except.ok.injEq, Prod.mk.injEq] at h
+              obtain ⟨rfl, -⟩ := h; left; rfl
   · simp only [Except.ok.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, -⟩ := h; right; rfl
 

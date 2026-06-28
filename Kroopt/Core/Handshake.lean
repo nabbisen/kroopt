@@ -97,7 +97,13 @@ structure ValidClientHello where
   scheme is chosen in the core against the selected certificate's capabilities. -/
   offeredSigSchemes : List SignatureScheme
   sni : Option ByteArray
-  alpn : List ByteArray
+  /-- The client's offered ALPN protocol names (RFC 7301), bare and in offer order.
+  `none` = no ALPN extension was present; `some os` = the extension was present and
+  well-formed (the parser rejects an empty list or empty protocol name as malformed,
+  so `os` is always non-empty). The `none`/`some` distinction lets the core treat an
+  absent offer (proceed) differently from an offered-but-non-overlapping one (a strict
+  failure). -/
+  alpn : Option (List ByteArray)
   /-- The client's `legacy_session_id` (RFC 8446 §4.1.2). The ServerHello MUST echo it verbatim
   in `legacy_session_id_echo` (§4.1.3); a real client (OpenSSL middlebox-compat mode) sends a
   32-byte id and rejects a ServerHello that fails to echo it. Empty for a minimal client. -/
@@ -237,8 +243,15 @@ def onClientHello (s : State) (vch : ValidClientHello) (chWire : ByteArray) : Hs
     | some sigScheme =>
     let s := { s with budgets := b' }
     let ep := selectEndpoint s.serverConfig vch.sni
-    let alpn := ep.bind (fun e =>
-      negotiateAlpn s.serverConfig.alpnMode (vch.alpn.map AlpnProtocol.mk) e.allowedAlpn)
+    -- ALPN (RFC 7301 §3.2, RFC 011 §5): negotiate against the resolved endpoint's allowed set.
+    -- Under `requireOverlap` an offered-but-non-overlapping list is a fatal `no_application_protocol`
+    -- (§3.2): fail here, *before* any ServerHello / random / key-schedule action, so no server flight
+    -- is produced. An absent offer, or either lenient mode, proceeds with no protocol selected.
+    match negotiateAlpn s.serverConfig.alpnMode (vch.alpn.map (·.map AlpnProtocol.mk))
+            ((ep.map (·.allowedAlpn)).getD []) with
+    | .noOverlap => hsFail s .noApplicationProtocol (.protocol .noApplicationProtocol)
+    | alpnDec =>
+    let selAlpn := match alpnDec with | .selected p => some p | _ => none
     let cert := ep.map (·.chain)
     let certDer := (ep.map (·.der)).getD (ByteArray.mk #[])
     -- RFC 039 §4.3: choose the ECDHE group in the core by intersecting the client's offered
@@ -255,7 +268,7 @@ def onClientHello (s : State) (vch : ValidClientHello) (chWire : ByteArray) : Hs
                       selectedGroup := some selGroup
                       selectedSigScheme := some sigScheme
                       selectedSni := vch.sni
-                      selectedAlpn := alpn
+                      selectedAlpn := selAlpn
                       selectedCert := cert
                       serverShare := none
                       clientShare := some selShare

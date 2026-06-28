@@ -204,11 +204,17 @@ all protocol truth remains in `step`, which every M0–M6 theorem constrains.
 
 ## M8 — configuration selection and certificate lint (RFC 011, 012)
 
-Seven theorems over the pure config model (`Kroopt.Proofs.Config`), all
+Ten theorems over the pure config model (`Kroopt.Proofs.Config`), all
 `propext`(+`Quot.sound`) only:
 
-- `negotiateAlpn_offered_and_allowed` — **ALPN safety**: any negotiated protocol
+- `negotiateAlpn_offered_and_allowed` — **ALPN safety**: any `selected` protocol
   is in both the client and endpoint lists (never an unoffered protocol, RFC 011 §8).
+- `negotiateAlpn_absent_notOffered` — a client that sends no ALPN extension never
+  triggers a no-overlap failure (it is `notOffered` under every mode, RFC 7301 §3.2).
+- `negotiateAlpn_requireOverlap_noOverlap` — under the strict mode, a non-overlapping
+  offer is detected as `noOverlap` (the edge the caller fails with `no_application_protocol`).
+- `negotiateAlpn_serverPreference_noOverlap_lenient` — the lenient modes proceed (no
+  selection) on a non-overlapping offer, distinguishing them from the strict mode.
 - `selectEndpoint_none_uses_default` — absent SNI selects the default endpoint.
 - `validateServerConfig_rejects_ambiguous` — ambiguous SNI routes are refused.
 - `validateServerConfig_preserves_generation` — a validated config carries its

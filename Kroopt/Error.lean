@@ -26,6 +26,7 @@ inductive AlertDescription where
   | protocolVersion
   | missingExtension
   | unsupportedExtension
+  | noApplicationProtocol
   | internalError
   | userCanceled
   deriving DecidableEq, Repr, Inhabited
@@ -47,6 +48,7 @@ def AlertDescription.ofByte : UInt8 → Option AlertDescription
   | 90  => some .userCanceled
   | 109 => some .missingExtension
   | 110 => some .unsupportedExtension
+  | 120 => some .noApplicationProtocol
   | _   => none
 
 /-- Alert level. In TLS 1.3 almost every alert is fatal; `closeNotify` is the
@@ -70,6 +72,7 @@ inductive ProtocolError where
   | badFinished
   | closeNotifyReceived
   | sequenceOverflow
+  | noApplicationProtocol
   deriving DecidableEq, Repr, Inhabited
 
 /-- Parser failures. Categories only; never the offending bytes (RFC 003 §10). -/

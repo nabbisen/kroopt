@@ -96,22 +96,33 @@ def parseSni (ext : ByteArray) : Option ByteArray :=
     else some (ext.extract 5 (5 + hlen))
 
 /-- Walk the protocol-name entries of a raw `application_layer_protocol_negotiation` extension body
-(RFC 7301): after the 2-byte list length, a sequence of `name_len(1) ‖ name`. `fuel` (the buffer
-size) bounds the walk over attacker-controlled input; structurally recursive on it, so no `partial`. -/
-def parseAlpnAux : ByteArray → Nat → Nat → List ByteArray → List ByteArray
-  | _,   _,   0,      acc => acc.reverse
+(RFC 7301), **strictly**: each entry is `name_len(1) ‖ name` with a non-empty `name`, and the walk
+must frame exactly to the end of the body. Returns the names (in offer order) or `none` if any entry
+is malformed (empty name, or a length that overruns the body) or the body does not frame exactly.
+`fuel` (the buffer size) bounds the walk over attacker-controlled input; structurally recursive on it. -/
+def parseAlpnStrictAux : ByteArray → Nat → Nat → List ByteArray → Option (List ByteArray)
+  | ext, pos, 0,      acc => if pos == ext.size then some acc.reverse else none
   | ext, pos, fuel+1, acc =>
-    if pos ≥ ext.size then acc.reverse
+    if pos == ext.size then some acc.reverse
     else
       let nlen := (ext.get! pos).toNat
-      if nlen == 0 ∨ pos + 1 + nlen > ext.size then acc.reverse
-      else parseAlpnAux ext (pos + 1 + nlen) fuel (ext.extract (pos + 1) (pos + 1 + nlen) :: acc)
+      if nlen == 0 ∨ pos + 1 + nlen > ext.size then none
+      else parseAlpnStrictAux ext (pos + 1 + nlen) fuel (ext.extract (pos + 1) (pos + 1 + nlen) :: acc)
 
-/-- The offered ALPN protocol names (bare, in offer order) from a raw ALPN extension body; `[]` if
-absent or malformed. Like `parseSni`, this replaces storing the whole framed extension as one
-"protocol", which never matched a bare-name allow-list. Bounds-checked. -/
-def parseAlpn (ext : ByteArray) : List ByteArray :=
-  if ext.size < 2 then [] else parseAlpnAux ext 2 ext.size []
+/-- Strict ALPN extension-body parse (RFC 7301 §3.1). The body is a 2-byte `ProtocolNameList`
+length framing a **non-empty** sequence of non-empty protocol names. Returns the offered names
+(non-empty, in offer order) on a well-formed body, or `none` if the body is malformed — an empty
+list, an empty name, or a list length that does not frame the remaining bytes exactly. The caller
+turns `none` into a parse error (`decode_error`); an absent extension is handled separately and is
+**not** malformed. -/
+def parseAlpnStrict (ext : ByteArray) : Option (List ByteArray) :=
+  if ext.size < 2 then none
+  else
+    let listLen := (ext.get! 0).toNat * 256 + (ext.get! 1).toNat
+    if listLen != ext.size - 2 then none
+    else match parseAlpnStrictAux ext 2 ext.size [] with
+      | some names => if names.isEmpty then none else some names
+      | none        => none
 
 /-- `supported_versions` (type 43) must offer TLS 1.3 (0x0304). The extension
 data is a u8-length-prefixed list of u16 versions. -/
@@ -245,12 +256,20 @@ def parseClientHello (input : ByteArray) : Except ParseError (Kroopt.Core.WireBo
   let some suite := selectSuite (u16sOfBytes suitesBytes) | throw .valueOutOfRange
   let offeredSchemes := recognizedSigSchemes (clientSigSchemeCodes exts)
   if offeredSchemes.isEmpty then throw .valueOutOfRange
+  -- ALPN (RFC 7301): absent ⇒ `none` (proceed); present ⇒ strict-parse, rejecting an empty list or
+  -- empty protocol name as malformed. Uses the parser's `valueOutOfRange` (⇒ `illegal_parameter`),
+  -- consistent with how the parser rejects other malformed-structure inputs (duplicate extensions, bad
+  -- compression, bad key_share), rather than silently treating a malformed extension as absent.
+  let alpnField ← match (findExt exts 16).map parseAlpnStrict with
+    | none           => pure (none : Option (List ByteArray))
+    | some none      => throw .valueOutOfRange
+    | some (some os) => pure (some os)
   let vch : ValidClientHello :=
     { selectedSuite := suite
       offeredShares := offeredShares
       offeredSigSchemes := offeredSchemes
       sni := (findExt exts 0).bind parseSni
-      alpn := (findExt exts 16).map parseAlpn |>.getD []
+      alpn := alpnField
       sessionId := sessionId }
   pure { value := vch, wireBytes := input }
 

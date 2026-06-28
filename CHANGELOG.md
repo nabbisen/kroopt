@@ -5,6 +5,40 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.109.0-dev] — ALPN strict no-overlap: `no_application_protocol` (120), `AlpnDecision`, `requireOverlap` (RFC 7301 §3.2 / ALPN review A1) — 2026-06-28
+
+Implements the architect-reviewer's A1 ruling on ALPN no-overlap. `negotiateAlpn` now returns an
+`AlpnDecision` (`notOffered` / `selected` / `noOverlap`) over an `Option` offered list, replacing the
+old `Option AlpnProtocol`. The strict `requireOverlap` mode: a client that offers ALPN with no protocol
+the resolved endpoint allows fails the handshake with a fatal `no_application_protocol` (alert 120),
+*before* any ServerHello / random / key-schedule action — no server flight is produced. A client that
+sends no ALPN extension proceeds with no protocol selected (`notOffered`); the two lenient modes
+(`serverPreference`, `clientPreferenceWithinAllowed`) likewise proceed on a non-overlapping offer.
+Overlapping offers select by the server's preference under `serverPreference`/`requireOverlap`.
+
+The ALPN extension parser is now strict: an absent extension is `none` (proceed), a well-formed one is
+`some` of a non-empty name list, and a literally empty list or empty protocol name is rejected at parse
+as malformed (the internal `valueOutOfRange`, consistent with the parser's other structural rejections;
+maps to `illegal_parameter`). The ClientHello view's `alpn` field is now `Option (List ByteArray)` to
+preserve the absent-vs-offered distinction the strict mode depends on.
+
+Proofs: the selection theorem `negotiateAlpn_offered_and_allowed` is restated over `.selected`, joined
+by `negotiateAlpn_absent_notOffered` (absent never fails), `negotiateAlpn_requireOverlap_noOverlap`
+(strict no-overlap is detected), and `negotiateAlpn_serverPreference_noOverlap_lenient` (lenient
+proceeds). The `no_application_protocol` fail edge is a standard `hsFail`, so action discipline and the
+no-early/no-unauthenticated-plaintext and legal-edge properties for it are inherited by the extended
+`onClientHello` proofs (legal, selectedGroup, no-emit, no-accept, no-aeadOpen, pendingPlainOut). Axiom
+audit: 105 public theorems, no `sorryAx`, axioms within {propext, Quot.sound, Classical.choice}.
+
+Tests: 11 named cases across the config, parse, and handshake suites — strict select/absent/no-overlap,
+lenient proceed, unknown-plus-allowed, malformed empty-list/empty-name rejection, and the alert
+round-trip (`ofByte 120 = no_application_protocol`, fatal level). Full gate green (27 suites, deps,
+hygiene, fuzz, ASan/UBSan, OpenSSL/Python/curl interop).
+
+Note on wire behaviour: as with every fatal handshake failure, kroopt classifies the alert and
+terminates; the no-overlap path produces no server flight. The `no_application_protocol` classification
+is terminal and fatal exactly like the other negotiation failures.
+
 ## [0.108.0-dev] — add `TlsConn.ownedOutboundBytes` (jemmet egress accounting, RFC 015 §6 / handoff decision 6) — 2026-06-28
 
 The second of the two low-risk integration increments the ALPN review asked to land standalone. A

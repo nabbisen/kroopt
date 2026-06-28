@@ -26,28 +26,75 @@ theorem alpnMem_of_mem {a : AlpnProtocol} {xs : List AlpnProtocol} (h : a ∈ xs
   unfold alpnMem
   exact List.any_eq_true.mpr ⟨a, h, alpn_self_eq a⟩
 
-/-- **ALPN safety (RFC 011 §8).** Any negotiated protocol was both offered by the
-client and allowed by the endpoint — kroopt never selects an unoffered protocol. -/
+/-- **ALPN safety (RFC 011 §8).** Any protocol kroopt selects was both offered by the
+client and allowed by the endpoint — kroopt never selects an unoffered protocol. Stated
+over the `AlpnDecision.selected` outcome (a `.notOffered`/`.noOverlap` result selects
+nothing). -/
 theorem negotiateAlpn_offered_and_allowed
-    (mode : AlpnSelectionMode) (client allowed : List AlpnProtocol) (a : AlpnProtocol)
-    (h : negotiateAlpn mode client allowed = some a) :
-    alpnMem a client = true ∧ alpnMem a allowed = true := by
-  cases mode with
-  | serverPreference =>
-      simp only [negotiateAlpn] at h
-      have hp := List.find?_some h
-      have hm := List.mem_of_find?_eq_some h
-      exact ⟨hp, alpnMem_of_mem hm⟩
-  | clientPreferenceWithinAllowed =>
-      simp only [negotiateAlpn] at h
-      have hp := List.find?_some h
-      have hm := List.mem_of_find?_eq_some h
-      exact ⟨alpnMem_of_mem hm, hp⟩
-  | requireOverlap =>
-      simp only [negotiateAlpn] at h
-      have hp := List.find?_some h
-      have hm := List.mem_of_find?_eq_some h
-      exact ⟨alpnMem_of_mem hm, hp⟩
+    (mode : AlpnSelectionMode) (offered : Option (List AlpnProtocol)) (allowed : List AlpnProtocol)
+    (p : AlpnProtocol)
+    (h : negotiateAlpn mode offered allowed = .selected p) :
+    (∃ os, offered = some os ∧ alpnMem p os = true) ∧ alpnMem p allowed = true := by
+  cases offered with
+  | none => simp only [negotiateAlpn, reduceCtorEq] at h
+  | some os =>
+    cases mode with
+    | serverPreference =>
+        simp only [negotiateAlpn] at h
+        split at h
+        · rename_i p' hpick
+          simp only [AlpnDecision.selected.injEq] at h
+          subst h
+          have hp := List.find?_some hpick
+          have hm := List.mem_of_find?_eq_some hpick
+          exact ⟨⟨os, rfl, hp⟩, alpnMem_of_mem hm⟩
+        · simp only [reduceCtorEq] at h
+    | clientPreferenceWithinAllowed =>
+        simp only [negotiateAlpn] at h
+        split at h
+        · rename_i p' hpick
+          simp only [AlpnDecision.selected.injEq] at h
+          subst h
+          have hp := List.find?_some hpick
+          have hm := List.mem_of_find?_eq_some hpick
+          exact ⟨⟨os, rfl, alpnMem_of_mem hm⟩, hp⟩
+        · simp only [reduceCtorEq] at h
+    | requireOverlap =>
+        simp only [negotiateAlpn] at h
+        split at h
+        · rename_i p' hpick
+          simp only [AlpnDecision.selected.injEq] at h
+          subst h
+          have hp := List.find?_some hpick
+          have hm := List.mem_of_find?_eq_some hpick
+          exact ⟨⟨os, rfl, hp⟩, alpnMem_of_mem hm⟩
+        · simp only [reduceCtorEq] at h
+
+/-- **ALPN absence (RFC 7301 §3.2).** A client that sends no ALPN extension never triggers a
+no-overlap failure: negotiation yields `.notOffered` under every mode, so the handshake proceeds
+with no protocol selected (it can never reach the `.noOverlap` edge that the caller turns into a
+fatal `no_application_protocol`). -/
+theorem negotiateAlpn_absent_notOffered (mode : AlpnSelectionMode) (allowed : List AlpnProtocol) :
+    negotiateAlpn mode none allowed = .notOffered := rfl
+
+/-- **Strict no-overlap detection (RFC 7301 §3.2, RFC 011 §5).** Under `requireOverlap`, a
+non-empty offered list with no protocol the endpoint also allows yields `.noOverlap` — the
+decision the handshake caller turns into a fatal `no_application_protocol`. (Selection is by the
+server's order, so the witness of "no overlap" is `allowed.find? (· ∈ offered) = none`.) -/
+theorem negotiateAlpn_requireOverlap_noOverlap
+    (offered allowed : List AlpnProtocol)
+    (h : allowed.find? (fun a => alpnMem a offered) = none) :
+    negotiateAlpn .requireOverlap (some offered) allowed = .noOverlap := by
+  simp only [negotiateAlpn, h]
+
+/-- Both lenient modes proceed (never `.noOverlap`): a non-overlapping offer is treated as no
+selection, distinct from the strict mode. Stated for `serverPreference`; the
+`clientPreferenceWithinAllowed` case is symmetric. -/
+theorem negotiateAlpn_serverPreference_noOverlap_lenient
+    (offered allowed : List AlpnProtocol)
+    (h : allowed.find? (fun a => alpnMem a offered) = none) :
+    negotiateAlpn .serverPreference (some offered) allowed = .notOffered := by
+  simp only [negotiateAlpn, h]
 
 /-- Absent SNI selects the default endpoint (RFC 011 §4). -/
 theorem selectEndpoint_none_uses_default (cfg : ValidatedServerConfig) :

@@ -21,6 +21,13 @@ and a protocol error is fatal unless it is precisely "peer sent close_notify"
 (`alertForProtocolError_fatal_unless_close`). So a malformed input can never be
 mistaken by the peer for a clean shutdown.
 
+RFC 7301's `no_application_protocol` (120) is part of this vocabulary: a strict
+`requireOverlap` ALPN no-overlap maps to it through `alertForProtocolError`, and —
+like every alert other than `closeNotify`/`userCanceled` — it is fatal
+(`alertLevel`). The no-overlap edge fails the handshake before any server flight,
+so it is classified and terminal exactly like the other handshake-negotiation
+failures.
+
 ## Explicit close states and per-mode close
 
 The connection's `CloseState` is explicit: `open`, `sentCloseNotify`,

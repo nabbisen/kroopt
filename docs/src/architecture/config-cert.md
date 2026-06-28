@@ -26,12 +26,26 @@ default endpoint. Wildcards match a single leftmost label only. Selection is a
 pure function with no callbacks, so it cannot block, recurse into user code, or
 produce a non-reproducible result during ClientHello processing (RFC 011 §8).
 
-`negotiateAlpn` intersects the client's offered list with the endpoint's allow
-list under the configured policy (server-preference, client-preference, or
-require-overlap). Its proved property is the one that matters for §8:
-`negotiateAlpn_offered_and_allowed` — **any** protocol it returns is in *both*
-lists, so kroopt can never select a protocol the client did not offer or the
-endpoint did not permit. kroopt negotiates the byte-level extension; jemmet still
+`negotiateAlpn` matches the client's offered list against the endpoint's allow
+list under the configured mode and returns an `AlpnDecision`: `notOffered` (the
+client sent no ALPN extension, or a lenient mode found no overlap — proceed with
+no protocol), `selected p` (a protocol both offered and allowed), or `noOverlap`.
+`serverPreference` and the strict `requireOverlap` select by the **server's**
+order; `clientPreferenceWithinAllowed` by the client's. The modes differ only when
+the client offers ALPN with no overlap: the two lenient modes proceed with no
+selection, while `requireOverlap` yields `noOverlap`, which the handshake caller
+turns into a fatal **`no_application_protocol`** (alert 120) *before* any
+ServerHello, random, or key-schedule action — no server flight is produced (RFC
+7301 §3.2). A client sending no ALPN extension never triggers this (it is
+`notOffered`). A literally empty ALPN list or empty protocol name is rejected
+earlier, at parse, as malformed.
+
+Three proved properties back this (`Kroopt.Proofs.Config`):
+`negotiateAlpn_offered_and_allowed` — **any** `selected` protocol is in *both*
+lists, so kroopt never selects a protocol the client did not offer or the endpoint
+did not permit; `negotiateAlpn_absent_notOffered` — an absent offer never fails;
+`negotiateAlpn_requireOverlap_noOverlap` — a strict-mode non-overlapping offer is
+detected as `noOverlap`. kroopt negotiates the byte-level extension; jemmet still
 owns ALPN *policy* and picks the protocol handler from the reported result.
 
 ## Named-group policy (RFC 039)

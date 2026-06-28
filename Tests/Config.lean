@@ -1,4 +1,5 @@
 import Kroopt.Core.Config
+import Kroopt.Core.Alert
 
 /-!
 # Tests.Config
@@ -22,6 +23,7 @@ def name (s : String) : ByteArray := s.toUTF8
 
 def alpnH11 : AlpnProtocol := ⟨name "http/1.1"⟩
 def alpnH2  : AlpnProtocol := ⟨name "h2"⟩
+def alpnUnknown : AlpnProtocol := ⟨name "spdy/1"⟩  -- offered by client, not in any endpoint allow-list
 
 def leafEd : LeafCertificateMeta :=
   { publicKeyKind := .ed25519, subjectNameCount := 1, notBeforeUnix := none, notAfterUnix := none }
@@ -87,18 +89,37 @@ def checks : List Check :=
     , ok := (match validated 0 with
              | some v => (selectEndpoint v (some (name "nope.test"))).isSome
              | none => false) }
-    -- ALPN negotiation (RFC 011 §5)
+    -- ALPN negotiation (RFC 7301 §3.2, RFC 011 §5) — A1 strict no-overlap, AlpnDecision
+  , { name := "alpnOverlapRequireOverlapSelects: requireOverlap selects by server preference"
+    , ok := (match negotiateAlpn .requireOverlap (some [alpnH2, alpnH11]) [alpnH11, alpnH2] with
+             | .selected a => a.eq alpnH11 | _ => false) }
   , { name := "ALPN serverPreference picks the server's first overlapping protocol"
-    , ok := (match negotiateAlpn .serverPreference [alpnH2, alpnH11] [alpnH11, alpnH2] with
-             | some a => a.eq alpnH11 | none => false) }
+    , ok := (match negotiateAlpn .serverPreference (some [alpnH2, alpnH11]) [alpnH11, alpnH2] with
+             | .selected a => a.eq alpnH11 | _ => false) }
   , { name := "ALPN clientPreference picks the client's first overlapping protocol"
-    , ok := (match negotiateAlpn .clientPreferenceWithinAllowed [alpnH2, alpnH11] [alpnH11, alpnH2] with
-             | some a => a.eq alpnH2 | none => false) }
-  , { name := "ALPN with no overlap selects nothing"
-    , ok := (negotiateAlpn .serverPreference [alpnH2] [alpnH11]).isNone }
-  , { name := "ALPN never selects an unoffered protocol (mechanised property holds at runtime)"
-    , ok := (match negotiateAlpn .serverPreference [alpnH11] [alpnH2, alpnH11] with
-             | some a => alpnMem a [alpnH11] && alpnMem a [alpnH2, alpnH11] | none => false) }
+    , ok := (match negotiateAlpn .clientPreferenceWithinAllowed (some [alpnH2, alpnH11]) [alpnH11, alpnH2] with
+             | .selected a => a.eq alpnH2 | _ => false) }
+  , { name := "alpnSelectedIsOfferedAndAllowed: a selection is both offered and allowed"
+    , ok := (match negotiateAlpn .serverPreference (some [alpnH11]) [alpnH2, alpnH11] with
+             | .selected a => alpnMem a [alpnH11] && alpnMem a [alpnH2, alpnH11] | _ => false) }
+  , { name := "alpnUnknownPlusAllowedIgnoresUnknownAndSelectsAllowed"
+    , ok := (match negotiateAlpn .serverPreference (some [alpnUnknown, alpnH11]) [alpnH11] with
+             | .selected a => a.eq alpnH11 | _ => false) }
+  , { name := "alpnAbsentRequireOverlapProceeds: no ALPN extension ⇒ notOffered, no failure"
+    , ok := (match negotiateAlpn .requireOverlap none [alpnH11] with
+             | .notOffered => true | _ => false) }
+  , { name := "alpnNoOverlapRequireOverlapFailsNoApplicationProtocol: strict no-overlap ⇒ noOverlap"
+    , ok := (match negotiateAlpn .requireOverlap (some [alpnH2]) [alpnH11] with
+             | .noOverlap => true | _ => false) }
+  , { name := "serverPreferenceNoOverlapLenientProceedsNone"
+    , ok := (match negotiateAlpn .serverPreference (some [alpnH2]) [alpnH11] with
+             | .notOffered => true | _ => false) }
+  , { name := "clientPreferenceNoOverlapLenientProceedsNone"
+    , ok := (match negotiateAlpn .clientPreferenceWithinAllowed (some [alpnH2]) [alpnH11] with
+             | .notOffered => true | _ => false) }
+  , { name := "alertNoApplicationProtocolRoundTrips120: byte 120 decodes to no_application_protocol, fatal"
+    , ok := (AlertDescription.ofByte 120 == some .noApplicationProtocol
+             && alertLevel .noApplicationProtocol == .fatal) }
     -- certificate / key lint (RFC 012 §5, §6)
   , { name := "compatible Ed25519 cert/key validates"
     , ok := (match validateEndpointCertKey chainEd keyEd [.ed25519] with
