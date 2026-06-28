@@ -262,7 +262,7 @@ def observeMetrics (m : Metrics) (core : State) (acts : List OutputAction) : Met
   acts.foldl (fun m a => match a with
     | .reportHandshakeComplete _ _ => m.recordHandshakeComplete core.negotiated.selectedAlpn.isSome
     | .reportError _ e             => m.recordFailure (categoryOf e)
-    | .failWithAlert _ _           => m.recordAlertSent
+    | .failWithAlert _ _           => m.recordAlertClassified
     | _                            => m) m
 
 /-- The fuel-bounded drive loop (RFC 010 §6, §10 — *never spin on wouldBlock*).

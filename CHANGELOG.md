@@ -5,6 +5,56 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.110.0-dev] — A1 acceptance-gate remediation: fatal-alert wire honesty, parser/capability comment fixes, RFC 041 — 2026-06-28
+
+Lands the acceptance gates from the 0.107–0.109 implementation review. The review approved 0.107/0.108
+and accepted 0.109's ALPN policy as **A1-core / A1-policy complete**, but ruled that wire-level fatal
+`no_application_protocol` is *not* yet implemented: the interpreter classifies fatal alerts and
+terminates without writing an alert record (only `close_notify` is transmitted). This increment makes the
+codebase and docs honest about that, and records the actual wire transmission as its own RFC. No
+behavioural or proof change — the axiom audit is unchanged (105 public theorems).
+
+### Changed
+
+- **Metric/trace renamed to classification semantics** (review gate 3). The counter that fires on
+  `failWithAlert` — which is *not* transmitted — was named as if it were a wire send. `Metrics.alertsSent`
+  → **`alertsClassified`** and `recordAlertSent` → `recordAlertClassified`; the trace constructor
+  `alertOut` → **`alertClassified`** and its render label `alert-out` → `alert-classified`. The metric
+  doc (`event-and-metric-reference.md`) row `kroopt_alerts_sent_total` → `kroopt_alerts_classified_total`,
+  reworded to "fatal alerts classified (not transmitted)". `Tests/Replay.lean` updated.
+- **Docs no longer state fatal alerts reach the wire** (review gate 2). `alerts-close.md` gains a
+  *Current wire behaviour* note (fatal alerts are classified and terminal; only `close_notify` is
+  transmitted; no outbound `AlertDescription → byte` encoder exists) and its close-mode/mapping wording is
+  corrected. `config-cert.md` and `jemmet-integration.md` clarify that ALPN no-overlap *classifies*
+  `no_application_protocol` (120) and terminates — the description byte is not transmitted — distinct from
+  absent-ALPN (proceed, HTTP/1.1 fallback) and from a future wire transmission.
+- **Stale capability/interop comments corrected** (review additional finding). `Tests/Capabilities.lean`
+  and `Kroopt/Crypto/ConfigCheck.lean` said the real provider *rejects* AES-GCM; it advertises AES-128/256-GCM
+  and ChaCha20-Poly1305 (X25519/P-256, SHA-256/384) and rejects only non-Ed25519 **signatures**. The stale
+  "deferred v0.3 binding" line in `jemmet-integration.md` now states that live OpenSSL/Python/curl interop
+  is current (via `scripts/tls-interop.sh`), leaving the real-iotakt-socket adapter and browser-grade as
+  the remaining open items.
+- **Stale `decode_error` comment in `parseAlpnStrict`** (review gate 4) corrected to `valueOutOfRange`
+  ⇒ `illegal_parameter`, consistent with the parser's other malformed-structure rejections.
+
+### Added
+
+- **`rfcs/proposed/041-fatal-alert-wire-transmission.md`** (review gate 5) — proposes the outbound
+  `AlertDescription.toByte` encoder + a best-effort fatal-alert record (plaintext before write keys,
+  protected under the current write epoch after), the `failWithAlert` interpreter path, partial-write
+  handling, and the four proof obligations (terminal-write discipline, no-secret/no-plaintext alert body,
+  no-flight on no-overlap, encoder round-trip). Registered in `rfcs/README.md`.
+
+### Notes
+
+- Full gate green: 27 suites, 105-theorem axiom audit (unchanged), deps/hygiene, parse-fuzz, ASan/UBSan,
+  and live OpenSSL/Python/curl interop.
+- Review fidelity 5.2 (malformed ALPN ⇒ `illegal_parameter`) and 5.3 (proof duplication left as-is) were
+  accepted as-is; the only 5.2 action was the comment fix above.
+- **Deferred to 0.111** (review additional finding, explicitly non-blocking while `AlpnDecision` is
+  internal and immediately collapsed into `selectedAlpn`): rename `AlpnDecision.notOffered` →
+  `noSelection` to remove the absent-vs-lenient-no-overlap overload.
+
 ## [0.109.0-dev] — ALPN strict no-overlap: `no_application_protocol` (120), `AlpnDecision`, `requireOverlap` (RFC 7301 §3.2 / ALPN review A1) — 2026-06-28
 
 Implements the architect-reviewer's A1 ruling on ALPN no-overlap. `negotiateAlpn` now returns an

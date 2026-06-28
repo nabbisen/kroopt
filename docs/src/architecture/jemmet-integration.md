@@ -26,8 +26,11 @@ selects a handler or inspects HTTP bytes. A plaintext connection reports no ALPN
 The behaviour jemmet should rely on, choosing the `requireOverlap` mode: a client
 that sends **no** ALPN extension negotiates no protocol (`negotiatedProtocol` is
 absent) and the handshake proceeds — jemmet falls back to HTTP/1.1. A client that
-**offers** ALPN with no protocol the endpoint allows fails the handshake with a
-fatal `no_application_protocol` (alert 120) and never reaches a handler. When
+**offers** ALPN with no protocol the endpoint allows fails the handshake
+(classified as fatal `no_application_protocol`, alert 120) before any server
+flight and never reaches a handler — the peer observes connection termination
+(fatal-alert record transmission is a separate kroopt follow-up; see [Alerts and
+close](./alerts-close.md)). When
 there is overlap, the server's preference order wins. (The two lenient modes
 instead proceed with no protocol on a non-overlapping offer; pick them only if
 serving an unnegotiated default is preferable to failing.)
@@ -54,9 +57,12 @@ and resource-budget failures.
 
 The end-to-end test serves a real HTTP/1.1 request and response through
 `TlsConn`, driving a full handshake and an application-data record over the fake
-transport and fake crypto provider. Real iotakt sockets and real-client interop
-(curl, OpenSSL `s_client`, browsers) are the deferred v0.3 binding: the
-interpreter's action-mapping is identical, so wiring real iotakt in is an
-adapter, not a protocol change. This milestone is interop/E2E work — classed
-TESTED, not PROVEN — and it adds no new core theorems; the proved guarantees from
-M0–M9 continue to govern the running connection unchanged.
+transport and fake crypto provider. **Live real-client interop is current**, not
+deferred: `scripts/tls-interop.sh` runs OpenSSL `s_client`, Python, and curl
+against kroopt over a real-socket reactor with the real crypto provider
+(constrained profile — see the interop page). What remains is the real
+**iotakt**-socket binding (the 0.107 `Transport` typeclass is exactly that seam —
+an adapter, not a protocol change) and browser-grade interop, which is not yet
+claimed. This milestone is interop/E2E work — classed TESTED, not PROVEN — and it
+adds no new core theorems; the proved guarantees from M0–M9 continue to govern the
+running connection unchanged.

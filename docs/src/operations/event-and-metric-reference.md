@@ -28,7 +28,7 @@ secret handle, or attacker-controlled bytes (`Tests.Trace`, including sentinel-l
 | `plaintext-accept` | caller plaintext is accepted for sending | connection id, byte count |
 | `handshake-complete` | the handshake reaches `connected` | connection id, negotiated cipher suite (public metadata) |
 | `error` | a typed error is reported to the caller | connection id, error **category** only (see below) |
-| `alert-out` | a fatal alert or `close_notify` is mapped for sending | connection id, alert description, level |
+| `alert-classified` | the core classified a **fatal** alert for a failure (it is *not* a guaranteed wire send — the interpreter terminates on `failWithAlert`; only `close_notify` is transmitted) | connection id, alert description, level |
 | `transport-close` | the transport is closed | connection id, close **mode** (graceful / fatal / abortive) |
 | `secret-released` | a secret handle is released | nothing — the bare event |
 
@@ -66,7 +66,7 @@ failure semantics where a peer needs them.
 ## Metric surface (counters driven internally; no export yet)
 
 kroopt now maintains a small set of **internal** operational counters that the live driver updates
-during a real handshake (0.99.0-dev; RFC 020 §10.2): handshakes completed/failed, alerts sent, resource
+during a real handshake (0.99.0-dev; RFC 020 §10.2): handshakes completed/failed, fatal alerts classified, resource
 failures, and ALPN selected move as connections run. They live on internal runtime state — there is
 **no public accessor and no export format**: histograms, aggregation, and an export/backend surface are
 RFC 020 **v0.4** work. The broader catalogue below is the **planned** export surface, recorded so the
@@ -76,7 +76,7 @@ names are stable when emission/export lands; treat anything beyond the five wire
 |---|---|---|---|
 | `kroopt_handshakes_completed_total` | wired (internal counter) | — | handshakes reaching `connected` |
 | `kroopt_handshakes_failed_total` | wired (internal counter) | `reason` | handshakes ending in terminal failure |
-| `kroopt_alerts_sent_total` | wired (internal counter) | `alert` | alerts sent |
+| `kroopt_alerts_classified_total` | wired (internal counter) | `alert` | **fatal alerts classified** for a failure (not transmitted; see `alert-classified` and the fatal-alert-wire RFC) |
 | `kroopt_resource_limit_failures_total` | wired (internal counter) | `kind` | budget exhaustion by limit |
 | `kroopt_alpn_selected_total` | wired (internal counter) | — | handshakes where ALPN was negotiated |
 | `kroopt_connections_started_total` | planned (v0.4) | — | connections wrapped by `TlsConn.server` |

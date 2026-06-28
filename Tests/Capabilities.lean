@@ -5,10 +5,13 @@ import Kroopt.Crypto.Hacl
 /-!
 # Tests.Capabilities
 
-RFC 034: the real provider advertises only the constrained profile
-(`TLS_CHACHA20_POLY1305_SHA256` / X25519 / Ed25519 / SHA-256, OS CSPRNG), a config
-requiring AES-GCM or ECDSA/RSA is rejected at validation, deterministic randomness
-cannot enter the real provider, and entropy is fail-closed with a typed result.
+RFC 034: the real provider advertises the AES-128/256-GCM and ChaCha20-Poly1305
+suites, X25519 and P-256 groups, and SHA-256/384, but **Ed25519 signatures only**
+(OS CSPRNG). A config requiring an ECDSA-P256 or RSA-PSS signature scheme is
+rejected at validation; AES-GCM suites are *accepted* (the live wire negotiates
+ChaCha20-Poly1305, with AES-GCM wire-interop a constrained-profile follow-up).
+Deterministic randomness cannot enter the real provider, and entropy is
+fail-closed with a typed result.
 -/
 
 namespace Tests.Capabilities

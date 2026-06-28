@@ -36,7 +36,10 @@ the client offers ALPN with no overlap: the two lenient modes proceed with no
 selection, while `requireOverlap` yields `noOverlap`, which the handshake caller
 turns into a fatal **`no_application_protocol`** (alert 120) *before* any
 ServerHello, random, or key-schedule action — no server flight is produced (RFC
-7301 §3.2). A client sending no ALPN extension never triggers this (it is
+7301 §3.2). The alert is *classified* and the connection terminates; as with every
+fatal handshake failure today, the description byte itself is not transmitted (see
+[Alerts and close](./alerts-close.md)). A client sending no ALPN extension never
+triggers this (it is
 `notOffered`). A literally empty ALPN list or empty protocol name is rejected
 earlier, at parse, as malformed.
 

@@ -113,7 +113,8 @@ def parseAlpnStrictAux : ByteArray → Nat → Nat → List ByteArray → Option
 length framing a **non-empty** sequence of non-empty protocol names. Returns the offered names
 (non-empty, in offer order) on a well-formed body, or `none` if the body is malformed — an empty
 list, an empty name, or a list length that does not frame the remaining bytes exactly. The caller
-turns `none` into a parse error (`decode_error`); an absent extension is handled separately and is
+turns `none` into a parse error (`valueOutOfRange` ⇒ `illegal_parameter`, consistent with the parser's
+other malformed-structure rejections); an absent extension is handled separately and is
 **not** malformed. -/
 def parseAlpnStrict (ext : ByteArray) : Option (List ByteArray) :=
   if ext.size < 2 then none

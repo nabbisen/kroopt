@@ -35,7 +35,8 @@ plaintext, or attacker-controlled value — these are counts only. -/
 structure Metrics where
   handshakesCompleted : Nat := 0
   handshakesFailed    : Nat := 0
-  alertsSent          : Nat := 0
+  alertsClassified    : Nat := 0  -- fatal alerts the core classified for a failure (see RFC: not
+                                   -- necessarily transmitted; the interpreter terminates on `failWithAlert`)
   resourceFailures    : Nat := 0
   alpnSelected        : Nat := 0
   deriving Repr, Inhabited, DecidableEq
@@ -50,7 +51,7 @@ def recordFailure (m : Metrics) (cat : ErrorCategory) : Metrics :=
   { m with handshakesFailed := m.handshakesFailed + 1
            resourceFailures := m.resourceFailures + (if cat == .resource then 1 else 0) }
 
-def recordAlertSent (m : Metrics) : Metrics := { m with alertsSent := m.alertsSent + 1 }
+def recordAlertClassified (m : Metrics) : Metrics := { m with alertsClassified := m.alertsClassified + 1 }
 
 end Metrics
 

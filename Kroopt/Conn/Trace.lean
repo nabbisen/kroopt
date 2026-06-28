@@ -62,8 +62,11 @@ inductive TraceEvent where
   /-- A typed error reported to the caller — its *category* only, never detail
   or attacker-controlled bytes. -/
   | errorReported     (conn : ConnId) (category : String)
-  /-- A fatal/`close_notify` alert mapped for sending — description + level. -/
-  | alertOut          (conn : ConnId) (desc : AlertDescription) (level : AlertLevel)
+  /-- A fatal alert the core **classified** for a failure — description + level. NB: the interpreter
+  currently terminates on `failWithAlert` without writing an alert record (only `close_notify` is
+  transmitted); fatal-alert wire transmission is a separate RFC. So this records classification, not a
+  guaranteed wire send. -/
+  | alertClassified   (conn : ConnId) (desc : AlertDescription) (level : AlertLevel)
   /-- The transport was closed in the given mode. -/
   | transportClose    (conn : ConnId) (mode : String)
   /-- A secret handle was released — the *event* only, never the handle or bytes. -/
@@ -132,7 +135,7 @@ def traceOfAction : OutputAction → Option TraceEvent
   | .acceptPlaintextBytes c n     => some (.plaintextAccept c n)
   | .reportHandshakeComplete c i  => some (.handshakeComplete c i.suite)
   | .reportError c e              => some (.errorReported c (errorCategory e))
-  | .failWithAlert c a            => some (.alertOut c a (Kroopt.Core.alertLevel a))
+  | .failWithAlert c a            => some (.alertClassified c a (Kroopt.Core.alertLevel a))
   | .closeTransport c m           => some (.transportClose c (closeModeLabel m))
   | .releaseSecret _              => some .secretReleased
 
@@ -148,7 +151,7 @@ def TraceEvent.render : TraceEvent → String
   | .plaintextAccept c n       => s!"plaintext-accept conn={c.value} n={n}"
   | .handshakeComplete c s     => s!"handshake-complete conn={c.value} suite={repr s}"
   | .errorReported c cat       => s!"error conn={c.value} category={cat}"
-  | .alertOut c d l            => s!"alert-out conn={c.value} desc={repr d} level={alertLevelLabel l}"
+  | .alertClassified c d l     => s!"alert-classified conn={c.value} desc={repr d} level={alertLevelLabel l}"
   | .transportClose c m        => s!"transport-close conn={c.value} mode={m}"
   | .secretReleased            => "secret-released"
 

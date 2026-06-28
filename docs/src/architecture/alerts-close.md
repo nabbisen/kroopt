@@ -8,9 +8,9 @@ transport truncation masquerade as a clean close.
 ## Centralized, deterministic alert mapping
 
 Every failure routes its alert through one place — `Kroopt.Core.Alert`. The
-alert that goes on the wire is a documented function of the error *class* and
-nothing else: no secret, no attacker-controlled bytes, no fine-grained parser
-detail leaks through the choice of alert. `alertForParseError` and
+alert each failure is **classified** with is a documented function of the error
+*class* and nothing else: no secret, no attacker-controlled bytes, no fine-grained
+parser detail leaks through the choice of alert. `alertForParseError` and
 `alertForProtocolError` are total and deterministic; `alertForCryptoFailure`
 returns `none` for genuinely internal failures so the connection aborts without
 disclosing why, while an adversarial bad tag maps to `bad_record_mac`.
@@ -28,6 +28,21 @@ like every alert other than `closeNotify`/`userCanceled` — it is fatal
 so it is classified and terminal exactly like the other handshake-negotiation
 failures.
 
+### Current wire behaviour (fatal alerts are classified, not yet transmitted)
+
+An important caveat about what reaches the peer. The interpreter terminates on the
+`failWithAlert` action **without writing an alert record** — the only alert kroopt
+transmits today is `close_notify` (description 0), on graceful close. There is no
+outbound `AlertDescription → byte` encoder. So for **every** fatal failure
+(`no_application_protocol`, `handshake_failure`, `decode_error`, …) the alert is
+**classified** — recorded in `closeState := fatalSent _`, surfaced as a typed
+`reportError`, counted by `alertsClassified`, and emitted as the `alert-classified`
+trace event — and the connection then terminates. A peer observes connection
+termination, not a guaranteed fatal-alert record. Actual fatal-alert wire
+transmission is tracked as its own RFC (`rfcs/proposed/041-fatal-alert-wire-transmission.md`);
+until it lands, no document should state that a fatal alert byte (40/47/120/…) is
+put on the wire.
+
 ## Explicit close states and per-mode close
 
 The connection's `CloseState` is explicit: `open`, `sentCloseNotify`,
@@ -35,8 +50,9 @@ The connection's `CloseState` is explicit: `open`, `sentCloseNotify`,
 `fatalReceived`, `transportClosed`. The three application close modes are
 distinct (RFC 013 §5): **graceful** moves to `closing`/`sentCloseNotify` and
 asks the interpreter to send close_notify best-effort before closing; **fatal**
-moves to `failed`/`fatalSent` and emits the alert — which is the only
-post-failure transport write permitted; **abortive** moves straight to
+moves to `failed`/`fatalSent` and **classifies** the alert (recorded in
+`fatalSent`; the interpreter currently terminates without writing the alert
+record — see the wire-behaviour note above); **abortive** moves straight to
 `closed`/`transportClosed` with no alert. Repeated close is idempotent: once a
 close is in progress the transport close is simply re-issued without regressing
 the state.

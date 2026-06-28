@@ -250,9 +250,9 @@ def checks : List Check :=
               && t.any (fun l => hasSub l "certificate-out") }
 
     -- ── internal operational counters wired into the live driver (RFC 015 §8) ──
-  , { name := "live driver counts a rejected handshake: handshakesFailed + alertsSent move, completed stays 0"
+  , { name := "live driver counts a rejected handshake: handshakesFailed + alertsClassified move, completed stays 0"
     , ok := let m := metricsOf noKeyShareCH
-            m.handshakesFailed == 1 && m.alertsSent == 1 && m.handshakesCompleted == 0 }
+            m.handshakesFailed == 1 && m.alertsClassified == 1 && m.handshakesCompleted == 0 }
   ]
 
 def main : IO Unit := do

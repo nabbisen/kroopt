@@ -63,6 +63,7 @@ control), then 017–030 (cross-cutting security, lifecycle, and release governa
 | 035 | [Browser-Grade Crypto Surface](proposed/035-browser-grade-crypto-surface.md) | Deferred — AES-GCM/P-256/ECDSA/RSA + cert-ecosystem story only after M36/M37/M38 green |
 | 037 | [Native FFI Safety, Secret Arena, and Resource-Budget Enforcement](proposed/037-native-safety-and-budget-enforcement.md) | FFI length contracts (all `uint32_t` params); native/classified secret arena; budget charging in the core; record-size guards; sanitizers (M37) |
 | 040 | [Native Traffic-Secret Arena and the IO Production Interpreter](proposed/040-native-traffic-secret-arena.md) | **Blocked on RFC 031.** Stable/v1 gate — migrate connection traffic secrets onto the C-owned zeroizing arena via a two-interpreter (pure model + IO production) architecture; records the D-now/A-later decision |
+| 041 | [Fatal-alert wire transmission](proposed/041-fatal-alert-wire-transmission.md) | New — outbound `AlertDescription` encoder + best-effort fatal-alert record (plaintext pre-keys / protected post-keys) so peers observe RFC 8446 §6 alerts; closes the 0.107–0.109 review fidelity-5.1 gap (fatal alerts are currently classified, not transmitted) |
 
 ## Done
 
