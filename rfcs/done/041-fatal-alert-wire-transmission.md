@@ -1,8 +1,7 @@
 # RFC 041 — Fatal-alert wire transmission
 
-**Status.** Proposed — *plaintext (`initial`-epoch) transmission landed in 0.111.0-dev;
-the protected (`handshake`/`application`-epoch) seal paths remain, after which this RFC
-moves to `done/`.*
+**Status.** Implemented (0.112.0-dev) — plaintext (`initial`-epoch) transmission landed in
+0.111.0-dev; the protected (`handshake`/`application`-epoch) seal paths landed in 0.112.0-dev.
 **Tracks.** Making fatal TLS alerts observable by the peer (RFC 8446 §6). Closes the
 fidelity gap identified in the 0.107–0.109 implementation review: kroopt currently
 *classifies* fatal alerts but does not transmit an alert record.

@@ -163,6 +163,26 @@ def sealHandshakeRecord (arena : SecretArena) (seq : UInt64) (plain : ByteArray)
         let iv  := Kroopt.Crypto.KeySchedule.trafficIv secret suite.hashAlg
         (Record13.sealRecord key iv seq plain .handshake 0 suite).map some
 
+/-- Seal a fatal `Alert` record under the installed `(write, epoch)` traffic key (RFC 041, RFC 8446
+§6) — the protected counterpart of `plaintextAlertRecord`, for failures after a write key is installed
+(`handshake`: e.g. a bad client Finished; `application`: a post-`connected` record failure). The body is
+`[level = fatal = 2, AlertDescription.toByte a]` with inner content type `alert`, at the core-authorized
+`seq`. Returns `none` when no write key is installed for the epoch — the transitional fake-provider path,
+where best-effort delivery transmits nothing rather than leaking a cleartext alert at a protected epoch.
+Reuses the same key/IV derivation as `sealHandshakeRecord`, which already interops on the real wire. -/
+def sealAlertRecord (arena : SecretArena) (epoch : Kroopt.Core.Epoch) (seq : UInt64)
+    (a : Kroopt.AlertDescription) : Except Kroopt.ResourceLimitError (Option ByteArray) :=
+  match arena.lookupBaseSecret .write epoch with
+  | none => .ok none
+  | some sid =>
+    match arena.getById sid with
+    | none => .ok none
+    | some secret =>
+        let suite := (arena.lookupInstalledSuite .write epoch).getD .chacha20Poly1305Sha256
+        let key := Kroopt.Crypto.KeySchedule.trafficKey suite secret
+        let iv  := Kroopt.Crypto.KeySchedule.trafficIv secret suite.hashAlg
+        (Record13.sealRecord key iv seq (ByteArray.mk #[(2 : UInt8), a.toByte]) .alert 0 suite).map some
+
 /-- Realize a flight message as the wire bytes its core-authorized epoch demands: a
 `.handshake`-epoch message becomes a sealed protected record (or, transitionally, a cleartext
 record if no key is installed); the `.initial`-epoch ServerHello becomes a cleartext handshake
@@ -229,17 +249,21 @@ def execAction {τ : Type} [Transport τ] (prov : CryptoProvider) (rt : RuntimeS
           let (rt', tr') := drainOutbound { rt with outbound := rt.outbound ++ wire } tr
           (rt', tr', [])
       | .error e => (terminate rt (some (.resourceLimit e)), tr, [])
-  | .writeAlert _ epoch _ a =>
-      -- Transmit the fatal alert record the core authorized (RFC 041). At the `initial` epoch —
-      -- before any write key (ALPN `no_application_protocol`, version/group/parse rejections) — frame
-      -- a plaintext `Alert` record and drain it best-effort. The protected (handshake/application)
-      -- framings are the RFC 041 follow-up; until they land a fatal alert under installed write keys is
-      -- still *classified* (the `failWithAlert` action) and terminal, just not transmitted.
+  | .writeAlert _ epoch seq a =>
+      -- Transmit the fatal alert record the core authorized (RFC 041). Plaintext at the `initial`
+      -- epoch (before any write key); a protected record sealed under the installed `(write, epoch)`
+      -- key once keys exist. Best-effort: if no key is installed for a protected epoch (the transitional
+      -- fake-provider path) nothing is transmitted. The connection still terminates via `failWithAlert`.
       match epoch with
       | .initial =>
           let (rt', tr') := drainOutbound { rt with outbound := rt.outbound ++ plaintextAlertRecord a } tr
           (rt', tr', [])
-      | _ => (rt, tr, [])
+      | _ =>
+          match sealAlertRecord rt.arena epoch seq a with
+          | .ok (some wire) =>
+              let (rt', tr') := drainOutbound { rt with outbound := rt.outbound ++ wire } tr
+              (rt', tr', [])
+          | _ => (rt, tr, [])
   | .enableWriteInterest _  => ({ rt with writeInterest := true }, Transport.enableWrite tr (Transport.fd tr), [])
   | .disableWriteInterest _ => ({ rt with writeInterest := false }, Transport.disableWrite tr (Transport.fd tr), [])
   | .callCrypto conn op req =>
@@ -282,7 +306,7 @@ def observeMetrics (m : Metrics) (core : State) (acts : List OutputAction) : Met
     | .reportHandshakeComplete _ _ => m.recordHandshakeComplete core.negotiated.selectedAlpn.isSome
     | .reportError _ e             => m.recordFailure (categoryOf e)
     | .failWithAlert _ _           => m.recordAlertClassified
-    | .writeAlert _ .initial _ _   => m.recordAlertSent
+    | .writeAlert _ _ _ _          => m.recordAlertSent
     | _                            => m) m
 
 /-- The fuel-bounded drive loop (RFC 010 §6, §10 — *never spin on wouldBlock*).

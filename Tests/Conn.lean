@@ -83,6 +83,22 @@ def aesHsOpened : Option (ByteArray × ContentType) :=
     Record13.openRecord (KeySchedule.trafficKey .aes128GcmSha256 hsSecretFx)
                         (KeySchedule.trafficIv hsSecretFx) 0 r .aes128GcmSha256)
 
+/-- RFC 041 protected path: seal a fatal alert under a `(write, handshake)` key (the same arena
+setup the handshake flight uses), then open it back — verifying the protected alert record is a real
+`0x17` TLS 1.3 record whose inner content is `[fatal, no_application_protocol]` at content type `alert`. -/
+def alertSealedHs : Option ByteArray :=
+  match SecretArena.empty.store hsSecretFx with
+  | .error _ => none
+  | .ok (h, a1) =>
+    let a2 := (a1.recordBaseSecret .write .handshake h.id).recordInstalledSuite .write .handshake .chacha20Poly1305Sha256
+    match sealAlertRecord a2 .handshake 0 .noApplicationProtocol with
+    | .ok (some r) => some r | _ => none
+
+def alertOpenedHs : Option (ByteArray × ContentType) :=
+  alertSealedHs.bind (fun r =>
+    Record13.openRecord (KeySchedule.trafficKey .chacha20Poly1305Sha256 hsSecretFx)
+                        (KeySchedule.trafficIv hsSecretFx) 0 r .chacha20Poly1305Sha256)
+
 def checks : List Check :=
   [ -- full handshake through the public API
     { name := "handshake completes through TlsConn"
@@ -163,12 +179,25 @@ def checks : List Check :=
           ({ fd := fd0, inbound := [] } : FakeTransport)
           (.writeAlert ⟨0, 0⟩ .initial 0 .noApplicationProtocol)
         trA.writtenBytes.toList == [21, 3, 3, 0, 2, 2, 120] }
-  , { name := "writeAlert at a protected epoch transmits nothing yet (RFC 041 follow-up deferred)"
+  , { name := "writeAlert at a protected epoch with no installed key transmits nothing (best-effort)"
     , ok :=
         let (_, trB, _) := execAction fakeProvider ({} : RuntimeState)
           ({ fd := fd0, inbound := [] } : FakeTransport)
           (.writeAlert ⟨0, 0⟩ .handshake 0 .noApplicationProtocol)
         trB.writtenBytes.toList == [] }
+  , -- RFC 041 part 2: protected (sealed) fatal-alert records under installed write keys
+    { name := "RFC 041 protected: handshake-epoch alert seals to a 0x17 record, not cleartext"
+    , ok := (match alertSealedHs with
+             | some r => r.size >= 5 && r.get! 0 == 0x17
+                         && r.toList != (plaintextAlertRecord .noApplicationProtocol).toList
+             | none => false) }
+  , { name := "RFC 041 protected: sealed handshake-epoch alert opens to [fatal,120] at content type alert"
+    , ok := (match alertOpenedHs with
+             | some (body, ct) => body.toList == [2, 120] && ct == .alert
+             | none => false) }
+  , { name := "sealAlertRecord yields none without a write key (best-effort, no cleartext leak)"
+    , ok := (match sealAlertRecord SecretArena.empty .application 0 .noApplicationProtocol with
+             | .ok none => true | _ => false) }
   ]
 
 def main : IO UInt32 := do

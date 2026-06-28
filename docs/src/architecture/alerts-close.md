@@ -28,32 +28,33 @@ like every alert other than `closeNotify`/`userCanceled` — it is fatal
 so it is classified and terminal exactly like the other handshake-negotiation
 failures.
 
-### Current wire behaviour (plaintext fatal alerts are transmitted; protected ones deferred)
+### Wire behaviour (fatal alerts are transmitted as records)
 
-What reaches the peer depends on the write epoch at the moment of failure. The core
-now decides a fatal-alert record on every fatal edge — a `writeAlert (conn) (epoch) (seq)
-(a)` action, alongside the existing `failWithAlert` classification — and the interpreter
-frames it (RFC 041).
+The core decides a fatal-alert record on every fatal edge — a `writeAlert (conn) (epoch) (seq)
+(a)` action, alongside the `failWithAlert` classification — and the interpreter frames it for the
+write epoch in force at the moment of failure (RFC 041):
 
-- **Before any write key is installed (the `initial` epoch)** — every ClientHello-stage
-  rejection: `no_application_protocol` (120), `handshake_failure` (40),
-  `protocol_version` (70), `illegal_parameter` (47), `decode_error` (50), a missing or
-  unsupported extension, and parse failures — the interpreter frames a **plaintext**
-  `Alert` record `[21, 0x03, 0x03, 0x00, 0x02, 0x02, AlertDescription.toByte a]` and
-  drains it best-effort before terminating. A peer (e.g. OpenSSL `s_client`) now reads
-  the actual alert. The `AlertDescription.toByte` encoder's round-trip
-  (`ofByte (toByte a) = some a`) is proved in `Kroopt.Proofs.Closure.ofByte_toByte`.
-- **Once write keys are installed (the `handshake`/`application` epochs)** — a fatal
-  failure is still **classified** and terminal, but the protected alert record is **not
-  yet transmitted**: the seal paths for those epochs are the RFC 041 follow-up. Until they
-  land, a post-key fatal failure shows the peer connection termination, not an alert byte.
+- **Before any write key (the `initial` epoch)** — every ClientHello-stage rejection:
+  `no_application_protocol` (120), `handshake_failure` (40), `protocol_version` (70),
+  `illegal_parameter` (47), `decode_error` (50), a missing or unsupported extension, and parse
+  failures — the interpreter frames a **plaintext** `Alert` record
+  `[21, 0x03, 0x03, 0x00, 0x02, 0x02, AlertDescription.toByte a]` and drains it best-effort. A peer
+  (e.g. OpenSSL `s_client`) reads the alert byte (verified live: a group-mismatch reject yields
+  `SSL alert number 40`).
+- **Once write keys are installed (`handshake` / `application` epochs)** — e.g. a bad client
+  Finished, or a post-`connected` record failure — the interpreter seals a **protected** `Alert`
+  record (inner content type `alert`, body `[fatal, toByte a]`) under the installed `(write, epoch)`
+  traffic key at the core-authorized sequence number, using the same key/IV derivation as the
+  handshake flight. Best-effort: on the transitional fake-provider path (no installed key) nothing is
+  transmitted rather than leaking a cleartext alert at a protected epoch.
 
-Both the classification and the transmission are observable: `failWithAlert` keeps the
-`alertsClassified` counter and the `alert-classified` trace event (every fatal alert);
-a transmitted record additionally bumps `alertsSent` and emits the `alert-sent` trace
-event. Best-effort delivery means `alertsSent ≤ alertsClassified`. Tracking RFC:
-`rfcs/proposed/041-fatal-alert-wire-transmission.md`. `close_notify` (description 0) is
-still the only alert sent on a *graceful* close.
+The `AlertDescription.toByte` encoder's round-trip (`ofByte (toByte a) = some a`) is proved in
+`Kroopt.Proofs.Closure.ofByte_toByte`. Both signals are observable: `failWithAlert` keeps the
+`alertsClassified` counter and the `alert-classified` trace event (every fatal alert); a transmitted
+record bumps `alertsSent` and emits `alert-sent`. Delivery is best-effort, so a `wouldBlock` mid-alert
+leaves the record queued and still terminates within the close budget — `alertsSent ≤ alertsClassified`.
+`close_notify` (description 0) remains the only alert sent on a *graceful* close. (Closes
+`rfcs/done/041-fatal-alert-wire-transmission.md`.)
 
 ## Explicit close states and per-mode close
 

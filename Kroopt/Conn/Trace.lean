@@ -140,8 +140,7 @@ def traceOfAction : OutputAction → Option TraceEvent
   | .reportHandshakeComplete c i  => some (.handshakeComplete c i.suite)
   | .reportError c e              => some (.errorReported c (errorCategory e))
   | .failWithAlert c a            => some (.alertClassified c a (Kroopt.Core.alertLevel a))
-  | .writeAlert c .initial _ a    => some (.alertSent c a)
-  | .writeAlert _ _ _ _           => none
+  | .writeAlert c _ _ a           => some (.alertSent c a)
   | .closeTransport c m           => some (.transportClose c (closeModeLabel m))
   | .releaseSecret _              => some .secretReleased
 

@@ -5,6 +5,49 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.112.0-dev] — RFC 041 part 2: protected fatal-alert wire transmission (RFC 041 complete) — 2026-06-28
+
+Completes RFC 041. A fatal failure after a write key is installed now puts a **sealed** `Alert`
+record on the wire — the protected counterpart of 0.111's plaintext `initial`-epoch alert. RFC 041
+moves to `done/`; fatal alerts are transmitted at every epoch.
+
+This is an **interpreter-only** increment: the core's `writeAlert` emission (epoch + seq + description)
+is unchanged from 0.111, so the verified core and its 107 theorems are untouched. The interpreter now
+frames the protected record from the same core decision.
+
+Added
+- `sealAlertRecord (arena) (epoch) (seq) (a)` — seals a fatal `Alert` (inner content type `alert`,
+  body `[fatal, AlertDescription.toByte a]`) under the installed `(write, epoch)` traffic key at the
+  core-authorized sequence number, reusing the exact key/IV derivation as the handshake-flight seal
+  (`sealHandshakeRecord`), which already interops on the real wire. Returns `none` with no installed
+  key — best-effort, never a cleartext alert at a protected epoch.
+- The `writeAlert` interpreter handler now seals at `handshake`/`application` epochs (plaintext still at
+  `initial`); `alertsSent` / `alert-sent` now fire for every transmitted epoch (in production, keys are
+  installed at protected epochs, so a record is always framed).
+- Tests: a handshake-epoch alert seals to a real `0x17` protected record that opens back to
+  `[fatal, 120]` at content type `alert`; `sealAlertRecord` yields `none` (no leak) without a key.
+
+Changed
+- `docs/src/architecture/alerts-close.md` and the event/metric reference now describe fatal alerts as
+  transmitted at all epochs (plaintext `initial`, sealed `handshake`/`application`).
+- RFC 041 → `rfcs/done/041-fatal-alert-wire-transmission.md` (Status: Implemented, 0.111–0.112.0-dev).
+
+Notes (the two as-built RFC 041 design calls, for the RFR)
+- **Dual counter**: `alertsClassified` (every fatal alert) and `alertsSent` (records framed for the
+  wire) are kept distinct; best-effort delivery means `alertsSent ≤ alertsClassified`.
+- **Best-effort backpressure**: a `wouldBlock` mid-alert leaves the record queued and still terminates
+  within the close budget.
+
+Deferred / follow-up
+- Live interop for a *protected* alert (a post-key failure observed by a real client) — the bad-Finished
+  trigger needs a tampering client; the deterministic seal/open round-trip plus the shared,
+  wire-proven derivation stand in for now. The plaintext path is already live-observed (OpenSSL reads
+  `SSL alert number 40` on a group-mismatch reject).
+- `AlpnDecision.notOffered → noSelection` rename (internal, architect non-blocking).
+
+Gate: full green — 27 suites, 107-theorem axiom audit (no `sorryAx`), 37 pure-zone deps, hygiene,
+20k-iter parser fuzz, ASan/UBSan, and OpenSSL/Python/curl live interop.
+
 ## [0.111.0-dev] — RFC 041 part 1: plaintext fatal-alert wire transmission — 2026-06-28
 
 First half of RFC 041. A fatal failure now puts a real **plaintext** `Alert` record on the wire at the

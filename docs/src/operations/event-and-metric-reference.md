@@ -29,7 +29,7 @@ secret handle, or attacker-controlled bytes (`Tests.Trace`, including sentinel-l
 | `handshake-complete` | the handshake reaches `connected` | connection id, negotiated cipher suite (public metadata) |
 | `error` | a typed error is reported to the caller | connection id, error **category** only (see below) |
 | `alert-classified` | the core classified a **fatal** alert for a failure (always emitted; classification is not itself a wire send) | connection id, alert description, level |
-| `alert-sent` | a fatal alert **record** was framed onto the wire (RFC 041 — currently the plaintext `initial`-epoch case; protected epochs deferred) | connection id, alert description |
+| `alert-sent` | a fatal alert **record** was framed onto the wire (RFC 041 — plaintext at the `initial` epoch, sealed at `handshake`/`application` epochs) | connection id, alert description |
 | `transport-close` | the transport is closed | connection id, close **mode** (graceful / fatal / abortive) |
 | `secret-released` | a secret handle is released | nothing — the bare event |
 
@@ -78,7 +78,7 @@ names are stable when emission/export lands; treat anything beyond the five wire
 | `kroopt_handshakes_completed_total` | wired (internal counter) | — | handshakes reaching `connected` |
 | `kroopt_handshakes_failed_total` | wired (internal counter) | `reason` | handshakes ending in terminal failure |
 | `kroopt_alerts_classified_total` | wired (internal counter) | `alert` | **fatal alerts classified** for a failure (every fatal edge; see `alert-classified`) |
-| `kroopt_alerts_sent_total` | wired (internal counter) | `alert` | fatal alert **records transmitted** on the wire (RFC 041); best-effort, so `≤ kroopt_alerts_classified_total` |
+| `kroopt_alerts_sent_total` | wired (internal counter) | `alert` | fatal alert **records framed for the wire** (RFC 041 — plaintext or sealed by epoch); best-effort, so `≤ kroopt_alerts_classified_total` |
 | `kroopt_resource_limit_failures_total` | wired (internal counter) | `kind` | budget exhaustion by limit |
 | `kroopt_alpn_selected_total` | wired (internal counter) | — | handshakes where ALPN was negotiated |
 | `kroopt_connections_started_total` | planned (v0.4) | — | connections wrapped by `TlsConn.server` |
