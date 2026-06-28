@@ -5,6 +5,43 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.107.0-dev] — generalize `TlsConn` over the `Transport` typeclass (jemmet integration, RFC 015 §4 / handoff decision 1) — 2026-06-28
+
+The public connection handle was pinned to the in-model `FakeTransport`. It is now parameterized over
+any `[Transport τ]`, so a consumer (jemmet, RFC 015) can drive the public `recv`/`send`/`flush`/`close`
+API over a real iotakt-backed transport while the in-model tests keep using `FakeTransport`. The pure
+interpreter (`driveEvents`) was already generic over `Transport`; this extends the same genericity to the
+thin wrapper that sits on top of it. Proof-neutral: the proofs are over `Core.step`, not the handle, and
+the axiom audit is unchanged (102 public theorems). This is the first of the two low-risk integration
+increments the ALPN no-overlap review asked to land standalone, ahead of the ALPN change.
+
+### Changed
+- **`Kroopt/Conn/TlsConn.lean`** — `structure TlsConn` → `structure TlsConn (τ : Type)` with `tr : τ`.
+  The driving methods (`recv`, `send`, `flush`, `close`, `progress`, and the private `drive`) are now
+  `{τ : Type} [Transport τ]`; the pure accessors (`metadata`, `cipherSuite`, `negotiatedAlpn`,
+  `selectedCert`, `isConnected`) are generic over `τ` with no `Transport` requirement.
+- **`TlsConn.close`** — completion is now derived from the transport-agnostic
+  `core.handshake = .closed ∨ rt.terminal` instead of the `FakeTransport`-specific `tr.closed` field.
+  `rt.terminal` is set by `terminate` in the very interpreter step that invokes
+  `Transport.closeConnection` (the `closeTransport` action), so the reported result is preserved while
+  the read no longer depends on a concrete transport.
+- **`Kroopt/Conn/Uniform.lean`** — the uniform `:443` adapter is now
+  `instance {τ} [Transport τ] : PlainConn (TlsConn τ)`; `redactError` is generic over `τ`. No behavior
+  change — the ops are still exactly the public `TlsConn` API.
+
+### Added
+- **`TlsConn.serverWith (tr0 : τ) …`** — generic server constructor that takes a supplied transport; the
+  live entry point a consumer uses to hand kroopt its real `Transport`. `TlsConn.server` is retained as
+  the `FakeTransport` convenience for the model/tests (it now returns `TlsConn FakeTransport` and is
+  defined in terms of `serverWith`); `feedInbound` remains the `FakeTransport` model helper.
+
+### Notes
+- No proof delta (axiom audit unchanged at 102; full gate green: 27 suites, deps/hygiene, parse-fuzz,
+  ASan/UBSan, and live OpenSSL/Python/curl interop).
+- The `ownedOutboundBytes` accessor (the second low-risk increment) and the ALPN strict-reject change
+  (`AlpnDecision`, `no_application_protocol`/120, strict `requireOverlap`) are tracked as their own
+  separate increments per the architecture review's sequencing.
+
 ## [0.106.0-dev] — audit follow-up: propagate the HIGH-3 strict reject into docs/RFC/verification — 2026-06-15
 
 A post-release consistency audit found the HIGH-3 strict reject (shipped in 0.104.0-dev, code + test)

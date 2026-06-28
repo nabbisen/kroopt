@@ -78,17 +78,17 @@ def vcfg : ValidatedServerConfig :=
           { defaultEndpoint := some epDefault, sniRoutes := [], alpnMode := .serverPreference } ⟨1⟩ with
   | .ok v => v | .error _ => default
 
-def tlsServer (inbound : List ByteArray) : TlsConn :=
+def tlsServer (inbound : List ByteArray) : TlsConn FakeTransport :=
   (TlsConn.server fd0 ⟨0, 0⟩ ⟨1⟩ .sha256 fakeProvider vcfg).feedInbound inbound
 
 /-- A connected TLS connection with the HTTP request queued as an app-data record. -/
-def connectedWithRequest : TlsConn :=
+def connectedWithRequest : TlsConn FakeTransport :=
   let c := tlsServer [chRecord, clientFinishedRecord, appDataRecord]
   let c := c.progress (.transportReadable ⟨0, 0⟩)
   c.progress (.transportReadable ⟨0, 0⟩)
 
 -- A connected TLS conn whose ALPN was negotiated, for the handoff check.
-def connectedWithAlpn : TlsConn :=
+def connectedWithAlpn : TlsConn FakeTransport :=
   let s := State.initial ⟨0, 0⟩ ⟨1⟩ .sha256
   let neg := { s.negotiated with selectedAlpn := some http11 }
   { core := { s with handshake := .connected, negotiated := neg }

@@ -142,7 +142,7 @@ def checks : List Check :=
 def connChecks : List Check :=
   -- close + idempotence through the public API
   let fd0 : Kroopt.Conn.FdKey := { fd := 1, generation := 1 }
-  let c : Kroopt.Conn.TlsConn :=
+  let c : Kroopt.Conn.TlsConn Kroopt.Conn.FakeTransport :=
     { core := connectedState, rt := {}, tr := { fd := fd0, inbound := [] }
       prov := Kroopt.Crypto.fakeProvider }
   [ { name := "TlsConn.close graceful reports closeStarted or closed"

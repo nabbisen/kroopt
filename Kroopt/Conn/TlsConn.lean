@@ -3,9 +3,12 @@ import Kroopt.Conn.Interpreter
 /-!
 # Kroopt.Conn.TlsConn
 
-The public connection API a consumer drives (RFC 010 §3). `TlsConn` is a small
+The public connection API a consumer drives (RFC 010 §3). `TlsConn τ` is a small
 handle around the core protocol `State`, the interpreter's `RuntimeState`, the
-transport, and the crypto provider (RFC 010 §9). The semantics that matter:
+transport, and the crypto provider (RFC 010 §9). It is **generic over the
+transport** `τ` (any `[Transport τ]`): the in-model `FakeTransport` for
+deterministic tests, and a real I/O reactor (e.g. jemmet's iotakt-backed
+`Transport`) in production. The semantics that matter:
 
 * `recv` returns **authenticated plaintext only**, and only after `connected`;
 * `send` returns `wrote n` meaning kroopt **took ownership of `n` plaintext
@@ -54,33 +57,45 @@ inductive TlsCloseResult where
   | error (e : TlsError)
   deriving Inhabited
 
-/-- The connection handle (RFC 010 §9). Protocol truth is `core`; the interpreter
-bookkeeping is `rt`; the transport and provider are the boundary. -/
-structure TlsConn where
+/-- The connection handle (RFC 010 §9), generic over the transport `τ`. Protocol
+truth is `core`; the interpreter bookkeeping is `rt`; the transport `tr` and
+`prov` are the boundary. The interpreter is generic over `[Transport τ]`, so the
+same handle drives the in-model `FakeTransport` and a real reactor alike. -/
+structure TlsConn (τ : Type) where
   core : State
   rt   : RuntimeState
-  tr   : FakeTransport
+  tr   : τ
   prov : CryptoProvider
 
 namespace TlsConn
 
-/-- Create a handshaking server connection over an accepted fd (RFC 010 §3),
-with a validated configuration (RFC 011) that drives SNI/ALPN/cert selection.
-The initial state is `start`; no application bytes may flow yet. -/
-def server (fd : FdKey) (conn : ConnId) (cfg : ConfigGeneration)
+/-- Create a handshaking server connection over a supplied transport `tr0`
+(RFC 010 §3), with a validated configuration (RFC 011) that drives SNI/ALPN/cert
+selection. Generic over the transport: a live consumer (e.g. jemmet) passes its
+real `[Transport τ]` instance here. The initial state is `start`; no application
+bytes may flow yet. -/
+def serverWith {τ : Type} (tr0 : τ) (conn : ConnId) (cfg : ConfigGeneration)
     (alg : HashAlgorithm) (prov : CryptoProvider)
-    (config : ValidatedServerConfig := ValidatedServerConfig.baseline) : TlsConn :=
+    (config : ValidatedServerConfig := ValidatedServerConfig.baseline) : TlsConn τ :=
   { core := { State.initial conn cfg alg with serverConfig := config }
     rt   := {}
-    tr   := { fd := fd, inbound := [] }
+    tr   := tr0
     prov := prov }
 
-/-- Feed scripted inbound bytes (the model's stand-in for the transport delivering a
-readable event with data). -/
-def feedInbound (c : TlsConn) (chunks : List ByteArray) : TlsConn :=
+/-- The in-model convenience constructor over the `FakeTransport` (RFC 014):
+builds a fake transport from an `fd` for deterministic model/tests. Production
+uses `serverWith` with a real transport. -/
+def server (fd : FdKey) (conn : ConnId) (cfg : ConfigGeneration)
+    (alg : HashAlgorithm) (prov : CryptoProvider)
+    (config : ValidatedServerConfig := ValidatedServerConfig.baseline) : TlsConn FakeTransport :=
+  serverWith { fd := fd, inbound := [] } conn cfg alg prov config
+
+/-- Feed scripted inbound bytes (the model's stand-in for the transport delivering
+a readable event with data). Model/test helper over the `FakeTransport`. -/
+def feedInbound (c : TlsConn FakeTransport) (chunks : List ByteArray) : TlsConn FakeTransport :=
   { c with tr := { c.tr with inbound := c.tr.inbound ++ chunks } }
 
-private def drive (c : TlsConn) (ev : InputEvent) : TlsConn :=
+private def drive {τ : Type} [Transport τ] (c : TlsConn τ) (ev : InputEvent) : TlsConn τ :=
   let (core', rt', tr') := driveEvents c.prov progressBudget c.core c.rt c.tr [ev]
   { c with core := core', rt := rt', tr := tr' }
 
@@ -88,8 +103,8 @@ private def drive (c : TlsConn) (ev : InputEvent) : TlsConn :=
 before `connected` or after a terminal state. If nothing is buffered, it drives
 one transport-read/decrypt cycle and retries, so a single `recv` pulls the next
 record off the wire (matching the plaintext adapter's behaviour). -/
-def recv (c : TlsConn) : TlsConn × TlsReadResult :=
-  let deliver (c : TlsConn) : Option (TlsConn × TlsReadResult) :=
+def recv {τ : Type} [Transport τ] (c : TlsConn τ) : TlsConn τ × TlsReadResult :=
+  let deliver (c : TlsConn τ) : Option (TlsConn τ × TlsReadResult) :=
     match c.rt.plaintextOut with
     | some b => some ({ c with rt := { c.rt with plaintextOut := none } }, .bytes b)
     | none => none
@@ -117,7 +132,7 @@ def recv (c : TlsConn) : TlsConn × TlsReadResult :=
 /-- Accept application plaintext for encryption and transmission (RFC 010 §4).
 `wrote n` = kroopt took ownership of `n` plaintext bytes; `wouldBlock` = zero
 consumed (the caller retries the same bytes). -/
-def send (c : TlsConn) (plaintext : ByteArray) : TlsConn × TlsWriteResult :=
+def send {τ : Type} [Transport τ] (c : TlsConn τ) (plaintext : ByteArray) : TlsConn τ × TlsWriteResult :=
   let c := { c with rt := { c.rt with acceptedBytes := 0 } }
   let c := drive c (.appSend c.core.connId plaintext)
   if c.core.handshake.isTerminal then
@@ -131,7 +146,7 @@ def send (c : TlsConn) (plaintext : ByteArray) : TlsConn × TlsWriteResult :=
 
 /-- Drive pending ciphertext toward the transport (RFC 010 §4). `flushed` means
 kroopt's outbound queue is empty (not that the peer processed the data). -/
-def flush (c : TlsConn) : TlsConn × TlsFlushResult :=
+def flush {τ : Type} [Transport τ] (c : TlsConn τ) : TlsConn τ × TlsFlushResult :=
   let c := drive c (.appFlush c.core.connId)
   let (rt', tr') := drainOutbound c.rt c.tr
   let c := { c with rt := rt', tr := tr' }
@@ -141,32 +156,34 @@ def flush (c : TlsConn) : TlsConn × TlsFlushResult :=
       if c.rt.outbound.isEmpty then (c, .flushed) else (c, .needWrite)
 
 /-- Begin closing the connection (RFC 010 §3). After any close begins, no new
-application plaintext is accepted. -/
-def close (c : TlsConn) (mode : CloseMode) : TlsConn × TlsCloseResult :=
+application plaintext is accepted. The completion signal is transport-agnostic:
+the core reaches `.closed`, or the interpreter has driven `closeTransport`
+(`rt.terminal`) which is where `Transport.closeConnection` is invoked. -/
+def close {τ : Type} [Transport τ] (c : TlsConn τ) (mode : CloseMode) : TlsConn τ × TlsCloseResult :=
   let c := drive c (.appClose c.core.connId mode)
-  if c.tr.closed ∨ c.core.handshake = .closed then (c, .closed) else (c, .closeStarted)
+  if c.core.handshake = .closed ∨ c.rt.terminal then (c, .closed) else (c, .closeStarted)
 
 /-- Drive the connection on a transport-readiness or timeout event (RFC 010 §3
 `progress`). Returns the updated handle. -/
-def progress (c : TlsConn) (ev : InputEvent) : TlsConn :=
+def progress {τ : Type} [Transport τ] (c : TlsConn τ) (ev : InputEvent) : TlsConn τ :=
   drive c ev
 
 /-- The negotiated metadata, available after `connected` (RFC 010 §3). -/
-def metadata (c : TlsConn) : Option HandshakeInfo := c.rt.metadata
+def metadata {τ : Type} (c : TlsConn τ) : Option HandshakeInfo := c.rt.metadata
 
 /-- The negotiated cipher suite, if the handshake completed. -/
-def cipherSuite (c : TlsConn) : Option CipherSuite := c.rt.metadata.map (·.suite)
+def cipherSuite {τ : Type} (c : TlsConn τ) : Option CipherSuite := c.rt.metadata.map (·.suite)
 
 /-- The negotiated ALPN protocol, if any (RFC 011 §5). Meaningful after
 `connected`; a consumer uses it to choose its protocol handler. -/
-def negotiatedAlpn (c : TlsConn) : Option AlpnProtocol := c.core.negotiated.selectedAlpn
+def negotiatedAlpn {τ : Type} (c : TlsConn τ) : Option AlpnProtocol := c.core.negotiated.selectedAlpn
 
 /-- The certificate chain selected for this connection by SNI (RFC 012 §6). -/
-def selectedCert (c : TlsConn) : Option CertificateChainHandle :=
+def selectedCert {τ : Type} (c : TlsConn τ) : Option CertificateChainHandle :=
   c.core.negotiated.selectedCert
 
 /-- Whether the handshake has completed. -/
-def isConnected (c : TlsConn) : Bool := c.core.handshake.isConnected
+def isConnected {τ : Type} (c : TlsConn τ) : Bool := c.core.handshake.isConnected
 
 end TlsConn
 

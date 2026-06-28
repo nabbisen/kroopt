@@ -42,23 +42,23 @@ def fd0 : FdKey := { fd := 1, generation := 1 }
 
 /-- A fresh handshaking server connection with the ClientHello and client
 Finished records queued for delivery. -/
-def freshServer : TlsConn :=
+def freshServer : TlsConn FakeTransport :=
   (TlsConn.server fd0 ⟨0, 0⟩ ⟨0⟩ .sha256 fakeProvider).feedInbound [chRecord, clientFinishedRecord]
 
 /-- Drive the handshake to completion: a readable event reads and processes the
 ClientHello and server flight; a second reads the client Finished and finishes. -/
-def handshaken : TlsConn :=
+def handshaken : TlsConn FakeTransport :=
   let c := freshServer.progress (.transportReadable ⟨0, 0⟩)
   c.progress (.transportReadable ⟨0, 0⟩)
 
 /-- A connected connection with an outstanding record-open op, for read tests. -/
-def connectedForRecv : TlsConn :=
+def connectedForRecv : TlsConn FakeTransport :=
   let s := State.initial ⟨0, 0⟩ ⟨0⟩ .sha256
   let (_, s) := (s.allocOp .aeadOpen .application (some .read) ResourceLimits.standard.maxPendingCryptoOps).toOption.getD (⟨0⟩, s)
   { core := { s with handshake := .connected }, rt := {}, tr := { fd := fd0, inbound := [] },
     prov := fakeProvider }
 
-def connectedForSend : TlsConn :=
+def connectedForSend : TlsConn FakeTransport :=
   { core := { (State.initial ⟨0, 0⟩ ⟨0⟩ .sha256) with handshake := .connected }
     rt := {}, tr := { fd := fd0, inbound := [] }, prov := fakeProvider }
 

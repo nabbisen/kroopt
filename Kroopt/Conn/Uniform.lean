@@ -42,7 +42,7 @@ class PlainConn (σ : Type) where
 
 /-- `TlsConn` is the `:443` implementation of the uniform shape (RFC 015 §4). The
 ops are exactly the public `TlsConn` API — no new behaviour. -/
-instance : PlainConn TlsConn where
+instance {τ : Type} [Transport τ] : PlainConn (TlsConn τ) where
   recv c := c.recv
   send c b := c.send b
   flush c := c.flush
@@ -85,7 +85,7 @@ structure TlsErrorView where
   deriving Repr, Inhabited
 
 /-- Build the redacted view from a connection's state and error. -/
-def redactError (c : TlsConn) (e : TlsError) : TlsErrorView :=
+def redactError {τ : Type} (c : TlsConn τ) (e : TlsError) : TlsErrorView :=
   { category := categoryOf e
     alert := match c.core.closeState with
              | .fatalSent a => some a
