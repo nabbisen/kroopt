@@ -154,6 +154,21 @@ def checks : List Check :=
   , { name := "sealHandshakeRecord follows the installed suite (AES-128 bytes differ from ChaCha bytes)"
     , ok := (match aesHsSealed, chaHsSealed with
              | some a, some c => a.toList != c.toList | _, _ => false) }
+  , -- RFC 041: plaintext fatal-alert wire transmission (initial epoch)
+    { name := "plaintextAlertRecord frames a fatal no_application_protocol record (21,3,3,0,2,2,120)"
+    , ok := (plaintextAlertRecord .noApplicationProtocol).toList == [21, 3, 3, 0, 2, 2, 120] }
+  , { name := "writeAlert at the initial epoch drains the plaintext alert record onto the transport"
+    , ok :=
+        let (_, trA, _) := execAction fakeProvider ({} : RuntimeState)
+          ({ fd := fd0, inbound := [] } : FakeTransport)
+          (.writeAlert ⟨0, 0⟩ .initial 0 .noApplicationProtocol)
+        trA.writtenBytes.toList == [21, 3, 3, 0, 2, 2, 120] }
+  , { name := "writeAlert at a protected epoch transmits nothing yet (RFC 041 follow-up deferred)"
+    , ok :=
+        let (_, trB, _) := execAction fakeProvider ({} : RuntimeState)
+          ({ fd := fd0, inbound := [] } : FakeTransport)
+          (.writeAlert ⟨0, 0⟩ .handshake 0 .noApplicationProtocol)
+        trB.writtenBytes.toList == [] }
   ]
 
 def main : IO UInt32 := do

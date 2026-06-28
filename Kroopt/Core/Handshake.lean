@@ -137,7 +137,8 @@ abbrev HsResult := Except TlsError (State × List OutputAction)
 def hsFail (s : State) (a : AlertDescription) (e : TlsError) : HsResult :=
   .ok ({ s with handshake := .failed a, closeState := .fatalSent a,
                 pendingPlainOut := none },
-       [ OutputAction.failWithAlert s.connId a, OutputAction.reportError s.connId e ])
+       [ OutputAction.writeAlert s.connId s.writeEpoch.epoch s.writeEpoch.seq.value a,
+         OutputAction.failWithAlert s.connId a, OutputAction.reportError s.connId e ])
 
 /-- Allocate a pending crypto operation under the outstanding-op budget, then continue with
 `k`. If the budget is exhausted the connection fails closed (fatal resource-limit alert) — the

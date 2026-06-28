@@ -82,6 +82,11 @@ inductive OutputAction where
   | reportError (conn : ConnId) (e : TlsError)
   /-- Fail terminally and (best-effort) send a fatal alert. -/
   | failWithAlert (conn : ConnId) (a : AlertDescription)
+  /-- Transmit a fatal alert **record** on the wire (RFC 041, RFC 8446 §6). The core decides
+  the alert, the epoch, and the sequence number (as for `writeHandshake`); the interpreter frames
+  it — a plaintext record at the `initial` epoch, a protected record once write keys are installed.
+  Best-effort: a record is produced only when framing is possible for the epoch. -/
+  | writeAlert (conn : ConnId) (epoch : Epoch) (seq : UInt64) (a : AlertDescription)
   /-- Close the transport. -/
   | closeTransport (conn : ConnId) (mode : CloseMode)
   /-- Release (and best-effort zeroize) a secret handle. -/

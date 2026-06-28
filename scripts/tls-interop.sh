@@ -63,6 +63,11 @@ test_openssl_reject() {  # $1 = exe, $2 = label, $3 = forced groups (default P-2
     && ! grep -q "HANDSHAKE_OK reached connected" "$SRVOUT"; refused=$?
   check "OpenSSL [$2] x25519-only listener refuses -groups $GRP client (RFC 039 §8.16)" "$refused"
   if [ "$refused" -ne 0 ]; then echo "    --- server ---"; cat "$SRVOUT"; fi
+  # RFC 041: the rejection happens before any write key, so a plaintext fatal Alert record is
+  # transmitted — the client reads the alert byte, not just a dropped connection.
+  echo "$OUT" | grep -qiE "alert number|alert handshake failure"; gotalert=$?
+  check "OpenSSL [$2] reads a fatal alert record on the wire (RFC 041, not a bare drop)" "$gotalert"
+  if [ "$gotalert" -ne 0 ]; then echo "    --- client ---"; echo "$OUT" | tail -4; fi
 }
 
 test_python() {  # $1 = exe, $2 = label

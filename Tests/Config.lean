@@ -117,8 +117,10 @@ def checks : List Check :=
   , { name := "clientPreferenceNoOverlapLenientProceedsNone"
     , ok := (match negotiateAlpn .clientPreferenceWithinAllowed (some [alpnH2]) [alpnH11] with
              | .notOffered => true | _ => false) }
-  , { name := "alertNoApplicationProtocolRoundTrips120: byte 120 decodes to no_application_protocol, fatal"
+  , { name := "alertNoApplicationProtocolRoundTrips120: 120 ⇄ no_application_protocol via ofByte/toByte, fatal"
     , ok := (AlertDescription.ofByte 120 == some .noApplicationProtocol
+             && AlertDescription.noApplicationProtocol.toByte == 120
+             && AlertDescription.ofByte AlertDescription.noApplicationProtocol.toByte == some .noApplicationProtocol
              && alertLevel .noApplicationProtocol == .fatal) }
     -- certificate / key lint (RFC 012 §5, §6)
   , { name := "compatible Ed25519 cert/key validates"

@@ -28,20 +28,32 @@ like every alert other than `closeNotify`/`userCanceled` — it is fatal
 so it is classified and terminal exactly like the other handshake-negotiation
 failures.
 
-### Current wire behaviour (fatal alerts are classified, not yet transmitted)
+### Current wire behaviour (plaintext fatal alerts are transmitted; protected ones deferred)
 
-An important caveat about what reaches the peer. The interpreter terminates on the
-`failWithAlert` action **without writing an alert record** — the only alert kroopt
-transmits today is `close_notify` (description 0), on graceful close. There is no
-outbound `AlertDescription → byte` encoder. So for **every** fatal failure
-(`no_application_protocol`, `handshake_failure`, `decode_error`, …) the alert is
-**classified** — recorded in `closeState := fatalSent _`, surfaced as a typed
-`reportError`, counted by `alertsClassified`, and emitted as the `alert-classified`
-trace event — and the connection then terminates. A peer observes connection
-termination, not a guaranteed fatal-alert record. Actual fatal-alert wire
-transmission is tracked as its own RFC (`rfcs/proposed/041-fatal-alert-wire-transmission.md`);
-until it lands, no document should state that a fatal alert byte (40/47/120/…) is
-put on the wire.
+What reaches the peer depends on the write epoch at the moment of failure. The core
+now decides a fatal-alert record on every fatal edge — a `writeAlert (conn) (epoch) (seq)
+(a)` action, alongside the existing `failWithAlert` classification — and the interpreter
+frames it (RFC 041).
+
+- **Before any write key is installed (the `initial` epoch)** — every ClientHello-stage
+  rejection: `no_application_protocol` (120), `handshake_failure` (40),
+  `protocol_version` (70), `illegal_parameter` (47), `decode_error` (50), a missing or
+  unsupported extension, and parse failures — the interpreter frames a **plaintext**
+  `Alert` record `[21, 0x03, 0x03, 0x00, 0x02, 0x02, AlertDescription.toByte a]` and
+  drains it best-effort before terminating. A peer (e.g. OpenSSL `s_client`) now reads
+  the actual alert. The `AlertDescription.toByte` encoder's round-trip
+  (`ofByte (toByte a) = some a`) is proved in `Kroopt.Proofs.Closure.ofByte_toByte`.
+- **Once write keys are installed (the `handshake`/`application` epochs)** — a fatal
+  failure is still **classified** and terminal, but the protected alert record is **not
+  yet transmitted**: the seal paths for those epochs are the RFC 041 follow-up. Until they
+  land, a post-key fatal failure shows the peer connection termination, not an alert byte.
+
+Both the classification and the transmission are observable: `failWithAlert` keeps the
+`alertsClassified` counter and the `alert-classified` trace event (every fatal alert);
+a transmitted record additionally bumps `alertsSent` and emits the `alert-sent` trace
+event. Best-effort delivery means `alertsSent ≤ alertsClassified`. Tracking RFC:
+`rfcs/proposed/041-fatal-alert-wire-transmission.md`. `close_notify` (description 0) is
+still the only alert sent on a *graceful* close.
 
 ## Explicit close states and per-mode close
 

@@ -134,6 +134,14 @@ version `0x0303`). The ServerHello travels in such a record — it precedes the 
 def plaintextHandshakeRecord (plain : ByteArray) : ByteArray :=
   ByteArray.mk #[(22 : UInt8), 0x03, 0x03] ++ Kroopt.Parse.Wire.be16 plain.size.toUInt16 ++ plain
 
+/-- Frame a **plaintext** TLS 1.3 `Alert` record (content type `21`, legacy version `0x0303`)
+carrying a fatal alert: the 2-byte body is `[level = fatal = 2, AlertDescription.toByte a]`
+(RFC 8446 §6, RFC 041). The body holds only the public level and description byte — no secret,
+no plaintext, no attacker-controlled data. Used for the `initial` epoch, before any write key
+is installed (e.g. ALPN `no_application_protocol`, version/group/parse rejections). -/
+def plaintextAlertRecord (a : Kroopt.AlertDescription) : ByteArray :=
+  ByteArray.mk #[(21 : UInt8), 0x03, 0x03, 0x00, 0x02, 2, a.toByte]
+
 /-- Seal one handshake-flight message as a real TLS 1.3 protected record under the server
 handshake-traffic key installed in the arena, at the core-authorized sequence number `seq`
 (RFC 031 §3 — the interpreter MAY seal but the epoch/seq come from the core). Returns `none`
@@ -221,6 +229,17 @@ def execAction {τ : Type} [Transport τ] (prov : CryptoProvider) (rt : RuntimeS
           let (rt', tr') := drainOutbound { rt with outbound := rt.outbound ++ wire } tr
           (rt', tr', [])
       | .error e => (terminate rt (some (.resourceLimit e)), tr, [])
+  | .writeAlert _ epoch _ a =>
+      -- Transmit the fatal alert record the core authorized (RFC 041). At the `initial` epoch —
+      -- before any write key (ALPN `no_application_protocol`, version/group/parse rejections) — frame
+      -- a plaintext `Alert` record and drain it best-effort. The protected (handshake/application)
+      -- framings are the RFC 041 follow-up; until they land a fatal alert under installed write keys is
+      -- still *classified* (the `failWithAlert` action) and terminal, just not transmitted.
+      match epoch with
+      | .initial =>
+          let (rt', tr') := drainOutbound { rt with outbound := rt.outbound ++ plaintextAlertRecord a } tr
+          (rt', tr', [])
+      | _ => (rt, tr, [])
   | .enableWriteInterest _  => ({ rt with writeInterest := true }, Transport.enableWrite tr (Transport.fd tr), [])
   | .disableWriteInterest _ => ({ rt with writeInterest := false }, Transport.disableWrite tr (Transport.fd tr), [])
   | .callCrypto conn op req =>
@@ -263,6 +282,7 @@ def observeMetrics (m : Metrics) (core : State) (acts : List OutputAction) : Met
     | .reportHandshakeComplete _ _ => m.recordHandshakeComplete core.negotiated.selectedAlpn.isSome
     | .reportError _ e             => m.recordFailure (categoryOf e)
     | .failWithAlert _ _           => m.recordAlertClassified
+    | .writeAlert _ .initial _ _   => m.recordAlertSent
     | _                            => m) m
 
 /-- The fuel-bounded drive loop (RFC 010 §6, §10 — *never spin on wouldBlock*).

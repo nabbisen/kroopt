@@ -230,13 +230,18 @@ are unchanged. ~45 theorems total.
 
 ## M9 — alerts, close, and terminal policy (RFC 013)
 
-Seven theorems (`Kroopt.Proofs.Closure`); the three alert-mapping facts depend on
+Nine theorems (`Kroopt.Proofs.Closure`); the alert-mapping and encoder facts depend on
 **no axioms at all** (pure computation), the rest `propext`(+`Quot.sound`):
 
 - `failAlert_no_emit`, `failAlert_no_accept` — the fatal path emits/accepts no
   application plaintext.
-- `failAlert_only_alert_write` — the optional fatal alert is the *only*
-  post-failure transport write (RFC 013 §11).
+- `failAlert_only_alert_write` — no *ordinary* `writeTransport` on the fatal path; the
+  alert record (a dedicated `writeAlert` action) is its only wire effect (RFC 013 §11).
+- `failAlert_emits_alert` — the fatal path **does** emit a `writeAlert` for the failure's
+  description: the alert the interpreter frames onto the wire (RFC 041 obligation 1).
+- `ofByte_toByte` — the outbound alert encoder round-trips: `ofByte (toByte a) = some a`
+  for every description (RFC 041 obligation 4; the acceptance proof for the byte that
+  goes on the wire). Axiom-free.
 - `appClose_no_emit` — beginning a close, in any mode, emits no plaintext.
 - `alertForParseError_is_fatal`, `alertForParseError_not_closeNotify` — error
   alerts are always fatal and never the benign close_notify.
@@ -287,7 +292,7 @@ no axioms at all:
 The other hardening RFCs in this milestone are documentation and gates: the
 threat model (RFC 017), deferred-feature scope control (RFC 016, enforced via the
 parser and exercised by the hardening suite), and the proof gates (RFC 022 — the
-hygiene, dependency, and new axiom gates, plus CI). The axiom gate audits **102
+hygiene, dependency, and new axiom gates, plus CI). The axiom gate audits **107
 public theorems** with no `sorryAx` (plus the private helper lemmas they use); the
 per-milestone "~N total" figures above count the headline results enumerated
 in each section, not these supporting lemmas.

@@ -51,6 +51,27 @@ def AlertDescription.ofByte : UInt8 → Option AlertDescription
   | 120 => some .noApplicationProtocol
   | _   => none
 
+/-- The on-wire description byte for an alert (RFC 8446 §6, the inverse of `ofByte`).
+This is the encoder RFC 041 needs to put a fatal alert on the wire; the round-trip
+`ofByte (toByte a) = some a` (`Proofs.Alert.ofByte_toByte`) is its acceptance proof. The
+body carries only this public byte and the level — never a secret or attacker-controlled
+value. -/
+def AlertDescription.toByte : AlertDescription → UInt8
+  | .closeNotify          => 0
+  | .unexpectedMessage    => 10
+  | .badRecordMac         => 20
+  | .recordOverflow       => 22
+  | .handshakeFailure     => 40
+  | .illegalParameter     => 47
+  | .decodeError          => 50
+  | .decryptError         => 51
+  | .protocolVersion      => 70
+  | .internalError        => 80
+  | .userCanceled         => 90
+  | .missingExtension     => 109
+  | .unsupportedExtension => 110
+  | .noApplicationProtocol => 120
+
 /-- Alert level. In TLS 1.3 almost every alert is fatal; `closeNotify` is the
 sole routine warning. -/
 inductive AlertLevel where

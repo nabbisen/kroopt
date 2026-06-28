@@ -70,6 +70,24 @@ theorem failAlert_only_alert_write (s : State) (a : AlertDescription) (e : TlsEr
   simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil,
     reduceCtorEq, or_self, or_false] at hmem
 
+/-- **Encoder round-trip (RFC 041 obligation 4).** The on-wire description byte decodes back to the
+same alert: `ofByte (toByte a) = some a` for every description kroopt produces. This is the acceptance
+proof for the `AlertDescription.toByte` encoder that puts a fatal alert on the wire. -/
+theorem ofByte_toByte (a : AlertDescription) : AlertDescription.ofByte a.toByte = some a := by
+  cases a <;> rfl
+
+/-- **The fatal path transmits the alert (RFC 041 obligation 1).** `failAlert` emits a `writeAlert`
+action for the same description — the alert record the interpreter frames onto the wire. Together with
+`failAlert_only_alert_write` (no *ordinary* `writeTransport`), this pins the alert record as the one and
+only wire effect of a fatal failure. -/
+theorem failAlert_emits_alert (s : State) (a : AlertDescription) (e : TlsError)
+    (s' : State) (acts : List OutputAction) (h : failAlert s a e = .ok (s', acts)) :
+    OutputAction.writeAlert s.connId s.writeEpoch.epoch s.writeEpoch.seq.value a ∈ acts := by
+  unfold failAlert at h
+  simp only [Except.ok.injEq, Prod.mk.injEq] at h
+  rw [← h.2]
+  exact List.mem_cons_self _ _
+
 /-- **No plaintext on the close path.** Beginning a close (any mode) emits no
 application plaintext (RFC 013 §7). -/
 theorem appClose_no_emit (s s' : State) (conn : ConnId) (mode : CloseMode)

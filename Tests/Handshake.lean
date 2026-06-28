@@ -133,6 +133,12 @@ def checks : List Check :=
                  acts.all (fun a => match a with
                    | .callCrypto .. => false | .writeTransport .. => false | _ => true)
              | _ => false) }
+  , { name := "alpnNoOverlapEmitsPlaintextAlert: no-overlap emits writeAlert(initial, no_application_protocol) (RFC 041)"
+    , ok := (match onClientHello s0EdRequireOverlap vch chWire with
+             | .ok (_, acts) =>
+                 acts.any (fun a => match a with
+                   | .writeAlert _ .initial _ .noApplicationProtocol => true | _ => false)
+             | _ => false) }
   , { name := "onClientHello with a matching scheme advances past start (no spurious failure)"
     , ok := (match onClientHello s0Ed vch chWire with
              | .ok ({ handshake := .failed _, .. }, _) => false

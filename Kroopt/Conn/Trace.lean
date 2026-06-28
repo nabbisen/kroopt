@@ -67,6 +67,10 @@ inductive TraceEvent where
   transmitted); fatal-alert wire transmission is a separate RFC. So this records classification, not a
   guaranteed wire send. -/
   | alertClassified   (conn : ConnId) (desc : AlertDescription) (level : AlertLevel)
+  /-- A fatal alert **record** was framed onto the wire (RFC 041). Distinct from `alertClassified`:
+  classification always happens, transmission is best-effort (currently the plaintext `initial`-epoch
+  case). -/
+  | alertSent         (conn : ConnId) (desc : AlertDescription)
   /-- The transport was closed in the given mode. -/
   | transportClose    (conn : ConnId) (mode : String)
   /-- A secret handle was released — the *event* only, never the handle or bytes. -/
@@ -136,6 +140,8 @@ def traceOfAction : OutputAction → Option TraceEvent
   | .reportHandshakeComplete c i  => some (.handshakeComplete c i.suite)
   | .reportError c e              => some (.errorReported c (errorCategory e))
   | .failWithAlert c a            => some (.alertClassified c a (Kroopt.Core.alertLevel a))
+  | .writeAlert c .initial _ a    => some (.alertSent c a)
+  | .writeAlert _ _ _ _           => none
   | .closeTransport c m           => some (.transportClose c (closeModeLabel m))
   | .releaseSecret _              => some .secretReleased
 
@@ -152,6 +158,7 @@ def TraceEvent.render : TraceEvent → String
   | .handshakeComplete c s     => s!"handshake-complete conn={c.value} suite={repr s}"
   | .errorReported c cat       => s!"error conn={c.value} category={cat}"
   | .alertClassified c d l     => s!"alert-classified conn={c.value} desc={repr d} level={alertLevelLabel l}"
+  | .alertSent c d             => s!"alert-sent conn={c.value} desc={repr d}"
   | .transportClose c m        => s!"transport-close conn={c.value} mode={m}"
   | .secretReleased            => "secret-released"
 

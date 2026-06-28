@@ -37,6 +37,9 @@ structure Metrics where
   handshakesFailed    : Nat := 0
   alertsClassified    : Nat := 0  -- fatal alerts the core classified for a failure (see RFC: not
                                    -- necessarily transmitted; the interpreter terminates on `failWithAlert`)
+  alertsSent          : Nat := 0  -- fatal alert *records* actually framed onto the wire (RFC 041). Best-
+                                  -- effort delivery means this can be ≤ `alertsClassified` (a protected-epoch
+                                  -- alert is classified but, until the seal path lands, not yet sent)
   resourceFailures    : Nat := 0
   alpnSelected        : Nat := 0
   deriving Repr, Inhabited, DecidableEq
@@ -52,6 +55,8 @@ def recordFailure (m : Metrics) (cat : ErrorCategory) : Metrics :=
            resourceFailures := m.resourceFailures + (if cat == .resource then 1 else 0) }
 
 def recordAlertClassified (m : Metrics) : Metrics := { m with alertsClassified := m.alertsClassified + 1 }
+
+def recordAlertSent (m : Metrics) : Metrics := { m with alertsSent := m.alertsSent + 1 }
 
 end Metrics
 

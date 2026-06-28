@@ -51,7 +51,8 @@ def failAlert (s : State) (a : AlertDescription) (e : TlsError) : StepResult :=
   .ok ({ s with handshake := .failed a
                 closeState := .fatalSent a
                 pendingPlainOut := none },
-       [ OutputAction.failWithAlert s.connId a,
+       [ OutputAction.writeAlert s.connId s.writeEpoch.epoch s.writeEpoch.seq.value a,
+         OutputAction.failWithAlert s.connId a,
          OutputAction.reportError s.connId e ])
 
 /-- Terminal absorbing step: terminal phases ignore further events, leaving the
@@ -116,12 +117,12 @@ def step (s : State) (ev : InputEvent) : StepResult :=
                               pendingPlainOut := none },
                      [OutputAction.closeTransport s.connId .graceful])
         | .fatal a =>
-            -- Local fatal close: the optional fatal alert is the only post-failure
-            -- transport write permitted (RFC 013 §7).
+            -- Local fatal close: transmit the fatal alert record (RFC 041), classify, and close.
             .ok ({ s with handshake := .failed a
                           closeState := .fatalSent a
                           pendingPlainOut := none },
-                 [ OutputAction.failWithAlert s.connId a,
+                 [ OutputAction.writeAlert s.connId s.writeEpoch.epoch s.writeEpoch.seq.value a,
+                   OutputAction.failWithAlert s.connId a,
                    OutputAction.closeTransport s.connId (.fatal a) ])
         | .abortive =>
             -- Abortive close: no TLS alert, just drop the transport.

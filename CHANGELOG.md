@@ -5,6 +5,51 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.111.0-dev] — RFC 041 part 1: plaintext fatal-alert wire transmission — 2026-06-28
+
+First half of RFC 041. A fatal failure now puts a real **plaintext** `Alert` record on the wire at the
+`initial` epoch — before any write key is installed — so a peer reads the actual alert byte instead of a
+bare connection drop. This covers every ClientHello-stage rejection, including the
+`no_application_protocol` (120) case the 0.107–0.109 review flagged as A1's missing wire half. The
+protected (`handshake`/`application`-epoch) seal paths are the remaining RFC 041 follow-up; until they
+land, a post-key fatal failure is still classified-and-terminal, not transmitted.
+
+The alert that goes on the wire is a **core** decision (correspondence-preserving), mirroring
+`writeHandshake`: the core emits `OutputAction.writeAlert conn epoch seq a` and the interpreter frames it.
+
+Added
+- `AlertDescription.toByte` — the outbound description encoder (inverse of `ofByte`), with the round-trip
+  `ofByte (toByte a) = some a` proved axiom-free (`Kroopt.Proofs.Closure.ofByte_toByte`, RFC 041
+  obligation 4).
+- `OutputAction.writeAlert (conn) (epoch) (seq) (a)` — emitted by the three fatal edges (`hsFail`,
+  `failAlert`, the `.fatal` close mode); the interpreter frames a plaintext alert record
+  `[21, 0x03, 0x03, 0x00, 0x02, 0x02, toByte a]` at the `initial` epoch and (for now) transmits nothing at
+  protected epochs.
+- `Kroopt.Proofs.Closure.failAlert_emits_alert` — the fatal path emits the `writeAlert` for its
+  description (RFC 041 obligation 1); with `failAlert_only_alert_write` (no ordinary `writeTransport`)
+  this pins the alert record as the one and only wire effect of a failure. (102 → 107 audited theorems.)
+- Dual alert counters / trace: `alertsClassified` + `alert-classified` (every fatal alert, unchanged) and
+  new `alertsSent` + `alert-sent` (records actually framed onto the wire). Best-effort delivery means
+  `alertsSent ≤ alertsClassified`.
+- Tests: `toByte` round-trip (config), no-overlap emits `writeAlert(initial, no_application_protocol)`
+  (handshake), interpreter frames + drains `[21,3,3,0,2,2,120]` and defers protected epochs (conn), and a
+  **live** interop check — OpenSSL `s_client` now reads `SSL alert number 40` on a group-mismatch reject
+  rather than a dropped connection.
+
+Notes (two as-built design calls, flagged in RFC 041's open questions, to be surfaced in the RFR)
+- **Dual counter** kept rather than renaming `alertsClassified` back to `alertsSent`: classification and
+  transmission are genuinely distinct under best-effort delivery, so both are reported.
+- **Best-effort backpressure**: a `wouldBlock` mid-alert leaves the record queued and still terminates
+  within the close budget — termination is not blocked to force the alert out.
+
+Deferred
+- RFC 041 part 2: protected (`handshake`/`application`-epoch) fatal-alert transmission, after which RFC 041
+  moves to `done/`.
+- `AlpnDecision.notOffered → noSelection` rename (internal, architect non-blocking).
+
+Gate: full green — 27 suites, 107-theorem axiom audit (no `sorryAx`), 37 pure-zone deps, hygiene, 20k-iter
+parser fuzz, ASan/UBSan, and OpenSSL/Python/curl live interop (incl. the new wire-alert observation).
+
 ## [0.110.0-dev] — A1 acceptance-gate remediation: fatal-alert wire honesty, parser/capability comment fixes, RFC 041 — 2026-06-28
 
 Lands the acceptance gates from the 0.107–0.109 implementation review. The review approved 0.107/0.108
