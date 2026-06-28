@@ -113,6 +113,13 @@ def checks : List Check :=
     , ok := (let (c1, _) := connectedForSend.send (bytesOf [1, 2, 3])
              let (c2, fr) := c1.flush
              (match fr with | .flushed => true | _ => false) && c2.rt.outbound.isEmpty) }
+    -- owned outbound-ciphertext accounting for the consumer's egress bound (RFC 015 §6)
+  , { name := "ownedOutboundBytes reports the unflushed outbound ciphertext queue"
+    , ok := (let owned : TlsConn FakeTransport :=
+               { connectedForSend with rt := { connectedForSend.rt with outbound := bytesOf [1, 2, 3, 4, 5] } }
+             let empty : TlsConn FakeTransport :=
+               { connectedForSend with rt := { connectedForSend.rt with outbound := ByteArray.mk #[] } }
+             owned.ownedOutboundBytes == 5 && empty.ownedOutboundBytes == 0) }
     -- partial writes preserve ordering (RFC 010 §11)
   , { name := "partial transport writes preserve byte ordering"
     , ok := (let tr : FakeTransport :=

@@ -5,6 +5,29 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.108.0-dev] — add `TlsConn.ownedOutboundBytes` (jemmet egress accounting, RFC 015 §6 / handoff decision 6) — 2026-06-28
+
+The second of the two low-risk integration increments the ALPN review asked to land standalone. A
+read-only accessor exposing the number of ciphertext bytes kroopt currently owns in its outbound queue —
+records produced by the core and queued for the transport but not yet drained, i.e. exactly the buffer
+`flush` reports `flushed`/`needWrite` on. A consumer (jemmet, RFC 015) uses it to bound the egress it
+must account for against a slow-draining peer. Proof-neutral: a one-line projection, axiom audit
+unchanged (102 public theorems).
+
+### Added
+- **`Kroopt/Conn/TlsConn.lean`** — `def TlsConn.ownedOutboundBytes {τ} (c : TlsConn τ) : Nat :=
+  c.rt.outbound.size`. Defined narrowly as the unflushed outbound **ciphertext** queue only: `send`
+  encrypts on accept, so there is no separate accepted-but-not-encrypted plaintext backlog to report,
+  and the accessor does not imply one.
+- **`Tests/Conn.lean`** — a check that `ownedOutboundBytes` returns the queued byte count and is `0` on
+  an empty queue (conn suite now 16 checks).
+
+### Notes
+- Full gate green: 27 suites, deps/hygiene, parse-fuzz, ASan/UBSan, and live OpenSSL/Python/curl interop.
+- The ALPN strict no-overlap change (A1: `AlpnDecision`, `no_application_protocol`/120, strict
+  `requireOverlap` by server preference, the three proof obligations + named tests + docs) is the next
+  increment, after which the final reply to jemmet goes out.
+
 ## [0.107.0-dev] — generalize `TlsConn` over the `Transport` typeclass (jemmet integration, RFC 015 §4 / handoff decision 1) — 2026-06-28
 
 The public connection handle was pinned to the in-model `FakeTransport`. It is now parameterized over

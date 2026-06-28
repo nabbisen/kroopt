@@ -185,6 +185,15 @@ def selectedCert {τ : Type} (c : TlsConn τ) : Option CertificateChainHandle :=
 /-- Whether the handshake has completed. -/
 def isConnected {τ : Type} (c : TlsConn τ) : Bool := c.core.handshake.isConnected
 
+/-- The number of ciphertext bytes kroopt currently owns in its outbound queue:
+records the core has produced and the interpreter has queued for the transport
+but not yet drained (RFC 010 §4). This is exactly the buffer `flush` drives and
+reports `flushed`/`needWrite` on. A consumer (e.g. jemmet, RFC 015 §6) uses it to
+bound the egress it must account for against a slow-draining peer. It is **only**
+the ciphertext tier: `send` encrypts on accept, so there is no separate
+accepted-but-not-encrypted plaintext backlog to report. -/
+def ownedOutboundBytes {τ : Type} (c : TlsConn τ) : Nat := c.rt.outbound.size
+
 end TlsConn
 
 end Kroopt.Conn
