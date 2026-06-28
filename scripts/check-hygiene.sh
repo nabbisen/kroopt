@@ -32,6 +32,18 @@ for path in "${STRICT_PATHS[@]}"; do
   done < <(find "$path" -name '*.lean' 2>/dev/null; [ -f "$path" ] && echo "$path")
 done
 
+# RFC 042 §honesty — at charge sites, resource limits must come from the connection's validated config
+# (`s.serverConfig.limits`), never the `ResourceLimits.standard` literal. Only `Config.lean` may name it
+# (the `ServerConfig` field default, the `baseline`, and the definition itself). A hit anywhere else in the
+# verified-core or proof zones means a limit is being hardcoded rather than threaded.
+std_hits=$(grep -rn 'ResourceLimits\.standard' Kroopt/Core Kroopt/Proofs 2>/dev/null \
+  | grep -v 'Kroopt/Core/Config.lean' || true)
+if [ -n "$std_hits" ]; then
+  echo "HYGIENE VIOLATION (RFC 042): ResourceLimits.standard used outside Config.lean:"
+  echo "$std_hits" | sed 's/^/    /'
+  fail=1
+fi
+
 if [ "$fail" -eq 0 ]; then
   echo "OK: no sorry/axiom/unsafe/native_decide/admit in strict zones."
 else

@@ -53,6 +53,25 @@ secrets, decrypted plaintext, or raw attacker-controlled messages. Bounded
 non-secret `Metrics` count handshake success/failure, alerts, ALPN selections,
 and resource-budget failures.
 
+## Outbound egress and resource limits
+
+kroopt self-bounds the per-connection outbound-ciphertext queue. Before accepting
+more plaintext for encryption, `TlsConn.send` admits only a prefix whose sealed
+record keeps the kroopt-owned queue within the connection's validated
+`maxPendingCiphertextBytes`, so `rt.outbound.size ≤ cap` holds after any
+successful send (RFC 042 A1). `TlsConn.ownedOutboundBytes` exposes that queue
+size. The limits are part of the validated listener configuration
+(`ResourceLimits`, RFC 042 B1), so jemmet may apply a single global default to
+every listener or derive a per-listener value from its own budget — that policy
+choice is jemmet's. kroopt still owns only the single-connection bound; aggregate
+and listener-wide admission, and any global egress budget, remain jemmet's
+responsibility. Fatal alert records are queued best-effort even when the app cap
+is full (one terminal-control record), so they are not back-pressured.
+
+> Earlier integration notes stated kroopt exposed `ownedOutboundBytes` but did not
+> yet self-bound it. That was true before the RFC 042 remediation and is no longer
+> the case: kroopt now self-bounds per-connection outbound ciphertext.
+
 ## Scope of the acceptance
 
 The end-to-end test serves a real HTTP/1.1 request and response through

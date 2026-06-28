@@ -148,7 +148,7 @@ the 13 allocation sites stay flat one-liners instead of open-coding the budget m
 budget module. -/
 def allocOpOrFail (s : State) (kind : CryptoOpKind) (epoch : Epoch) (dir : Option Direction)
     (k : OperationId → State → HsResult) : HsResult :=
-  match s.allocOp kind epoch dir ResourceLimits.standard.maxPendingCryptoOps with
+  match s.allocOp kind epoch dir s.serverConfig.limits.maxPendingCryptoOps with
   | .error e => hsFail s (alertForResourceLimit e) (.resourceLimit e)
   | .ok r => k r.1 r.2
 
@@ -231,7 +231,7 @@ def onClientHello (s : State) (vch : ValidClientHello) (chWire : ByteArray) : Hs
     -- the core before negotiating (proven in `Kroopt.Proofs.Budget`). This is tighter than
     -- the cumulative total-handshake-bytes budget charged in `RecordPath` and bounds a single
     -- oversized initial flight. Limits are the standard RFC 019 ceilings.
-    match chargeClientHelloBytes ResourceLimits.standard s.budgets chWire.size with
+    match chargeClientHelloBytes s.serverConfig.limits s.budgets chWire.size with
     | .error e => hsFail s (alertForResourceLimit e) (.resourceLimit e)
     | .ok b' =>
     -- RFC 8446 §4.4.2.2 / §4.2.3: present a signature scheme the *selected certificate* can produce

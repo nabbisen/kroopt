@@ -9,7 +9,7 @@ inventory) and supersedes the scattered restatements in other pages where they d
 suites / KAT / fuzz / live interop; `ASSUMED` = inherited from a trusted external component (HACL\*,
 OS); `BEST-EFFORT` = attempted but not guaranteed; `NOT CLAIMED` = explicitly out of scope.
 
-**Proof hygiene baseline.** The axiom gate (`scripts/check-axioms.sh`) reports: *102 public theorems
+**Proof hygiene baseline.** The axiom gate (`scripts/check-axioms.sh`) reports: *106 public theorems
 audited, no `sorryAx`, axioms within `{propext, Quot.sound, Classical.choice}`.* All `PROVEN` rows are
 within that audited set.
 

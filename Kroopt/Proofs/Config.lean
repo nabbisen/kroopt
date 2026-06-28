@@ -122,10 +122,12 @@ theorem validateServerConfig_preserves_generation
   · split at h
     · exact absurd h (by simp)
     · split at h
+      · exact absurd h (by simp)
       · split at h
-        · exact absurd h (by simp)
+        · split at h
+          · exact absurd h (by simp)
+          · simp only [Except.ok.injEq] at h; rw [← h]
         · simp only [Except.ok.injEq] at h; rw [← h]
-      · simp only [Except.ok.injEq] at h; rw [← h]
 
 /-- **Signature-scheme soundness (RFC 012 §6).** A selected CertificateVerify
 scheme was offered by the client, configured by the endpoint, and is producible

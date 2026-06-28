@@ -120,6 +120,16 @@ The ledger records the full authorization chain so tests can assert *no unauthor
 just end-state equality — once effects can arrive out of band. RFC 031 must not be cited for any of
 these properties.
 
+**Downstream egress-accounting contract (jemmet RFC 010).** Today `TlsConn.ownedOutboundBytes`
+(= `rt.outbound.size`, queued ciphertext) is the *complete* kroopt-owned egress footprint, because the
+synchronous provider seals accepted plaintext within the same `send` drive — no accepted-but-unencrypted
+plaintext persists between calls, so jemmet sets its `connOwnedPlaintext` tier to zero for TLS. An async
+seal path breaks that invariant: an in-flight seal op would hold accepted plaintext across calls, making
+a second egress tier observable. **If this RFC introduces asynchronous sealing, that is an explicit
+contract change for jemmet** — kroopt must then also expose the in-flight accepted-plaintext byte count
+(a companion to `ownedOutboundBytes`) and notify jemmet, rather than letting the zero plaintext-tier
+assumption silently become false. This commitment was made to jemmet in the 0.114.0-dev §6 confirmations.
+
 ## 5. Correspondence tests (pure ↔ IO)
 
 The IO production interpreter is tested against the pure interpreter on scripted inputs, comparing

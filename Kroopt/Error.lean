@@ -134,6 +134,7 @@ inductive ConfigError where
   | ambiguousSni
   | invalidAlpn
   | capabilityMissing
+  | invalidLimits
   deriving DecidableEq, Repr, Inhabited
 
 /-- Resource-budget exhaustion (RFC 019). Treated as a security failure, not a

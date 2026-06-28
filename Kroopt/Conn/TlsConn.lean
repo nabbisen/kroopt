@@ -26,7 +26,8 @@ namespace Kroopt.Conn
 
 open Kroopt (TlsError)
 open Kroopt.Core (State InputEvent HandshakeInfo CipherSuite ConfigGeneration
-  HashAlgorithm ConnId CloseMode ValidatedServerConfig AlpnProtocol CertificateChainHandle)
+  HashAlgorithm ConnId CloseMode ValidatedServerConfig AlpnProtocol CertificateChainHandle
+  minProtectedRecordLen maxPlaintextFragment)
 open Kroopt.Crypto (CryptoProvider)
 
 inductive TlsReadResult where
@@ -96,7 +97,10 @@ def feedInbound (c : TlsConn FakeTransport) (chunks : List ByteArray) : TlsConn 
   { c with tr := { c.tr with inbound := c.tr.inbound ++ chunks } }
 
 private def drive {τ : Type} [Transport τ] (c : TlsConn τ) (ev : InputEvent) : TlsConn τ :=
-  let (core', rt', tr') := driveEvents c.prov progressBudget c.core c.rt c.tr [ev]
+  -- Progress-loop fuel is the connection's configured ceiling (RFC 042 B1): the loop terminates in at
+  -- most `maxProgressStepsPerCall` steps by `driveEvents`' fuel recursion.
+  let fuel := c.core.serverConfig.limits.maxProgressStepsPerCall
+  let (core', rt', tr') := driveEvents c.prov fuel c.core c.rt c.tr [ev]
   { c with core := core', rt := rt', tr := tr' }
 
 /-- Read authenticated application plaintext (RFC 010 §5). Never returns bytes
@@ -133,16 +137,31 @@ def recv {τ : Type} [Transport τ] (c : TlsConn τ) : TlsConn τ × TlsReadResu
 `wrote n` = kroopt took ownership of `n` plaintext bytes; `wouldBlock` = zero
 consumed (the caller retries the same bytes). -/
 def send {τ : Type} [Transport τ] (c : TlsConn τ) (plaintext : ByteArray) : TlsConn τ × TlsWriteResult :=
-  let c := { c with rt := { c.rt with acceptedBytes := 0 } }
-  let c := drive c (.appSend c.core.connId plaintext)
-  if c.core.handshake.isTerminal then
-    match c.rt.lastError with
-    | some e => (c, .error e)
-    | none   => (c, .closed)
-  else if c.rt.acceptedBytes > 0 then
-    (c, .wrote c.rt.acceptedBytes)
-  else
+  -- RFC 042 A1 — outbound-ciphertext backstop. Accept only a plaintext prefix whose sealed record keeps
+  -- the interpreter-owned queue within the connection's configured `maxPendingCiphertextBytes`, so the
+  -- hard invariant `rt.outbound.size ≤ cap` holds after any successful `send`. This is interpreter buffer
+  -- management (the queue lives in `rt`), not a core protocol decision; the `Core.step` proofs are
+  -- unaffected. Fatal alert records (`writeAlert`) are *not* gated here — they are terminal-control
+  -- records, bounded to one record, and queued best-effort even when the app cap is full (RFC 042 §caveat).
+  let cap := c.core.serverConfig.limits.maxPendingCiphertextBytes
+  let remaining := cap - c.rt.outbound.size            -- Nat subtraction: 0 once at/over cap
+  if remaining < minProtectedRecordLen then
+    -- Not even a one-byte protected record fits: accept nothing, retry after flush/drain.
     (c, .wouldBlock)
+  else
+    -- Largest prefix whose sealed length `n + 22` fits the remaining headroom: n ≤ remaining - 22.
+    let n := min (min plaintext.size maxPlaintextFragment) (remaining - 22)
+    let pfx := plaintext.extract 0 n
+    let c := { c with rt := { c.rt with acceptedBytes := 0 } }
+    let c := drive c (.appSend c.core.connId pfx)
+    if c.core.handshake.isTerminal then
+      match c.rt.lastError with
+      | some e => (c, .error e)
+      | none   => (c, .closed)
+    else if c.rt.acceptedBytes > 0 then
+      (c, .wrote c.rt.acceptedBytes)
+    else
+      (c, .wouldBlock)
 
 /-- Drive pending ciphertext toward the transport (RFC 010 §4). `flushed` means
 kroopt's outbound queue is empty (not that the peer processed the data). -/

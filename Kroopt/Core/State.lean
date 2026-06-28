@@ -130,19 +130,12 @@ where possible; exceeding a configured limit is a terminal security failure. -/
 structure BudgetState where
   handshakeBytesSeen : Nat
   clientHelloBytesSeen : Nat
-  extensionsSeen : Nat
-  pendingCiphertextBytes : Nat
-  pendingPlaintextRecords : Nat
-  pendingCryptoOps : Nat
-  progressStepsThisCall : Nat
   deriving Repr, Inhabited
 
 namespace BudgetState
 
 def empty : BudgetState :=
-  { handshakeBytesSeen := 0, clientHelloBytesSeen := 0, extensionsSeen := 0,
-    pendingCiphertextBytes := 0, pendingPlaintextRecords := 0,
-    pendingCryptoOps := 0, progressStepsThisCall := 0 }
+  { handshakeBytesSeen := 0, clientHelloBytesSeen := 0 }
 
 end BudgetState
 

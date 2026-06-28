@@ -87,11 +87,43 @@ inductive AlpnDecision where
   | noOverlap
   deriving Inhabited
 
+/-- Configured per-connection ceilings (RFC 019 §7, external design §5.5, RFC 042). Only limits that are
+actually enforced live here: `maxHandshakeBytes`/`maxClientHelloBytes` (charged on the inbound handshake
+path), `maxPendingCryptoOps` (the outstanding-crypto-op budget in `allocOp`), `maxPendingCiphertextBytes`
+(the interpreter's outbound-ciphertext backstop, RFC 042 A1), and `maxProgressStepsPerCall` (the
+`driveEvents` progress-loop fuel). Inbound record size is bounded by the parser (`Reader.lengthExceedsMax`)
+and extension count transitively by `maxClientHelloBytes`, so neither needs a separate ceiling here. -/
+structure ResourceLimits where
+  maxHandshakeBytes         : Nat := 65536
+  maxClientHelloBytes       : Nat := 16384
+  maxPendingCryptoOps       : Nat := 16
+  maxPendingCiphertextBytes : Nat := 1048576
+  maxProgressStepsPerCall   : Nat := 256
+  deriving Repr
+
+/-- The default limits are the standard ceilings, **not** all-zeros: a structure's field defaults do not
+flow into a `deriving Inhabited` instance, so we give one explicitly. This keeps any config that defaults
+its limits (via `Inhabited`) usable rather than rejecting every ClientHello. -/
+instance : Inhabited ResourceLimits := ⟨{}⟩
+
+def ResourceLimits.standard : ResourceLimits := {}
+
+/-- The smallest protected TLS 1.3 application record carries one plaintext byte: a 5-byte record header
+plus the sealed payload (`1` plaintext + `1` inner content-type + `16` AEAD tag). `maxPendingCiphertextBytes`
+must be at least this, or every `send` would permanently back-pressure (RFC 042 A1 config validation). -/
+def minProtectedRecordLen : Nat := 23
+
+/-- Deterministic sealed length of a TLS 1.3 application record carrying `n` plaintext bytes with no
+padding: `5` header + `n` + `1` inner content-type + `16` AEAD tag (RFC 8446 §5.2). Used by the egress
+backstop to fit a prefix under the outbound-ciphertext cap (RFC 042 A1). -/
+def ciphertextRecordLen (n : Nat) : Nat := n + 22
+
 /-- The raw, pre-validation configuration. -/
 structure ServerConfig where
   defaultEndpoint  : Option EndpointConfig
   sniRoutes        : List SniRoute
   alpnMode         : AlpnSelectionMode
+  limits           : ResourceLimits := ResourceLimits.standard
   deriving Inhabited
 
 /-- A configuration that has passed validation, stamped with its generation
@@ -102,6 +134,7 @@ structure ValidatedServerConfig where
   defaultEndpoint : Option EndpointConfig
   sniRoutes       : List SniRoute
   alpnMode        : AlpnSelectionMode
+  limits          : ResourceLimits
   deriving Inhabited
 
 /-- A placeholder validated config whose single default endpoint advertises the baseline server-auth
@@ -111,6 +144,7 @@ only negotiated against by core-level tests. The endpoint presents no certificat
 config fills that in). -/
 def ValidatedServerConfig.baseline : ValidatedServerConfig :=
   { (default : ValidatedServerConfig) with
+    limits := ResourceLimits.standard
     defaultEndpoint := some
       { (default : EndpointConfig) with
         signatureSchemes := [.ed25519, .ecdsaSecp256r1Sha256, .rsaPssRsaeSha256] } }
@@ -168,6 +202,18 @@ def validateEndpoint (e : EndpointConfig) : Except ConfigError Unit :=
         | .error err => .error err
         | .ok _ => .ok ()
 
+/-- Validate the configured resource limits (RFC 042 B1). Each enforced ceiling must be usable: the
+handshake/ClientHello byte budgets and the crypto-op and progress budgets must be non-zero, the
+ClientHello budget cannot exceed the total handshake budget, and the outbound-ciphertext cap must fit at
+least one minimal protected record (else every `send` would permanently back-pressure). -/
+def validLimits (l : ResourceLimits) : Bool :=
+  l.maxHandshakeBytes > 0
+    && l.maxClientHelloBytes > 0
+    && decide (l.maxClientHelloBytes ≤ l.maxHandshakeBytes)
+    && l.maxPendingCryptoOps > 0
+    && decide (l.maxPendingCiphertextBytes ≥ minProtectedRecordLen)
+    && l.maxProgressStepsPerCall > 0
+
 /-- Validate the whole configuration deterministically (RFC 011 §7). Rejects
 ambiguous SNI routes and any endpoint whose cert/key/suites fail the lint. On
 success, stamps the generation; the result is immutable. -/
@@ -175,6 +221,8 @@ def validateServerConfig (cfg : ServerConfig) (gen : ConfigGeneration) :
     Except ConfigError ValidatedServerConfig :=
   if hasAmbiguousRoutes cfg.sniRoutes then
     .error .ambiguousSni
+  else if ¬ validLimits cfg.limits then
+    .error .invalidLimits
   else
     let rec checkAll : List SniRoute → Except ConfigError Unit
       | [] => .ok ()
@@ -190,9 +238,11 @@ def validateServerConfig (cfg : ServerConfig) (gen : ConfigGeneration) :
             match validateEndpoint d with
             | .error e => .error e
             | .ok _ => .ok { generation := gen, defaultEndpoint := cfg.defaultEndpoint
-                             sniRoutes := cfg.sniRoutes, alpnMode := cfg.alpnMode }
+                             sniRoutes := cfg.sniRoutes, alpnMode := cfg.alpnMode
+                             limits := cfg.limits }
         | none => .ok { generation := gen, defaultEndpoint := none
-                        sniRoutes := cfg.sniRoutes, alpnMode := cfg.alpnMode }
+                        sniRoutes := cfg.sniRoutes, alpnMode := cfg.alpnMode
+                        limits := cfg.limits }
 
 /-! ## Selection (used by the handshake) -/
 

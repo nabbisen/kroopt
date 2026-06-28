@@ -49,40 +49,20 @@ theorem chargeHandshakeBytes_accounts
   · exact absurd h (by simp)
   · simp only [Except.ok.injEq] at h; rw [← h]
 
-/-- An accepted extension charge stays within the count ceiling. -/
-theorem chargeExtensions_bounded
-    (lim : ResourceLimits) (b b' : BudgetState) (k : Nat)
-    (h : chargeExtensions lim b k = .ok b') :
-    b'.extensionsSeen ≤ lim.maxExtensions := by
-  unfold chargeExtensions at h
-  simp only [] at h
-  split at h
-  · exact absurd h (by simp)
-  · rename_i hle
-    simp only [Except.ok.injEq] at h
-    subst h
-    exact Nat.not_lt.mp hle
+/-!
+The handshake/ClientHello byte budgets above are the budget primitives that run on the inbound path
+(`chargeHandshakeBytes`, `chargeClientHelloBytes`), charged against the connection's validated
+`ResourceLimits` (RFC 042 B1). The other resource bounds are enforced by their own running mechanisms,
+not by a budget charge, so they are proved/tested where that mechanism lives rather than here (RFC 042 C2):
 
-/-- An accepted progress-step charge stays within the per-call ceiling — the
-event loop cannot exceed its step budget (RFC 010 §10). -/
-theorem chargeProgressStep_bounded
-    (lim : ResourceLimits) (b b' : BudgetState)
-    (h : chargeProgressStep lim b = .ok b') :
-    b'.progressStepsThisCall ≤ lim.maxProgressStepsPerCall := by
-  unfold chargeProgressStep at h
-  simp only [] at h
-  split at h
-  · exact absurd h (by simp)
-  · rename_i hle
-    simp only [Except.ok.injEq] at h
-    subst h
-    exact Nat.not_lt.mp hle
-
-/-- An oversized record is rejected before allocation. -/
-theorem checkRecordSize_rejects_over
-    (lim : ResourceLimits) (n : Nat) (h : n > lim.maxRecordPlaintextBytes) :
-    checkRecordSize lim n = .error .recordSize := by
-  unfold checkRecordSize
-  rw [if_pos h]
+* **inbound record size** — the parser rejects an over-length record (`Parse.Reader.lengthExceedsMax →
+  .oversizedRecord`), surfaced on the record path as `recordFailAlert (alertForParseError .oversizedRecord)`;
+* **progress-loop steps** — bounded structurally by `driveEvents` fuel recursion (`progressBudget`, now the
+  connection's `maxProgressStepsPerCall`); the recursion terminates in at most `fuel` steps by construction;
+* **extension count** — bounded transitively by `maxClientHelloBytes` (extensions live inside the
+  byte-bounded ClientHello) and the proven parser bounds-safety;
+* **outbound ciphertext** — bounded by the interpreter egress backstop (`TlsConn.send`, RFC 042 A1), tested
+  against `maxPendingCiphertextBytes`; it is interpreter buffer management, not a core-proven property.
+-/
 
 end Kroopt.Core.Proofs

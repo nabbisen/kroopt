@@ -79,23 +79,14 @@ def checks : List Check :=
     , ok := (let b1 := (chargeHandshakeBytes lim b0 (lim.maxHandshakeBytes - 10)).toOption.getD b0
              match chargeHandshakeBytes lim b1 100 with
              | .error .handshakeBytes => true | _ => false) }
-  , { name := "extension-count charge over budget is rejected"
-    , ok := (match chargeExtensions lim b0 (lim.maxExtensions + 1) with
-             | .error .extensionCount => true | _ => false) }
-  , { name := "oversized record is rejected before allocation"
-    , ok := (match checkRecordSize lim (lim.maxRecordPlaintextBytes + 1) with
-             | .error .recordSize => true | _ => false) }
-  , { name := "max-size record is accepted"
-    , ok := (match checkRecordSize lim lim.maxRecordPlaintextBytes with
-             | .ok _ => true | .error _ => false) }
-  , { name := "progress-step charge over budget is rejected (no spin)"
-    , ok := (let full : BudgetState :=
-               { b0 with progressStepsThisCall := lim.maxProgressStepsPerCall }
-             match chargeProgressStep lim full with
-             | .error .progressSteps => true | _ => false) }
-  , { name := "pending-ciphertext charge over budget is rejected"
-    , ok := (match chargePendingCiphertext lim b0 (lim.maxPendingCiphertextBytes + 1) with
-             | .error .pendingCiphertext => true | _ => false) }
+  , { name := "ClientHello-byte charge over budget is rejected"
+    , ok := (match chargeClientHelloBytes lim b0 (lim.maxClientHelloBytes + 1) with
+             | .error .clientHelloBytes => true | _ => false) }
+    -- RFC 042 C2: extension-count, record-size, progress-step, and pending-ciphertext bounds are no
+    -- longer budget-charge functions. They are enforced by their running mechanisms instead — the parser
+    -- (oversized record), `driveEvents` fuel (progress), `maxClientHelloBytes` (extension count), and the
+    -- interpreter egress backstop (outbound ciphertext, tested in Tests/Conn). Those dead charge
+    -- functions and their fields were removed.
     -- deferred-feature scope control (RFC 016)
   , { name := "ClientHello offering TLS 1.3 with X25519 parses"
     , ok := parseOk (extSupVer13 ++ extGroups ++ extKeyShare ++ extSigAlgs) }

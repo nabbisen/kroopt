@@ -280,21 +280,28 @@ ignored, the valid value selected). Browser-grade breadth remains v0.4
 
 ## M11 — resource-budget DoS bounds (RFC 019)
 
-Six theorems over the budget primitives (`Kroopt.Proofs.Budget`); two depend on
-no axioms at all:
+Three theorems over the budget primitives (`Kroopt.Proofs.Budget`); the
+handshake-byte budget is the one inbound counter with a budget charge:
 
-- `chargeHandshakeBytes_bounded`, `chargeExtensions_bounded`,
-  `chargeProgressStep_bounded` — an accepted charge never leaves a counter above
-  its ceiling (the hard DoS bound).
-- `chargeHandshakeBytes_rejects_over`, `checkRecordSize_rejects_over` — over-limit
-  input is rejected deterministically.
+- `chargeHandshakeBytes_bounded` — an accepted charge never leaves the counter
+  above its ceiling (the hard DoS bound).
+- `chargeHandshakeBytes_rejects_over` — an over-limit charge is rejected
+  deterministically.
 - `chargeHandshakeBytes_accounts` — accepted charges account for exactly the bytes
   charged.
+
+The other resource ceilings are enforced by their running mechanism, not a budget
+charge, so they are tested/documented there rather than proved here (RFC 042 C2):
+record size by the parser, extension count transitively by `maxClientHelloBytes`,
+progress steps by `driveEvents` fuel, and outbound ciphertext by the interpreter
+egress backstop (`TlsConn.send`, tested in `Tests/Conn`). The earlier proofs over
+the uncalled `chargeExtensions`/`chargeProgressStep`/`checkRecordSize` helpers
+were removed — a true theorem over code that never runs is not a system guarantee.
 
 The other hardening RFCs in this milestone are documentation and gates: the
 threat model (RFC 017), deferred-feature scope control (RFC 016, enforced via the
 parser and exercised by the hardening suite), and the proof gates (RFC 022 — the
-hygiene, dependency, and new axiom gates, plus CI). The axiom gate audits **109
+hygiene, dependency, and new axiom gates, plus CI). The axiom gate audits **106
 public theorems** with no `sorryAx` (plus the private helper lemmas they use); the
 per-milestone "~N total" figures above count the headline results enumerated
 in each section, not these supporting lemmas.

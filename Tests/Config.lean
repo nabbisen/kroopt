@@ -56,8 +56,43 @@ def validated (gen : Nat) : Option ValidatedServerConfig :=
   | .ok v => some v | .error _ => none
 
 def checks : List Check :=
-  [ -- config validation + generation (RFC 011 §6, §7)
-    { name := "valid config validates and is stamped with its generation"
+  [ -- RFC 042 B1 — validated ResourceLimits are threaded through config
+    { name := "serverConfigCarriesResourceLimits"
+    , ok := (goodConfig.limits.maxClientHelloBytes == 16384
+               && (match validateServerConfig goodConfig ⟨0⟩ with
+                   | .ok v => v.limits.maxClientHelloBytes == 16384 | .error _ => false)) }
+  , { name := "validatedConfigRejectsImpossibleCiphertextLimit"
+    , ok := (let cfg := { goodConfig with
+                          limits := { ResourceLimits.standard with maxPendingCiphertextBytes := 10 } }
+             match validateServerConfig cfg ⟨0⟩ with
+             | .error .invalidLimits => true | _ => false) }
+  , { name := "a zero handshake-byte limit is rejected"
+    , ok := (let cfg := { goodConfig with
+                          limits := { ResourceLimits.standard with maxHandshakeBytes := 0 } }
+             match validateServerConfig cfg ⟨0⟩ with
+             | .error .invalidLimits => true | _ => false) }
+  , { name := "customPendingCryptoOpsLimitIsUsed"
+    , ok := (let cfg := { goodConfig with
+                          limits := { ResourceLimits.standard with maxPendingCryptoOps := 99 } }
+             match validateServerConfig cfg ⟨0⟩ with
+             | .ok v => v.limits.maxPendingCryptoOps == 99 | .error _ => false) }
+  , { name := "customHandshakeByteLimitIsUsed"
+    , ok := (let cfg := { goodConfig with
+                          limits := { ResourceLimits.standard with maxHandshakeBytes := 99999 } }
+             match validateServerConfig cfg ⟨0⟩ with
+             | .ok v => v.limits.maxHandshakeBytes == 99999 | .error _ => false) }
+  , { name := "customClientHelloLimitIsUsed"
+    , ok := (let cfg := { goodConfig with
+                          limits := { ResourceLimits.standard with maxClientHelloBytes := 4096 } }
+             match validateServerConfig cfg ⟨0⟩ with
+             | .ok v => v.limits.maxClientHelloBytes == 4096 | .error _ => false) }
+  , { name := "customCiphertextLimitIsUsed"
+    , ok := (let cfg := { goodConfig with
+                          limits := { ResourceLimits.standard with maxPendingCiphertextBytes := 500000 } }
+             match validateServerConfig cfg ⟨0⟩ with
+             | .ok v => v.limits.maxPendingCiphertextBytes == 500000 | .error _ => false) }
+    -- config validation + generation (RFC 011 §6, §7)
+  , { name := "valid config validates and is stamped with its generation"
     , ok := (match validateServerConfig goodConfig ⟨7⟩ with
              | .ok v => v.generation.value == 7 | .error _ => false) }
   , { name := "ambiguous SNI routes are rejected"

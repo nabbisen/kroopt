@@ -172,7 +172,7 @@ def handleTransportBytes (s0 : State) (b : ByteArray) : RecordStepResult :=
           -- total-handshake-bytes budget *in the core* (proven in `Kroopt.Proofs.Budget`,
           -- tested here) — distinct from the per-buffer reassembly cap below. Limits are
           -- the standard RFC 019 ceilings; config-tunable limits are a later wiring step.
-          match chargeHandshakeBytes ResourceLimits.standard s.budgets body.size with
+          match chargeHandshakeBytes s.serverConfig.limits s.budgets body.size with
           | .error e => recordFailAlert s (alertForResourceLimit e) (.resourceLimit e)
           | .ok b' =>
             let s := { s with budgets := b' }

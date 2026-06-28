@@ -5,6 +5,39 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.115.0-dev] — RFC 042: resource-limit enforcement + configurability (A1+B1+C2) — 2026-06-28
+
+Implements the resource-limit design review (A1 + B1 + C2). Surfaced from jemmet RFC 009 OQ1: the
+outbound-ciphertext budget was specified but unenforced, and `ResourceLimits` had no configuration path.
+
+- **A1 — interpreter egress backstop (hard post-accept cap).** `TlsConn.send` now admits only the largest
+  plaintext prefix whose sealed record keeps the kroopt-owned outbound queue within
+  `maxPendingCiphertextBytes`, so `rt.outbound.size ≤ cap` holds after any successful send. A sealed
+  application record is `n + 22` bytes (5 header + n + 1 inner type + 16 tag); below the
+  one-byte-record floor (`minProtectedRecordLen = 23`) send returns `wouldBlock` with zero consumed. The
+  cap lives beside `rt.outbound` (interpreter buffer management); `Core.step` proofs are untouched. Fatal
+  alerts bypass the cap by design (terminal-control, one record, best-effort).
+- **B1 — validated `ResourceLimits` threaded through config.** `ServerConfig`/`ValidatedServerConfig` carry
+  `limits`; charge sites and the `driveEvents` progress fuel read `State.serverConfig.limits` instead of the
+  `.standard` literal. `validateServerConfig` rejects bad limits with `ConfigError.invalidLimits`
+  (non-zero budgets, `maxClientHelloBytes ≤ maxHandshakeBytes`, `maxPendingCiphertextBytes ≥ 23`).
+  `ResourceLimits` moved to `Config.lean` (avoids the Config←State←Budget import cycle); an explicit
+  `Inhabited` instance keeps defaulted limits equal to the standard ceilings rather than all-zeros.
+- **C2 — dead budget code removed.** Deleted `chargeExtensions`, `chargeProgressStep`, `checkRecordSize`,
+  `chargePendingCiphertext` and their proofs; trimmed `ResourceLimits` to five enforced ceilings and
+  `BudgetState` to the two charged byte counters. The other ceilings are enforced by their running
+  mechanism (parser, `maxClientHelloBytes`, `driveEvents` fuel, the A1 backstop) and documented there. A new
+  hygiene gate fails if `ResourceLimits.standard` is named at a charge site instead of read from config.
+- **Tests.** Six egress tests (`Tests/Conn`, incl. exact prefix-fit and fatal-alert bypass) and seven config
+  tests (`Tests/Config`, incl. impossible-limit rejection and per-field custom limits).
+- **Audited theorems 109 → 106** (removed three proofs over deleted dead code — fewer claims, same enforced
+  behavior). Docs updated: resource-budgets, theorem-inventory, trust-matrix, jemmet-integration; RFC 042 in
+  `rfcs/done/`.
+
+Full gate green: 27 suites, 106-theorem axiom audit, 37 pure-zone deps, hygiene, fuzz 20000, ASan/UBSan,
+OpenSSL/Python/curl interop. Security audit: egress backstop is defense-in-depth on an interpreter-owned
+buffer; no new external integration.
+
 ## [0.114.0-dev] — RFC 041 closeout: documentation/comment consistency; RFC 041 → done — 2026-06-28
 
 The 0.113 re-review **accepted** the substantive RFC 041 remediation (record-path `recordFailAlert` now

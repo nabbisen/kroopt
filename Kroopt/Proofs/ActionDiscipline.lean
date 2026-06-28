@@ -25,14 +25,14 @@ open Kroopt
 private theorem allocOpOrFail_eq (s : State) (kind : CryptoOpKind) (epoch : Epoch)
     (dir : Option Direction) (k : OperationId → State → HsResult) :
     allocOpOrFail s kind epoch dir k =
-      if s.pendingOps.ops.length ≥ ResourceLimits.standard.maxPendingCryptoOps then
+      if s.pendingOps.ops.length ≥ s.serverConfig.limits.maxPendingCryptoOps then
         hsFail s (alertForResourceLimit .pendingCryptoOps) (.resourceLimit .pendingCryptoOps)
       else
         k ⟨s.nextOpId⟩
           { s with nextOpId := s.nextOpId + 1
                    pendingOps := ⟨⟨⟨s.nextOpId⟩, kind, epoch, dir⟩ :: s.pendingOps.ops⟩ } := by
   unfold allocOpOrFail State.allocOp
-  by_cases hc : s.pendingOps.ops.length ≥ ResourceLimits.standard.maxPendingCryptoOps
+  by_cases hc : s.pendingOps.ops.length ≥ s.serverConfig.limits.maxPendingCryptoOps
   · simp only [if_pos hc]
   · simp only [if_neg hc]
 

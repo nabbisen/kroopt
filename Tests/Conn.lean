@@ -62,6 +62,20 @@ def connectedForSend : TlsConn FakeTransport :=
   { core := { (State.initial ⟨0, 0⟩ ⟨0⟩ .sha256) with handshake := .connected }
     rt := {}, tr := { fd := fd0, inbound := [] }, prov := fakeProvider }
 
+/-- `n` filler bytes — used to preload the outbound queue or to send a known-size plaintext. -/
+def fillBytes (n : Nat) : ByteArray := ByteArray.mk (Array.mkArray n 0x37)
+
+/-- A connected sender whose outbound-ciphertext cap is `cap`, with `preOut` bytes already queued and the
+transport following `sched` (use `.wouldBlock` to make the queue retain ciphertext). RFC 042 A1 fixtures. -/
+def cappedConn (cap preOut : Nat) (sched : List SendOutcome) : TlsConn FakeTransport :=
+  { connectedForSend with
+    core := { connectedForSend.core with
+              serverConfig := { connectedForSend.core.serverConfig with
+                                limits := { connectedForSend.core.serverConfig.limits with
+                                            maxPendingCiphertextBytes := cap } } }
+    rt := { connectedForSend.rt with outbound := fillBytes preOut }
+    tr := { connectedForSend.tr with writeSchedule := sched } }
+
 /-- Seal a handshake-flight message through `sealHandshakeRecord` with `suite` recorded as the
 installed (write, handshake) suite — exercising that the interpreter dispatches the flight seal on
 the installed suite rather than a hardcoded one. -/
@@ -149,6 +163,36 @@ def checks : List Check :=
                                                 outbound := bytesOf [7, 8, 9] } tr
              tr'.outbound.isEmpty && rt'.outbound.toList == [7, 8, 9]) }
     -- progress budget terminates (RFC 010 §10)
+    -- RFC 042 A1 — outbound-ciphertext egress backstop (hard post-accept cap, fit a prefix)
+  , { name := "sendAtCiphertextCapWouldBlockZeroConsumed"
+    , ok := (let (c1, r) := (cappedConn 50 50 []).send (bytesOf [1, 2, 3])
+             match r with | .wouldBlock => c1.ownedOutboundBytes == 50 | _ => false) }
+  , { name := "sendBelowCiphertextCapAcceptsAndStaysWithinCap"
+    , ok := (let (c1, r) := (cappedConn 1000 0 [.wouldBlock]).send (bytesOf [1, 2, 3])
+             match r with | .wrote n => n == 3 && c1.ownedOutboundBytes ≤ 1000 | _ => false) }
+  , { name := "sendNearCapAcceptsOnlyFittingPrefixOrWouldBlock"
+    , ok := (let (c1, r) := (cappedConn 50 10 [.wouldBlock]).send (fillBytes 100)
+             -- remaining 40 ⇒ largest prefix is 40-22 = 18 plaintext bytes (sealed 18+22 = 40)
+             match r with | .wrote n => n == 18 && c1.ownedOutboundBytes ≤ 50 | _ => false) }
+  , { name := "flushReducesOwnedOutboundBytesThenSendCanProceed"
+    , ok := (let c0 := cappedConn 50 50 [.sent 100, .sent 100]
+             let (c1, r1) := c0.send (bytesOf [1, 2, 3])     -- at cap ⇒ wouldBlock
+             let (c2, _)  := c1.flush                         -- drains the queue
+             let (_, r3)  := c2.send (bytesOf [1, 2, 3])      -- now fits
+             (match r1 with | .wouldBlock => true | _ => false)
+               && c2.ownedOutboundBytes == 0
+               && (match r3 with | .wrote n => n == 3 | _ => false)) }
+  , { name := "ownedOutboundBytesNeverExceedsConfiguredLimit"
+    , ok := (let c0 := cappedConn 100 0 (List.replicate 12 .wouldBlock)
+             let final := (List.range 5).foldl
+               (fun c _ => (c.send (fillBytes 50)).1) c0
+             final.ownedOutboundBytes ≤ 100 && final.ownedOutboundBytes > 0) }
+  , { name := "alertRecordsRespectOutboundCapOrAreBestEffortDocumented"
+    -- Policy (RFC 042 §caveat): the app-data send path is capped, but a fatal alert is a terminal-control
+    -- record queued best-effort even when the queue is at cap — so it bypasses the backstop by design.
+    , ok := (let c0 := cappedConn 50 50 [.wouldBlock]
+             let (c1, _) := c0.close (.fatal .internalError)
+             c1.ownedOutboundBytes > 50) }
   , { name := "drive loop stops at the progress budget (never spins)"
     , ok := (let evs := List.replicate 10000 (InputEvent.transportReadable ⟨0, 0⟩)
              let (_, _, _) := driveEvents fakeProvider progressBudget connectedForSend.core
