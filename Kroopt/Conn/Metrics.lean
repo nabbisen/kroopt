@@ -35,11 +35,13 @@ plaintext, or attacker-controlled value — these are counts only. -/
 structure Metrics where
   handshakesCompleted : Nat := 0
   handshakesFailed    : Nat := 0
-  alertsClassified    : Nat := 0  -- fatal alerts the core classified for a failure (see RFC: not
-                                   -- necessarily transmitted; the interpreter terminates on `failWithAlert`)
-  alertsSent          : Nat := 0  -- fatal alert *records* actually framed onto the wire (RFC 041). Best-
-                                  -- effort delivery means this can be ≤ `alertsClassified` (a protected-epoch
-                                  -- alert is classified but, until the seal path lands, not yet sent)
+  alertsClassified    : Nat := 0  -- fatal alerts the core classified for a failure (every fatal edge);
+                                   -- distinct from `alertsSent`, which counts realized framing/queueing
+  alertsSent          : Nat := 0  -- fatal alert *records* actually framed/queued for transport (RFC 041).
+                                  -- Best-effort: this can be < `alertsClassified` when framing/sealing is
+                                  -- unavailable or fails closed (no key / no recorded suite). The
+                                  -- `alertsSent ≤ alertsClassified` relation is an operational expectation
+                                  -- over kroopt-produced action streams, not a property of arbitrary lists.
   resourceFailures    : Nat := 0
   alpnSelected        : Nat := 0
   deriving Repr, Inhabited, DecidableEq

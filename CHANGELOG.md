@@ -5,6 +5,35 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.114.0-dev] — RFC 041 closeout: documentation/comment consistency; RFC 041 → done — 2026-06-28
+
+The 0.113 re-review **accepted** the substantive RFC 041 remediation (record-path `recordFailAlert` now
+transmits) and required only documentation/comment consistency before closeout. No code logic changes.
+
+- **Stale comments corrected to the dual-action architecture.** `OutputAction.failWithAlert` ("classify a
+  fatal alert and terminalize; the peer-facing alert record is carried by a separate `writeAlert`"), the
+  `TraceEvent.alertClassified`/`alertSent` doc-comments (classification vs. realized framing; plaintext
+  *or* protected), and the `Metrics.alertsClassified`/`alertsSent` comments — all no longer claim the
+  interpreter "terminates without writing an alert record" or that the seal path is unlanded.
+- **`alerts-close.md` per-mode close** updated: `fatal` now "emits a core-authorized `writeAlert` followed
+  by `failWithAlert` and closes terminally," replacing the stale "classifies the alert; the interpreter
+  currently terminates without writing the alert record."
+- **D1 wording** (re-review nit): `alertsSent ≤ alertsClassified` is documented as an operational
+  expectation over kroopt-produced action streams, not a universal property of arbitrary action lists.
+- **RFC 041 proposal body fenced as historical.** The pre-implementation Design sketch (and its
+  proof-obligation / open-question text that said `failWithAlert` "stops being silent" or that
+  `alertsClassified` is "renamed/retired") is demoted under a clearly labeled historical divider that
+  points to the authoritative *As-built architecture* section. RFC 041 **moves to `done/`** (Status:
+  Implemented 0.111–0.114.0-dev, accepted by re-review); README and cross-references updated.
+
+Deferred (tracked, per re-review): a custom adversarial live-client harness for post-key protected fatal
+alerts (bad client Finished / bad protected MAC / post-`connected` invalid protected record) before any
+stable/v1 or browser-grade interop claim.
+
+Security audit: documentation/comment-only change — no new data flows, external integrations, or auth
+logic; existing controls remain valid, threat model unchanged. Full gate green: 27 suites, 109-theorem
+axiom audit, 37 pure-zone deps, hygiene, 20k-iter fuzz, ASan/UBSan, OpenSSL/Python/curl interop.
+
 ## [0.113.0-dev] — RFC 041 review remediation: record-path fatal alerts now transmit — 2026-06-28
 
 Addresses the 0.110–0.112 RFC 041 review, which found a release-blocking gap: the shared record-path

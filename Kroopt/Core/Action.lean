@@ -80,7 +80,8 @@ inductive OutputAction where
   | reportHandshakeComplete (conn : ConnId) (info : HandshakeInfo)
   /-- Report a typed, redacted error to the caller. -/
   | reportError (conn : ConnId) (e : TlsError)
-  /-- Fail terminally and (best-effort) send a fatal alert. -/
+  /-- Classify a fatal alert and terminalize the connection. The peer-facing alert *record*, when one
+  is framed, is carried by the separate `writeAlert` action (RFC 041 dual-action split). -/
   | failWithAlert (conn : ConnId) (a : AlertDescription)
   /-- Transmit a fatal alert **record** on the wire (RFC 041, RFC 8446 §6). The core decides
   the alert, the epoch, and the sequence number (as for `writeHandshake`); the interpreter frames

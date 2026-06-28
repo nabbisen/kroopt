@@ -1,10 +1,10 @@
 # RFC 041 — Fatal-alert wire transmission
 
-**Status.** Proposed — implementation complete across 0.111–0.113.0-dev (incl. the record-path
-integration required by the 0.110–0.112 review); awaiting review re-acceptance to move to `done/`.
-Plaintext (`initial`-epoch) transmission landed in 0.111.0-dev; protected
-(`handshake`/`application`-epoch) seal paths in 0.112.0-dev; the shared record-path fatal helper
-(`recordFailAlert`) was wired in 0.113.0-dev after the review found it omitted `writeAlert`.
+**Status.** Implemented (0.111–0.114.0-dev). Plaintext (`initial`-epoch) transmission landed in
+0.111.0-dev; protected (`handshake`/`application`-epoch) seal paths in 0.112.0-dev; the shared
+record-path fatal helper (`recordFailAlert`) was wired in 0.113.0-dev (after the 0.110–0.112 review
+found it omitted `writeAlert`); the documentation/comment consistency cleanup that the 0.113 re-review
+required before closeout landed in 0.114.0-dev. Accepted by re-review.
 **Tracks.** Making fatal TLS alerts observable by the peer (RFC 8446 §6). Closes the
 fidelity gap identified in the 0.107–0.109 implementation review: kroopt previously
 *classified* fatal alerts but did not transmit an alert record.
@@ -13,7 +13,7 @@ fidelity gap identified in the 0.107–0.109 implementation review: kroopt previ
 `Kroopt/Conn/Interpreter.lean` (frames/seals the alert; records `alertsSent`), `Kroopt/Proofs/*`,
 `Tests/*`, and the alert/close docs.
 
-## As-built architecture (authoritative — supersedes the proposal sketch in §2–§5 below)
+## As-built architecture (authoritative — supersedes the historical proposal below)
 
 The proposal sketch below pre-dated implementation and described a slightly different mechanism
 (replacing `failWithAlert`'s wire effect, retiring `alertsClassified`). What shipped is:
@@ -84,7 +84,16 @@ best-effort outbound alert record on that and every other fatal edge.
 - No retransmission, alert acknowledgement, or post-alert read draining beyond what TLS 1.3
   requires (a fatal alert is immediately terminal).
 
-## Design
+---
+
+> **Historical — original proposal sketch (preserved for the design record).** The sections from here to
+> the end are the pre-implementation proposal. They are **superseded by the _As-built architecture_
+> section at the top of this RFC**; where they conflict — e.g. "`failWithAlert` stops being silent / its
+> wire effect is replaced," or "`alertsClassified` is renamed/retired" — the As-built section is
+> authoritative. What actually shipped is a dual-action split (`writeAlert` is the wire action,
+> `failWithAlert` is terminal classification) with both counters retained.
+
+## Design (historical proposal)
 
 ### 1. Alert description encoder
 

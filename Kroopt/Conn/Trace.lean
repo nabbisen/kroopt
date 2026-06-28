@@ -62,14 +62,13 @@ inductive TraceEvent where
   /-- A typed error reported to the caller — its *category* only, never detail
   or attacker-controlled bytes. -/
   | errorReported     (conn : ConnId) (category : String)
-  /-- A fatal alert the core **classified** for a failure — description + level. NB: the interpreter
-  currently terminates on `failWithAlert` without writing an alert record (only `close_notify` is
-  transmitted); fatal-alert wire transmission is a separate RFC. So this records classification, not a
-  guaranteed wire send. -/
+  /-- A fatal alert the core **classified** for a failure — description + level. Distinct from
+  `alertSent`: classification records the intended fatal alert for *every* fatal edge, while `alertSent`
+  is emitted only when the interpreter actually frames/queues an alert record (RFC 041). -/
   | alertClassified   (conn : ConnId) (desc : AlertDescription) (level : AlertLevel)
-  /-- A fatal alert **record** was framed onto the wire (RFC 041). Distinct from `alertClassified`:
-  classification always happens, transmission is best-effort (currently the plaintext `initial`-epoch
-  case). -/
+  /-- A fatal alert **record** was framed/queued for the wire (RFC 041) — plaintext at the `initial`
+  epoch, or protected (sealed) at the `handshake`/`application` epochs. It does not guarantee peer
+  receipt. -/
   | alertSent         (conn : ConnId) (desc : AlertDescription)
   /-- The transport was closed in the given mode. -/
   | transportClose    (conn : ConnId) (mode : String)

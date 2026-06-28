@@ -67,7 +67,7 @@ keys/framing are available, queued before terminalization; it does not guarantee
 `wouldBlock` mid-alert leaves the record queued and the connection still terminates within the close
 budget — delivery never blocks termination or reopens application flow. `close_notify` (description 0)
 remains the only alert sent on a *graceful* close. (Implements
-`rfcs/proposed/041-fatal-alert-wire-transmission.md`.)
+`rfcs/done/041-fatal-alert-wire-transmission.md`.)
 
 ## Explicit close states and per-mode close
 
@@ -76,9 +76,10 @@ The connection's `CloseState` is explicit: `open`, `sentCloseNotify`,
 `fatalReceived`, `transportClosed`. The three application close modes are
 distinct (RFC 013 §5): **graceful** moves to `closing`/`sentCloseNotify` and
 asks the interpreter to send close_notify best-effort before closing; **fatal**
-moves to `failed`/`fatalSent` and **classifies** the alert (recorded in
-`fatalSent`; the interpreter currently terminates without writing the alert
-record — see the wire-behaviour note above); **abortive** moves straight to
+moves to `failed`/`fatalSent`, emits a core-authorized `writeAlert` followed by
+`failWithAlert`, and closes terminally — the alert record is framed/queued
+best-effort by the write epoch in force (see the wire-behaviour note above);
+**abortive** moves straight to
 `closed`/`transportClosed` with no alert. Repeated close is idempotent: once a
 close is in progress the transport close is simply re-issued without regressing
 the state.
