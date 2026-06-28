@@ -571,5 +571,41 @@ theorem buffered_plaintext_provenance
   · -- non-terminal: dispatches to the record open handler
     exact buffered_plaintext_authenticated s s' op pt acts h b hb hne
 
+/-- **The record-path fatal helper transmits the alert (RFC 041, review fix).** `recordFailAlert`
+emits a `writeAlert` for its description — parallel to `failAlert_emits_alert`. This is what makes the
+record-path fatal family (parse/record failures, AEAD-open failure, malformed protected records,
+post-`connected` errors, sequence overflow, malformed inbound alert) peer-observable, not just the
+ALPN/`hsFail` path. -/
+theorem recordFailAlert_emits_alert (s : State) (a : AlertDescription) (e : TlsError)
+    (s' : State) (acts : List OutputAction) (h : recordFailAlert s a e = .ok (s', acts)) :
+    OutputAction.writeAlert s.connId s.writeEpoch.epoch s.writeEpoch.seq.value a ∈ acts := by
+  unfold recordFailAlert at h
+  simp only [Except.ok.injEq, Prod.mk.injEq] at h
+  rw [← h.2]
+  exact List.mem_cons_self _ _
+
+/-- **A peer-sent fatal alert draws no response alert (RFC 041 review, exclusion).** When
+`onInboundAlert` sees a well-formed fatal alert from the peer (a 2-byte payload whose description is
+non-zero), it closes abortively and emits **no** `writeAlert` — the peer has already aborted, so kroopt
+must not answer with an alert of its own. (The locally-generated record fatals above go through
+`recordFailAlert`, which does emit one; the well-formed peer-fatal branch deliberately does not.) -/
+theorem onInboundAlert_peer_fatal_no_response (s s' : State) (b : ByteArray)
+    (acts : List OutputAction) (h : onInboundAlert s b = .ok (s', acts))
+    (hsize : b.size = 2) (hfatal : b.get! 1 ≠ 0)
+    (c : ConnId) (ep : Epoch) (sq : UInt64) (a : AlertDescription) :
+    OutputAction.writeAlert c ep sq a ∉ acts := by
+  unfold onInboundAlert at h
+  split at h
+  · split at h
+    · rename_i hz
+      simp only [beq_iff_eq] at hz
+      exact absurd hz hfatal
+    · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+      obtain ⟨-, rfl⟩ := h
+      simp
+  · rename_i hns
+    rw [hsize] at hns
+    simp at hns
+
 end Proofs
 end Kroopt.Core

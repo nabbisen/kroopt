@@ -1,14 +1,48 @@
 # RFC 041 — Fatal-alert wire transmission
 
-**Status.** Implemented (0.112.0-dev) — plaintext (`initial`-epoch) transmission landed in
-0.111.0-dev; the protected (`handshake`/`application`-epoch) seal paths landed in 0.112.0-dev.
+**Status.** Proposed — implementation complete across 0.111–0.113.0-dev (incl. the record-path
+integration required by the 0.110–0.112 review); awaiting review re-acceptance to move to `done/`.
+Plaintext (`initial`-epoch) transmission landed in 0.111.0-dev; protected
+(`handshake`/`application`-epoch) seal paths in 0.112.0-dev; the shared record-path fatal helper
+(`recordFailAlert`) was wired in 0.113.0-dev after the review found it omitted `writeAlert`.
 **Tracks.** Making fatal TLS alerts observable by the peer (RFC 8446 §6). Closes the
-fidelity gap identified in the 0.107–0.109 implementation review: kroopt currently
-*classifies* fatal alerts but does not transmit an alert record.
-**Touches.** `Kroopt/Error.lean` (an `AlertDescription` encoder), `Kroopt/Core/Step.lean`
-and/or `Kroopt/Core/RecordPath.lean` (emitting an alert record as a core action),
-`Kroopt/Conn/Interpreter.lean` (the `failWithAlert` handler), `Kroopt/Proofs/*`
-(terminal-write discipline), `Tests/*` (wire-level alert tests), and the alert/close docs.
+fidelity gap identified in the 0.107–0.109 implementation review: kroopt previously
+*classified* fatal alerts but did not transmit an alert record.
+**Touches.** `Kroopt/Error.lean` (`AlertDescription.toByte`), `Kroopt/Core/Handshake.lean`,
+`Kroopt/Core/Step.lean`, `Kroopt/Core/RecordPath.lean` (all fatal helpers emit a core `writeAlert`),
+`Kroopt/Conn/Interpreter.lean` (frames/seals the alert; records `alertsSent`), `Kroopt/Proofs/*`,
+`Tests/*`, and the alert/close docs.
+
+## As-built architecture (authoritative — supersedes the proposal sketch in §2–§5 below)
+
+The proposal sketch below pre-dated implementation and described a slightly different mechanism
+(replacing `failWithAlert`'s wire effect, retiring `alertsClassified`). What shipped is:
+
+- **Two distinct actions, not a replacement.** `failWithAlert (conn) (a)` is kept as the *terminal
+  classification* (it sets `closeState := fatalSent`, drives `reportError`, and terminalizes). A new,
+  separate `writeAlert (conn) (epoch) (seq) (a)` is the *wire action* — emitted by every
+  locally-generated fatal helper (`hsFail`, `failAlert`, the `.fatal` close mode, **and**
+  `recordFailAlert`), ahead of `failWithAlert`. The core decides the alert, the epoch, and the seq
+  (mirroring `writeHandshake`); the interpreter frames it.
+- **Framing by epoch.** `initial` → plaintext `Alert` record `[21,0x03,0x03,0x00,0x02,0x02,toByte a]`;
+  `handshake`/`application` → a record sealed under the installed `(write, epoch)` key (fails closed —
+  no record — if no key or no recorded suite, never a guessed suite).
+- **Peer-received fatal alerts are excluded.** A well-formed inbound fatal alert closes abortively via
+  `onInboundAlert` and emits **no** `writeAlert` (`onInboundAlert_peer_fatal_no_response`). Only
+  locally-generated fatal edges transmit.
+- **Dual counters, kept distinct.** `alertsClassified` / `alert-classified` (every fatal alert,
+  classified) are **retained**, not retired. `alertsSent` / `alert-sent` are **added**, recorded in
+  `execAction` only when a record is actually framed/queued — so `alertsSent` honestly means "framed/
+  queued for transport, not guaranteed peer delivery," and `alertsSent ≤ alertsClassified`.
+- **Best-effort delivery.** A `wouldBlock` mid-alert leaves the record queued and still terminates
+  within the close budget. *Fatal-alert delivery is best-effort: kroopt guarantees the alert is
+  authorized and, when keys/framing are available, queued before terminalization — not that the peer
+  receives it.*
+
+Proof anchors: `ofByte_toByte` (encoder round-trip), `failAlert_emits_alert` and
+`recordFailAlert_emits_alert` (every locally-generated fatal edge emits the `writeAlert`),
+`failAlert_only_alert_write` (no *ordinary* `writeTransport`), `onInboundAlert_peer_fatal_no_response`
+(the exclusion).
 
 ## Summary
 

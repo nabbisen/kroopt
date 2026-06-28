@@ -140,7 +140,9 @@ def traceOfAction : OutputAction → Option TraceEvent
   | .reportHandshakeComplete c i  => some (.handshakeComplete c i.suite)
   | .reportError c e              => some (.errorReported c (errorCategory e))
   | .failWithAlert c a            => some (.alertClassified c a (Kroopt.Core.alertLevel a))
-  | .writeAlert c _ _ a           => some (.alertSent c a)
+  -- `writeAlert` is traced inside `execAction` (the `alert-sent` event) only when a record is actually
+  -- framed/queued — not here, where the seal result is not visible (RFC 041 review, D1).
+  | .writeAlert _ _ _ _           => none
   | .closeTransport c m           => some (.transportClose c (closeModeLabel m))
   | .releaseSecret _              => some .secretReleased
 

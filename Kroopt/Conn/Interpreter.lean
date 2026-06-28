@@ -178,10 +178,14 @@ def sealAlertRecord (arena : SecretArena) (epoch : Kroopt.Core.Epoch) (seq : UIn
     match arena.getById sid with
     | none => .ok none
     | some secret =>
-        let suite := (arena.lookupInstalledSuite .write epoch).getD .chacha20Poly1305Sha256
-        let key := Kroopt.Crypto.KeySchedule.trafficKey suite secret
-        let iv  := Kroopt.Crypto.KeySchedule.trafficIv secret suite.hashAlg
-        (Record13.sealRecord key iv seq (ByteArray.mk #[(2 : UInt8), a.toByte]) .alert 0 suite).map some
+        -- Fail closed if the installed suite is unknown: never seal a fatal alert under a guessed
+        -- suite (RFC 041 review). In production the suite is always recorded with the base secret.
+        match arena.lookupInstalledSuite .write epoch with
+        | none => .ok none
+        | some suite =>
+            let key := Kroopt.Crypto.KeySchedule.trafficKey suite secret
+            let iv  := Kroopt.Crypto.KeySchedule.trafficIv secret suite.hashAlg
+            (Record13.sealRecord key iv seq (ByteArray.mk #[(2 : UInt8), a.toByte]) .alert 0 suite).map some
 
 /-- Realize a flight message as the wire bytes its core-authorized epoch demands: a
 `.handshake`-epoch message becomes a sealed protected record (or, transitionally, a cleartext
@@ -249,21 +253,27 @@ def execAction {τ : Type} [Transport τ] (prov : CryptoProvider) (rt : RuntimeS
           let (rt', tr') := drainOutbound { rt with outbound := rt.outbound ++ wire } tr
           (rt', tr', [])
       | .error e => (terminate rt (some (.resourceLimit e)), tr, [])
-  | .writeAlert _ epoch seq a =>
-      -- Transmit the fatal alert record the core authorized (RFC 041). Plaintext at the `initial`
-      -- epoch (before any write key); a protected record sealed under the installed `(write, epoch)`
-      -- key once keys exist. Best-effort: if no key is installed for a protected epoch (the transitional
-      -- fake-provider path) nothing is transmitted. The connection still terminates via `failWithAlert`.
-      match epoch with
-      | .initial =>
-          let (rt', tr') := drainOutbound { rt with outbound := rt.outbound ++ plaintextAlertRecord a } tr
+  | .writeAlert c epoch seq a =>
+      -- Frame the fatal alert record the core authorized (RFC 041): plaintext at the `initial` epoch,
+      -- a record sealed under the installed `(write, epoch)` key once keys exist. Best-effort — no key or
+      -- no recorded suite ⇒ nothing is transmitted (the connection still terminalizes via `failWithAlert`).
+      -- `alertsSent` / `alert-sent` are recorded *here*, and only when a record is actually framed/queued
+      -- (never on the no-key path), so the counter means "framed/queued for transport" — not core
+      -- authorization, and not a guarantee the peer received it (RFC 041 review, D1).
+      let framed? : Option ByteArray :=
+        match epoch with
+        | .initial => some (plaintextAlertRecord a)
+        | _ => match sealAlertRecord rt.arena epoch seq a with
+               | .ok (some wire) => some wire
+               | _               => none
+      match framed? with
+      | some wire =>
+          let rt := { rt with metrics := rt.metrics.recordAlertSent }
+          let rt := if rt.traceEnabled then
+                      { rt with trace := rt.trace ++ [TraceEvent.render (.alertSent c a)] } else rt
+          let (rt', tr') := drainOutbound { rt with outbound := rt.outbound ++ wire } tr
           (rt', tr', [])
-      | _ =>
-          match sealAlertRecord rt.arena epoch seq a with
-          | .ok (some wire) =>
-              let (rt', tr') := drainOutbound { rt with outbound := rt.outbound ++ wire } tr
-              (rt', tr', [])
-          | _ => (rt, tr, [])
+      | none => (rt, tr, [])
   | .enableWriteInterest _  => ({ rt with writeInterest := true }, Transport.enableWrite tr (Transport.fd tr), [])
   | .disableWriteInterest _ => ({ rt with writeInterest := false }, Transport.disableWrite tr (Transport.fd tr), [])
   | .callCrypto conn op req =>
@@ -306,7 +316,6 @@ def observeMetrics (m : Metrics) (core : State) (acts : List OutputAction) : Met
     | .reportHandshakeComplete _ _ => m.recordHandshakeComplete core.negotiated.selectedAlpn.isSome
     | .reportError _ e             => m.recordFailure (categoryOf e)
     | .failWithAlert _ _           => m.recordAlertClassified
-    | .writeAlert _ _ _ _          => m.recordAlertSent
     | _                            => m) m
 
 /-- The fuel-bounded drive loop (RFC 010 §6, §10 — *never spin on wouldBlock*).

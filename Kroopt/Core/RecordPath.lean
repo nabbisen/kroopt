@@ -45,7 +45,8 @@ def recordFailAlert (s : State) (a : AlertDescription) (e : TlsError) : RecordSt
   .ok ({ s with handshake := .failed a
                 closeState := .fatalSent a
                 pendingPlainOut := none },
-       [ OutputAction.failWithAlert s.connId a,
+       [ OutputAction.writeAlert s.connId s.writeEpoch.epoch s.writeEpoch.seq.value a,
+         OutputAction.failWithAlert s.connId a,
          OutputAction.reportError s.connId e ])
 
 /-- Decode and dispatch an inbound TLS 1.3 alert (RFC 037 §6 / RFC 8446 §6.2). An alert is

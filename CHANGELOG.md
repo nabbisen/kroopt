@@ -5,6 +5,46 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.113.0-dev] — RFC 041 review remediation: record-path fatal alerts now transmit — 2026-06-28
+
+Addresses the 0.110–0.112 RFC 041 review, which found a release-blocking gap: the shared record-path
+fatal helper `recordFailAlert` emitted only `failWithAlert`/`reportError` and **not** `writeAlert`, so
+record-path fatal failures (parse/record, AEAD-open failure, malformed protected records,
+post-`connected` errors, sequence overflow, malformed inbound alert) were classified but not
+transmitted. The 0.111/0.112 claim that fatal alerts wire at *every* edge held only for the
+`hsFail`/`failAlert` paths. All seven required fixes land here.
+
+- **`recordFailAlert` emits `writeAlert`** (`Core/RecordPath.lean`), mirroring the other fatal helpers —
+  `[writeAlert s.connId s.writeEpoch.epoch s.writeEpoch.seq.value a, failWithAlert, reportError]`. Every
+  locally-generated fatal edge now transmits. Peer-sent fatal alerts remain excluded: `onInboundAlert`
+  closes abortively and sends no response alert.
+- **Honest `alertsSent`** (D1). The `alert-sent` metric/trace moved out of `observeMetrics` (action-level)
+  into `execAction`, recorded **only when a record is actually framed/queued** (initial: after appending
+  the plaintext record; protected: only on `.ok (some wire)`; never on the no-key/no-suite path). It now
+  means "framed/queued for transport, not guaranteed peer delivery," and `alertsSent ≤ alertsClassified`.
+  The dual `alertsClassified`/`alertsSent` counters are kept distinct.
+- **`sealAlertRecord` fails closed** (`Conn/Interpreter.lean`): if no installed suite is recorded for the
+  `(write, epoch)` it returns `none` rather than guessing ChaCha20-Poly1305 — never sealing a fatal alert
+  under a defaulted suite.
+- **Proofs (107 → 109).** `recordFailAlert_emits_alert` (the record-path fatal helper emits the alert) and
+  `onInboundAlert_peer_fatal_no_response` (a well-formed peer fatal draws no response alert — the
+  exclusion). Axiom audit clean: 109 theorems, `{propext, Quot.sound, Classical.choice}` only.
+- **Tests.** Six record-path fatal-alert checks in `Tests/Crypto.lean` (initial→plaintext alert;
+  post-`connected` verifyFailed→writeAlert(application)+op cleared; handshake-epoch→writeAlert(handshake);
+  provider-`.failed`→writeAlert+op cleared; peer fatal→no response; `recordFailAlert` emits no plaintext /
+  no app-accept / no ordinary write). The four `Tests/Replay.lean` malformed/edge rejects now assert the
+  reject puts **exactly** a 7-byte plaintext `illegal_parameter` alert on the wire and no handshake flight
+  (previously asserted zero bytes — the record-path reject was silent before this fix).
+- **D2 unchanged** (confirmed): best-effort delivery; a `wouldBlock` mid-alert leaves the record queued and
+  still terminates within the close budget. No synchronous blocking flush.
+- **Docs.** RFC 041 moved back to `proposed/` with an authoritative "As-built architecture" section
+  (dual-action `writeAlert` + `failWithAlert`, dual counters, peer-received exclusion, best-effort wording)
+  superseding the proposal sketch; `alerts-close.md`, the event/metric reference, and the theorem inventory
+  (109, rows 36a/36b) updated to match. Awaiting review re-acceptance.
+
+Full gate green: 27 suites, 109-theorem axiom audit, 37 pure-zone deps, hygiene, 20k-iter fuzz,
+ASan/UBSan, OpenSSL/Python/curl interop.
+
 ## [0.112.0-dev] — RFC 041 part 2: protected fatal-alert wire transmission (RFC 041 complete) — 2026-06-28
 
 Completes RFC 041. A fatal failure after a write key is installed now puts a **sealed** `Alert`

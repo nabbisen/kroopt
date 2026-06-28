@@ -156,6 +156,8 @@ contract (RFC 002 §5). New supporting lemmas, in `Kroopt.Proofs.Handshake` and
 | 34 | `handshakeOnGatingResult_no_emit` / `_no_accept` | The gating-result dispatch (ECDHE / signature / verify) emits and accepts no application plaintext. | RFC 002 §7 | propext | proved |
 | 35 | `handshakeOnPlaintextRecord_no_aeadOpen` | The handshake dispatch requests no AEAD-open, so `aeadOpen_uses_read_keys` still characterises every record open. | RFC 005 §6 | propext, Quot.sound | proved |
 | 36 | `hs_no_emit_onClientHello` … `hs_no_emit_onClientFinishedVerified` (private per-transition family, no-emit/no-accept/no-aeadOpen) | Each handshake transition emits only `callCrypto`/`writeTransport`/`reportHandshakeComplete`/alerts. These back the public `handshakeOnPlaintextRecord_*` / `handshakeOnGatingResult_*` wrappers (rows 33–35). | RFC 006 §10 | propext | proved |
+| 36a | `recordFailAlert_emits_alert` | The shared record-path fatal helper emits a `writeAlert` for its description — every locally-generated record fatal (parse/record, AEAD-open failure, malformed protected record, post-`connected` error, sequence overflow, malformed inbound alert) is peer-observable, not just the ALPN/`hsFail` path. | RFC 041 | propext | proved |
+| 36b | `onInboundAlert_peer_fatal_no_response` | A well-formed **peer-sent** fatal alert closes abortively and emits **no** `writeAlert` — kroopt does not answer an alert with an alert (the exclusion to row 36a). | RFC 041 | propext | proved |
 
 The pre-existing headline theorems were re-checked unchanged over the new live
 handshake: `no_plaintext_emit_unless_connected`, `accept_plaintext_only_connected`,
@@ -292,7 +294,7 @@ no axioms at all:
 The other hardening RFCs in this milestone are documentation and gates: the
 threat model (RFC 017), deferred-feature scope control (RFC 016, enforced via the
 parser and exercised by the hardening suite), and the proof gates (RFC 022 — the
-hygiene, dependency, and new axiom gates, plus CI). The axiom gate audits **107
+hygiene, dependency, and new axiom gates, plus CI). The axiom gate audits **109
 public theorems** with no `sorryAx` (plus the private helper lemmas they use); the
 per-milestone "~N total" figures above count the headline results enumerated
 in each section, not these supporting lemmas.

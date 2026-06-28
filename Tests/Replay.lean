@@ -48,6 +48,19 @@ def replay (chunks : List ByteArray) : State × Nat :=
   let (core, _, tr) := driveEvents prov 4096 s0 ({} : RuntimeState) tr0 evs
   (core, (FakeTransport.writtenBytes tr).size)
 
+/-- Like `replay`, but returns the raw wire bytes (RFC 041): a record-path reject's only output is a
+single plaintext fatal alert record — never a handshake flight. -/
+def replayWire (chunks : List ByteArray) : State × ByteArray :=
+  let evs := chunks.map (InputEvent.transportBytes conn0 ·)
+  let (core, _, tr) := driveEvents prov 4096 s0 ({} : RuntimeState) tr0 evs
+  (core, FakeTransport.writtenBytes tr)
+
+/-- The wire is exactly one plaintext fatal `Alert` record (content type 21, fatal level) for the
+given description, and nothing else — i.e. an alert and no ServerHello/handshake flight. -/
+def isPlaintextAlertOf (a : AlertDescription) (w : ByteArray) : Bool :=
+  w.size == 7 && w.get! 0 == 21 && w.get! 1 == 0x03 && w.get! 2 == 0x03
+    && w.get! 3 == 0x00 && w.get! 4 == 0x02 && w.get! 5 == 2 && w.get! 6 == a.toByte
+
 /-- Drive a capture with the `debug_trace` gate set to `enabled`; return the recorded trace
 (RFC 036 §3). With `enabled := false` (the default) the trace must stay empty. -/
 def traceOf (enabled : Bool) (ch : ByteArray) : List String :=
@@ -223,15 +236,16 @@ def checks : List Check :=
     , ok := suiteIs osslBroadFrag.1 .aes256GcmSha384 && groupIsX25519 osslBroadFrag.1
               && reachedFlight osslBroadFrag.1 && osslBroadFrag.2 == osslBroadR.2 }
 
-    -- ── malformed / edge captures (RFC 036 §2): deterministic rejection, no partial flight ──
-  , { name := "malformed: ClientHello with no key_share → deterministic reject (illegal_parameter, no flight)"
-    , ok := let r := replay [noKeyShareCH]; failedIllegal r.1 && r.2 == 0 }
-  , { name := "malformed: duplicate supported_versions extension → deterministic reject (illegal_parameter)"
-    , ok := let r := replay [dupExtCH]; failedIllegal r.1 && r.2 == 0 }
-  , { name := "edge: ClientHello offering only an unsupported group → deterministic reject (illegal_parameter)"
-    , ok := let r := replay [unknownGrpCH]; failedIllegal r.1 && r.2 == 0 }
-  , { name := "strict (HIGH-3): key_share present, supported_groups absent → deterministic reject (illegal_parameter, no flight)"
-    , ok := let r := replay [noSgCH]; failedIllegal r.1 && r.2 == 0 }
+    -- ── malformed / edge captures (RFC 036 §2): deterministic rejection emits a plaintext fatal
+    -- alert and no handshake flight (RFC 041 — record-path `recordFailAlert` now transmits) ──
+  , { name := "malformed: ClientHello with no key_share → reject emits illegal_parameter alert, no flight"
+    , ok := let r := replayWire [noKeyShareCH]; failedIllegal r.1 && isPlaintextAlertOf .illegalParameter r.2 }
+  , { name := "malformed: duplicate supported_versions extension → reject emits illegal_parameter alert"
+    , ok := let r := replayWire [dupExtCH]; failedIllegal r.1 && isPlaintextAlertOf .illegalParameter r.2 }
+  , { name := "edge: ClientHello offering only an unsupported group → reject emits illegal_parameter alert"
+    , ok := let r := replayWire [unknownGrpCH]; failedIllegal r.1 && isPlaintextAlertOf .illegalParameter r.2 }
+  , { name := "strict (HIGH-3): key_share present, supported_groups absent → reject emits illegal_parameter alert, no flight"
+    , ok := let r := replayWire [noSgCH]; failedIllegal r.1 && isPlaintextAlertOf .illegalParameter r.2 }
 
     -- ── GREASE tolerance (RFC 036 §4 / RFC 8701): unknown values alongside valid ones are ignored ──
   , { name := "GREASE: unknown named group (0x0a0a) alongside x25519 → ignored, x25519 selected, full flight"

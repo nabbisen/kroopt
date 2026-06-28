@@ -30,31 +30,44 @@ failures.
 
 ### Wire behaviour (fatal alerts are transmitted as records)
 
-The core decides a fatal-alert record on every fatal edge — a `writeAlert (conn) (epoch) (seq)
-(a)` action, alongside the `failWithAlert` classification — and the interpreter frames it for the
-write epoch in force at the moment of failure (RFC 041):
+The core decides a fatal-alert record on every **locally-generated** fatal edge — a
+`writeAlert (conn) (epoch) (seq) (a)` action, alongside the `failWithAlert` classification — emitted by
+all four fatal helpers (`hsFail`, `failAlert`, the `.fatal` close mode, and the shared record-path
+`recordFailAlert`). The interpreter frames it for the write epoch in force at the moment of failure
+(RFC 041):
 
 - **Before any write key (the `initial` epoch)** — every ClientHello-stage rejection:
   `no_application_protocol` (120), `handshake_failure` (40), `protocol_version` (70),
-  `illegal_parameter` (47), `decode_error` (50), a missing or unsupported extension, and parse
+  `illegal_parameter` (47), `decode_error` (50), a missing or unsupported extension, and parse/record
   failures — the interpreter frames a **plaintext** `Alert` record
   `[21, 0x03, 0x03, 0x00, 0x02, 0x02, AlertDescription.toByte a]` and drains it best-effort. A peer
   (e.g. OpenSSL `s_client`) reads the alert byte (verified live: a group-mismatch reject yields
   `SSL alert number 40`).
-- **Once write keys are installed (`handshake` / `application` epochs)** — e.g. a bad client
-  Finished, or a post-`connected` record failure — the interpreter seals a **protected** `Alert`
-  record (inner content type `alert`, body `[fatal, toByte a]`) under the installed `(write, epoch)`
-  traffic key at the core-authorized sequence number, using the same key/IV derivation as the
-  handshake flight. Best-effort: on the transitional fake-provider path (no installed key) nothing is
-  transmitted rather than leaking a cleartext alert at a protected epoch.
+- **Once write keys are installed (`handshake` / `application` epochs)** — e.g. a bad client Finished,
+  an AEAD-open failure, or a post-`connected` record failure — the interpreter seals a **protected**
+  `Alert` record (inner content type `alert`, body `[fatal, toByte a]`) under the installed
+  `(write, epoch)` key at the core-authorized sequence number, using the same key/IV derivation as the
+  handshake flight. It **fails closed** — no record — if no key *or* no recorded suite is available,
+  never guessing a suite or leaking a cleartext alert at a protected epoch.
+
+A **peer-sent** fatal alert is the exception: `onInboundAlert` closes abortively and sends **no**
+response alert (`onInboundAlert_peer_fatal_no_response`) — the peer has already aborted.
 
 The `AlertDescription.toByte` encoder's round-trip (`ofByte (toByte a) = some a`) is proved in
-`Kroopt.Proofs.Closure.ofByte_toByte`. Both signals are observable: `failWithAlert` keeps the
-`alertsClassified` counter and the `alert-classified` trace event (every fatal alert); a transmitted
-record bumps `alertsSent` and emits `alert-sent`. Delivery is best-effort, so a `wouldBlock` mid-alert
-leaves the record queued and still terminates within the close budget — `alertsSent ≤ alertsClassified`.
-`close_notify` (description 0) remains the only alert sent on a *graceful* close. (Closes
-`rfcs/done/041-fatal-alert-wire-transmission.md`.)
+`Kroopt.Proofs.Closure.ofByte_toByte`; that every locally-generated fatal edge emits the alert is
+`failAlert_emits_alert` and `recordFailAlert_emits_alert`. Two distinct signals are observable:
+`failWithAlert` keeps the `alertsClassified` counter and the `alert-classified` trace event (every fatal
+alert, classified); a record that is actually framed/queued bumps `alertsSent` and emits `alert-sent`
+(recorded in `execAction`, only when a record is formed — never on the no-key/no-suite path). So
+`alertsSent` counts records framed/queued for transport, **not** guaranteed peer delivery, and
+`alertsSent ≤ alertsClassified`.
+
+**Fatal-alert delivery is best-effort.** kroopt guarantees the alert record is authorized and, when
+keys/framing are available, queued before terminalization; it does not guarantee the peer receives it. A
+`wouldBlock` mid-alert leaves the record queued and the connection still terminates within the close
+budget — delivery never blocks termination or reopens application flow. `close_notify` (description 0)
+remains the only alert sent on a *graceful* close. (Implements
+`rfcs/proposed/041-fatal-alert-wire-transmission.md`.)
 
 ## Explicit close states and per-mode close
 

@@ -76,6 +76,22 @@ def stateAfter (s : State) (ev : InputEvent) : Option State :=
   | .ok (s', _) => some s'
   | .error _ => none
 
+-- RFC 041 review: record-path fatal alerts must transmit a `writeAlert` (with the peer-fatal exclusion).
+def s0Init : State := State.initial ⟨0, 0⟩ ⟨0⟩ .sha256
+def sHsWrite : State := { s0Init with writeEpoch := installEpoch .handshake }
+def connectedAppWrite : State := { connectedWithOp with writeEpoch := installEpoch .application }
+
+/-- The epoch of the first `writeAlert` in an action list, if any. -/
+def writeAlertEpoch? (acts : List OutputAction) : Option Epoch :=
+  acts.foldl (fun acc a => match acc, a with
+    | none, .writeAlert _ ep _ _ => some ep | _, _ => acc) none
+def hasOrdinaryWrite (acts : List OutputAction) : Bool :=
+  acts.any (fun a => match a with | .writeTransport .. => true | _ => false)
+def hasEmit (acts : List OutputAction) : Bool :=
+  acts.any (fun a => match a with | .emitPlaintext .. => true | _ => false)
+def hasAccept (acts : List OutputAction) : Bool :=
+  acts.any (fun a => match a with | .acceptPlaintextBytes .. => true | _ => false)
+
 def checks : List Check :=
   [ -- RFC 037 §4.1 crypto-op budget enforcement
     { name := "allocOp at the pending-op budget fails closed (.pendingCryptoOps)"
@@ -156,6 +172,34 @@ def checks : List Check :=
                     (.cryptoResult ⟨0,0⟩ ⟨0⟩ (.aeadOpened (ByteArray.mk #[0x43, 23]))) with
                   | some s2 => s2.pendingPlainOut.isNone | none => false)
              | none => false) }
+  , -- RFC 041 review: record-path fatal alerts are transmitted (writeAlert), with the peer-fatal exclusion
+    { name := "record-path: initial-epoch fatal emits a plaintext writeAlert(initial)"
+    , ok := (match recordFailAlert s0Init .decodeError (.parse .truncated) with
+             | .ok (_, acts) => writeAlertEpoch? acts == some .initial
+             | .error _ => false) }
+  , { name := "record-path: post-connected verifyFailed clears its op and emits writeAlert(application)"
+    , ok := (match handleCryptoResult connectedAppWrite ⟨0⟩ .verifyFailed with
+             | .ok (s', acts) => s'.handshake.isTerminal && (s'.pendingOps.contains ⟨0⟩ == false)
+                                 && writeAlertEpoch? acts == some .application
+             | .error _ => false) }
+  , { name := "record-path: handshake-epoch fatal emits writeAlert(handshake) (protected where keys exist)"
+    , ok := (match recordFailAlert sHsWrite .badRecordMac (.protocol .badFinished) with
+             | .ok (_, acts) => writeAlertEpoch? acts == some .handshake
+             | .error _ => false) }
+  , { name := "record-path: provider-failed crypto result clears its op and emits a writeAlert"
+    , ok := (match handleCryptoResult connectedAppWrite ⟨0⟩ (.failed .providerInternal) with
+             | .ok (s', acts) => (s'.pendingOps.contains ⟨0⟩ == false) && (writeAlertEpoch? acts).isSome
+             | .error _ => false) }
+  , { name := "record-path: a peer fatal alert draws NO response writeAlert (abortive close)"
+    , ok := (match onInboundAlert s0Init (ByteArray.mk #[1, 40]) with
+             | .ok (_, acts) => (writeAlertEpoch? acts).isNone
+                                && acts.any (fun a => match a with
+                                     | .closeTransport _ .abortive => true | _ => false)
+             | .error _ => false) }
+  , { name := "record-path: recordFailAlert emits no plaintext, no app-accept, no ordinary writeTransport"
+    , ok := (match recordFailAlert s0Init .internalError (.protocol .badFinished) with
+             | .ok (_, acts) => !hasEmit acts && !hasAccept acts && !hasOrdinaryWrite acts
+             | .error _ => false) }
   ]
 
 def main : IO UInt32 := do
