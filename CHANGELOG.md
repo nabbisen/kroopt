@@ -5,6 +5,26 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.116.0-dev] — RFC 042 closeout: review cleanup (stale docs + send terminal precedence) — 2026-06-28
+
+The 0.115 implementation review **accepted** RFC 042 as correct in substance and listed four non-blocking
+cleanup items; this increment closes them. No change to the A1 backstop, B1 config threading, or C2 removals.
+
+- **`TlsConn.send` reports terminal state before the egress cap.** A terminal connection whose outbound
+  queue was at/over cap previously returned `wouldBlock` instead of `closed`/`error`; the terminal check now
+  precedes the cap logic. No safety change (no plaintext was accepted either way), but the public API is
+  deterministic. New test `sendOnTerminalConnReportsClosedNotCapBackpressure`.
+- **Stale comment corrected (`RecordPath.lean`).** The handshake-byte charge comment no longer claims
+  config-tunable limits are "a later wiring step" — it reads from `s.serverConfig.limits` (RFC 042 B1).
+- **Stale threat-model row corrected.** The event-loop-spin mitigation now names `driveEvents` fuel recursion
+  (`maxProgressStepsPerCall`) and tested progress-budget termination, not the removed `chargeProgressStep_bounded`.
+- **Stale jemmet-integration ALPN wording corrected.** No-overlap now states kroopt emits a best-effort
+  plaintext `no_application_protocol` (120) in the initial epoch (RFC 041), not that transmission is a
+  follow-up; peer receipt is not guaranteed under transport failure/back-pressure.
+
+Doc/comment + one localized interpreter semantics fix. Full gate green: 27 suites, 106-theorem axiom audit,
+37 pure-zone deps, hygiene, fuzz 20000, ASan/UBSan, OpenSSL/Python/curl interop. Threat model unchanged.
+
 ## [0.115.0-dev] — RFC 042: resource-limit enforcement + configurability (A1+B1+C2) — 2026-06-28
 
 Implements the resource-limit design review (A1 + B1 + C2). Surfaced from jemmet RFC 009 OQ1: the

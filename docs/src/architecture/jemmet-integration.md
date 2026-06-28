@@ -26,11 +26,11 @@ selects a handler or inspects HTTP bytes. A plaintext connection reports no ALPN
 The behaviour jemmet should rely on, choosing the `requireOverlap` mode: a client
 that sends **no** ALPN extension negotiates no protocol (`negotiatedProtocol` is
 absent) and the handshake proceeds — jemmet falls back to HTTP/1.1. A client that
-**offers** ALPN with no protocol the endpoint allows fails the handshake
-(classified as fatal `no_application_protocol`, alert 120) before any server
-flight and never reaches a handler — the peer observes connection termination
-(fatal-alert record transmission is a separate kroopt follow-up; see [Alerts and
-close](./alerts-close.md)). When
+**offers** ALPN with no protocol the endpoint allows fails the handshake before
+any server flight and never reaches a handler. kroopt emits a best-effort
+plaintext `no_application_protocol` (alert 120) in the initial epoch (RFC 041);
+peer receipt is not guaranteed under transport failure or back-pressure (see
+[Alerts and close](./alerts-close.md)). When
 there is overlap, the server's preference order wins. (The two lenient modes
 instead proceed with no protocol on a non-overlapping offer; pick them only if
 serving an unnegotiated default is preferable to failing.)

@@ -170,8 +170,8 @@ def handleTransportBytes (s0 : State) (b : ByteArray) : RecordStepResult :=
           -- the next record. An over-large buffer is a resource-exhaustion failure.
           -- RFC 037 §4: first charge the inbound handshake bytes against the cumulative
           -- total-handshake-bytes budget *in the core* (proven in `Kroopt.Proofs.Budget`,
-          -- tested here) — distinct from the per-buffer reassembly cap below. Limits are
-          -- the standard RFC 019 ceilings; config-tunable limits are a later wiring step.
+          -- tested here) — distinct from the per-buffer reassembly cap below. Limits are read
+          -- from the connection's validated server configuration (`s.serverConfig.limits`, RFC 042 B1).
           match chargeHandshakeBytes s.serverConfig.limits s.budgets body.size with
           | .error e => recordFailAlert s (alertForResourceLimit e) (.resourceLimit e)
           | .ok b' =>

@@ -193,6 +193,13 @@ def checks : List Check :=
     , ok := (let c0 := cappedConn 50 50 [.wouldBlock]
              let (c1, _) := c0.close (.fatal .internalError)
              c1.ownedOutboundBytes > 50) }
+  , { name := "sendOnTerminalConnReportsClosedNotCapBackpressure"
+    -- RFC 042 impl-review §4: terminal status takes precedence over egress back-pressure.
+    , ok := (let term : TlsConn FakeTransport :=
+               { (cappedConn 50 50 []) with
+                 core := { (cappedConn 50 50 []).core with handshake := .failed .internalError } }
+             match (term.send (bytesOf [1, 2, 3])).2 with
+             | .closed => true | .error _ => true | _ => false) }
   , { name := "drive loop stops at the progress budget (never spins)"
     , ok := (let evs := List.replicate 10000 (InputEvent.transportReadable ⟨0, 0⟩)
              let (_, _, _) := driveEvents fakeProvider progressBudget connectedForSend.core

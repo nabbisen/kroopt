@@ -143,6 +143,13 @@ def send {τ : Type} [Transport τ] (c : TlsConn τ) (plaintext : ByteArray) : T
   -- management (the queue lives in `rt`), not a core protocol decision; the `Core.step` proofs are
   -- unaffected. Fatal alert records (`writeAlert`) are *not* gated here — they are terminal-control
   -- records, bounded to one record, and queued best-effort even when the app cap is full (RFC 042 §caveat).
+  -- A terminal connection reports its terminal status regardless of the queue: closed/error takes
+  -- precedence over egress back-pressure (RFC 042 impl-review §4). No plaintext is accepted either way.
+  if c.core.handshake.isTerminal then
+    match c.rt.lastError with
+    | some e => (c, .error e)
+    | none   => (c, .closed)
+  else
   let cap := c.core.serverConfig.limits.maxPendingCiphertextBytes
   let remaining := cap - c.rt.outbound.size            -- Nat subtraction: 0 once at/over cap
   if remaining < minProtectedRecordLen then

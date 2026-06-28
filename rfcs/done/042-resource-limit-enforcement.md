@@ -1,9 +1,9 @@
 # RFC 042 — Resource-limit enforcement and configurability
 
-**Status.** Implemented (0.115.0-dev). Accepted by design review (A1 + B1 + C2 with the hard
-post-accept-cap tightening). Originated from reviewing jemmet RFC 009 Open Question 1, which traced to a
-kroopt gap: the outbound-ciphertext budget was specified but unenforced, and `ResourceLimits` had no
-configuration path.
+**Status.** Implemented (0.115–0.116.0-dev). The substantive A1 + B1 + C2 implementation landed in
+0.115.0-dev and was **accepted by implementation review** as correct in substance. The review's
+non-blocking cleanup items — three stale doc/comment sites and a `TlsConn.send` terminal-state precedence
+wart — were closed out in 0.116.0-dev.
 **Tracks.** Making the per-connection outbound-ciphertext queue self-bounded (RFC 019, external design
 §5.5), making the resource limits part of validated configuration, and removing budget code that was
 proved but never called.
