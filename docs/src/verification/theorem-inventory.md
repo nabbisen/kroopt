@@ -221,6 +221,9 @@ Ten theorems over the pure config model (`Kroopt.Proofs.Config`), all
 - `negotiateAlpn_notOffered_iff_absent` — `notOffered` arises *only* from an absent ALPN
   extension, never from a lenient no-overlap (the overload is gone).
 - `negotiateAlpn_noOverlap_offered` — a `noOverlap` fact implies the client did offer ALPN.
+- `negotiateAlpn_noOverlap_modeIndependent` — disjoint offered/allowed sets yield the `noOverlap`
+  fact under **every** mode (the proof behind the docs' mode-independence claim; only the *consequence*,
+  `mode.noOverlapPolicy`, varies).
 - `selectEndpoint_none_uses_default` — absent SNI selects the default endpoint.
 - `validateServerConfig_rejects_ambiguous` — ambiguous SNI routes are refused.
 - `validateServerConfig_preserves_generation` — a validated config carries its
@@ -305,7 +308,7 @@ were removed — a true theorem over code that never runs is not a system guaran
 The other hardening RFCs in this milestone are documentation and gates: the
 threat model (RFC 017), deferred-feature scope control (RFC 016, enforced via the
 parser and exercised by the hardening suite), and the proof gates (RFC 022 — the
-hygiene, dependency, and new axiom gates, plus CI). The axiom gate audits **108
+hygiene, dependency, and new axiom gates, plus CI). The axiom gate audits **109
 public theorems** with no `sorryAx` (plus the private helper lemmas they use); the
 per-milestone "~N total" figures above count the headline results enumerated
 in each section, not these supporting lemmas.

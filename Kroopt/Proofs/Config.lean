@@ -117,6 +117,17 @@ theorem negotiateAlpn_noOverlap_offered
   | none => simp only [negotiateAlpn, reduceCtorEq] at h
   | some os => exact ⟨os, rfl⟩
 
+/-- **No-overlap is mode-independent (ALPN overload review, doc/proof parity).** When neither directional
+scan finds a match — i.e. the offered and allowed sets are disjoint — `negotiateAlpn` reports the
+`.noOverlap` fact under **every** mode. This is the proof behind the docs' claim that the no-overlap *fact*
+is mode-independent: only its *consequence* (`mode.noOverlapPolicy`) varies. -/
+theorem negotiateAlpn_noOverlap_modeIndependent
+    (mode : AlpnSelectionMode) (offered allowed : List AlpnProtocol)
+    (hs : allowed.find? (fun a => alpnMem a offered) = none)
+    (hc : offered.find? (fun a => alpnMem a allowed) = none) :
+    negotiateAlpn mode (some offered) allowed = .noOverlap := by
+  cases mode <;> simp only [negotiateAlpn, AlpnSelectionMode.preference, hs, hc]
+
 /-- Absent SNI selects the default endpoint (RFC 011 §4). -/
 theorem selectEndpoint_none_uses_default (cfg : ValidatedServerConfig) :
     selectEndpoint cfg none = cfg.defaultEndpoint := by

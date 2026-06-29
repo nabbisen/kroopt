@@ -33,13 +33,13 @@ against the honest trust boundary:
 ## Supported versions
 
 kroopt is pre-1.0 and has not yet cut a stable release; the public API is explicitly not frozen
-(RFC 027). Security fixes land on `main` and in the **latest `0.x` development release**, which
+(RFC 027). Security fixes land on `main` and in the **latest `0.x` release**, which
 is the only supported line. A supported-version table will be published when a `1.0` stable line
 exists. Older `0.x` snapshots are not maintained — update to the latest release.
 
 | Version | Supported |
 |---------|-----------|
-| latest `0.x`-dev / `main` | ✅ |
+| latest `0.x` release / `main` | ✅ |
 | older `0.x` snapshots | ❌ |
 
 ## Reporting a vulnerability

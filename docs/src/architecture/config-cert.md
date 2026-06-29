@@ -36,20 +36,25 @@ client's. The strict-vs-lenient *consequence* of `noOverlap` is the handshake ca
 policy (`mode.noOverlapPolicy`), not part of negotiation: `requireOverlap` maps it to a
 fatal **`no_application_protocol`** (alert 120) *before* any
 ServerHello, random, or key-schedule action — no server flight is produced (RFC
-7301 §3.2), while the lenient modes proceed with no protocol selected. The alert is *classified* and the connection terminates; as with every
-fatal handshake failure today, the description byte itself is not transmitted (see
+7301 §3.2), while the lenient modes proceed with no protocol selected. Under
+`requireOverlap`, kroopt emits a best-effort plaintext `no_application_protocol`
+(120) alert in the initial epoch (RFC 041) and then terminalizes; peer receipt is
+not guaranteed under transport failure or backpressure (see
 [Alerts and close](./alerts-close.md)). A client sending no ALPN extension never
 triggers this (it is
 `notOffered`). A literally empty ALPN list or empty protocol name is rejected
 earlier, at parse, as malformed.
 
-Three proved properties back this (`Kroopt.Proofs.Config`):
+Four proved properties back this (`Kroopt.Proofs.Config`):
 `negotiateAlpn_offered_and_allowed` — **any** `selected` protocol is in *both*
 lists, so kroopt never selects a protocol the client did not offer or the endpoint
 did not permit; `negotiateAlpn_absent_notOffered` — an absent offer never fails;
 `negotiateAlpn_requireOverlap_noOverlap` — a strict-mode non-overlapping offer is
-detected as `noOverlap`. kroopt negotiates the byte-level extension; jemmet still
-owns ALPN *policy* and picks the protocol handler from the reported result.
+detected as `noOverlap`; and `negotiateAlpn_noOverlap_modeIndependent` — disjoint
+offered/allowed sets yield the `noOverlap` *fact* under every mode, so only its
+*consequence* (`mode.noOverlapPolicy`) varies. kroopt negotiates the byte-level
+extension; jemmet still owns ALPN *policy* and picks the protocol handler from the
+reported result.
 
 ## Named-group policy (RFC 039)
 

@@ -5,6 +5,27 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.117.1] — ALPN fact/policy closeout: doc parity + mode-independence proof — 2026-06-29
+
+Closes the ALPN `notOffered`-overload item per review of 0.117.0 (accepted as the substantive Option D
+implementation). Documentation cleanups + one proof; no behavior change.
+
+- **Doc fix (RFC 041 parity).** `config-cert.md` no longer claims the fatal `no_application_protocol`
+  description byte is not transmitted — under `requireOverlap` kroopt emits a best-effort plaintext alert
+  (120) in the initial epoch, then terminalizes (peer receipt not guaranteed under transport
+  failure/backpressure). Wording now matches the alerts-close and jemmet-integration pages.
+- **Release-label hygiene.** `SECURITY.md` supported-version wording updated from `latest 0.x-dev` to the
+  bare-release convention (`latest 0.x release / main`).
+- **Proof (doc/proof parity).** Added `negotiateAlpn_noOverlap_modeIndependent`: disjoint offered/allowed
+  sets yield the `.noOverlap` fact under **every** mode, proving the docs' mode-independence claim that was
+  previously only covered for server-preference (plus client-preference tests). Audited theorems 108 → 109.
+
+Deferred (review-noted as future, not blockers): changing `negotiateAlpn` to take `AlpnPreference` instead
+of `AlpnSelectionMode` (internal hygiene so the no-overlap policy can never leak into negotiation).
+
+Full gate green: 27 suites, 109-theorem axiom audit, 37 pure-zone deps, hygiene, fuzz 20000, ASan/UBSan,
+OpenSSL/Python/curl interop.
+
 ## [0.117.0] — ALPN: fact/policy split (Option D); first bare X.Y.Z label — 2026-06-29
 
 Implements the ALPN `notOffered`-overload review (Option D), and adopts the bare `X.Y.Z` version label
