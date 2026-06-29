@@ -49,12 +49,14 @@ Four proved properties back this (`Kroopt.Proofs.Config`):
 `negotiateAlpn_offered_and_allowed` — **any** `selected` protocol is in *both*
 lists, so kroopt never selects a protocol the client did not offer or the endpoint
 did not permit; `negotiateAlpn_absent_notOffered` — an absent offer never fails;
-`negotiateAlpn_requireOverlap_noOverlap` — a strict-mode non-overlapping offer is
-detected as `noOverlap`; and `negotiateAlpn_noOverlap_modeIndependent` — disjoint
-offered/allowed sets yield the `noOverlap` *fact* under every mode, so only its
-*consequence* (`mode.noOverlapPolicy`) varies. kroopt negotiates the byte-level
-extension; jemmet still owns ALPN *policy* and picks the protocol handler from the
-reported result.
+`negotiateAlpn_server_noOverlap` / `negotiateAlpn_client_noOverlap` — a non-overlapping
+offer is detected as `noOverlap` under each selection order; and
+`negotiateAlpn_noOverlap_anyPreference` — disjoint offered/allowed sets yield the
+`noOverlap` *fact* under either preference, so only its *consequence*
+(`mode.noOverlapPolicy`) varies. `negotiateAlpn` takes only an `AlpnPreference`
+(`mode.preference`), so the no-overlap policy cannot leak into negotiation by
+construction. kroopt negotiates the byte-level extension; jemmet still owns ALPN
+*policy* and picks the protocol handler from the reported result.
 
 ## Named-group policy (RFC 039)
 

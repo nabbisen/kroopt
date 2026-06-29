@@ -424,7 +424,7 @@ theorem onClientHello_pp
     · split at h
       · simp only [Except.ok.injEq, Prod.mk.injEq] at h
         obtain ⟨rfl, -⟩ := h; right; rfl
-      · cases hdec : negotiateAlpn s.serverConfig.alpnMode (vch.alpn.map (·.map AlpnProtocol.mk))
+      · cases hdec : negotiateAlpn s.serverConfig.alpnMode.preference (vch.alpn.map (·.map AlpnProtocol.mk))
             ((Option.map (fun x => x.allowedAlpn) (selectEndpoint s.serverConfig vch.sni)).getD []) with
         | noOverlap =>
           simp only [hdec] at h

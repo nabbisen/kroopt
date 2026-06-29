@@ -212,18 +212,18 @@ Ten theorems over the pure config model (`Kroopt.Proofs.Config`), all
 - `negotiateAlpn_offered_and_allowed` — **ALPN safety**: any `selected` protocol
   is in both the client and endpoint lists (never an unoffered protocol, RFC 011 §8).
 - `negotiateAlpn_absent_notOffered` — a client that sends no ALPN extension never
-  triggers a no-overlap failure (it is `notOffered` under every mode, RFC 7301 §3.2).
-- `negotiateAlpn_requireOverlap_noOverlap` — a non-overlapping offer is detected as
-  `noOverlap` (the fact the caller maps to `no_application_protocol` under the strict mode).
-- `negotiateAlpn_serverPreference_noOverlap` — a non-overlapping offer yields the
-  `noOverlap` **fact under every mode**, not a mode-dependent outcome; the strict-vs-lenient
-  consequence is the handler's policy (`mode.noOverlapPolicy`), not part of negotiation.
+  triggers a no-overlap failure (it is `notOffered` under either preference, RFC 7301 §3.2).
+- `negotiateAlpn_server_noOverlap` — under `.server` order (used by `serverPreference` and
+  `requireOverlap` via `mode.preference`), a non-overlapping offer is detected as the `noOverlap` fact.
+- `negotiateAlpn_client_noOverlap` — the symmetric witness under `.client` order
+  (`clientPreferenceWithinAllowed`).
 - `negotiateAlpn_notOffered_iff_absent` — `notOffered` arises *only* from an absent ALPN
-  extension, never from a lenient no-overlap (the overload is gone).
+  extension, never from a no-overlap (the overload is gone).
 - `negotiateAlpn_noOverlap_offered` — a `noOverlap` fact implies the client did offer ALPN.
-- `negotiateAlpn_noOverlap_modeIndependent` — disjoint offered/allowed sets yield the `noOverlap`
-  fact under **every** mode (the proof behind the docs' mode-independence claim; only the *consequence*,
-  `mode.noOverlapPolicy`, varies).
+- `negotiateAlpn_noOverlap_anyPreference` — disjoint offered/allowed sets yield the `noOverlap`
+  fact under **either** preference. `negotiateAlpn` now takes only an `AlpnPreference`, so the
+  no-overlap *policy* cannot leak into negotiation; with the total `mode.preference` mapping this is the
+  proof behind the docs' mode-independence claim — only the *consequence* (`mode.noOverlapPolicy`) varies.
 - `selectEndpoint_none_uses_default` — absent SNI selects the default endpoint.
 - `validateServerConfig_rejects_ambiguous` — ambiguous SNI routes are refused.
 - `validateServerConfig_preserves_generation` — a validated config carries its

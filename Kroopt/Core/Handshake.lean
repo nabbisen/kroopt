@@ -250,7 +250,7 @@ def onClientHello (s : State) (vch : ValidClientHello) (chWire : ByteArray) : Hs
     -- fatal `no_application_protocol` (§3.2), failed *before* any ServerHello / random / key-schedule
     -- action so no server flight is produced. Absence, a selection, or no-overlap under a lenient mode
     -- proceeds with no protocol selected.
-    match negotiateAlpn s.serverConfig.alpnMode (vch.alpn.map (·.map AlpnProtocol.mk))
+    match negotiateAlpn s.serverConfig.alpnMode.preference (vch.alpn.map (·.map AlpnProtocol.mk))
             ((ep.map (·.allowedAlpn)).getD []), s.serverConfig.alpnMode.noOverlapPolicy with
     | .noOverlap, .fatal => hsFail s .noApplicationProtocol (.protocol .noApplicationProtocol)
     | alpnDec, _ =>

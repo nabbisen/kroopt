@@ -5,6 +5,27 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.118.0] — ALPN: negotiateAlpn takes AlpnPreference (policy unreachable by construction) — 2026-06-29
+
+Internal-design follow-up to the ALPN fact/policy split (review optional #2). No behavior change, no public
+API change: `AlpnDecision` stays internal and `negotiatedAlpn : Option AlpnProtocol` is unchanged.
+
+- **`negotiateAlpn` now takes an `AlpnPreference` directly** (`.server` / `.client`) instead of a full
+  `AlpnSelectionMode`. The caller passes `s.serverConfig.alpnMode.preference`. This makes it *structurally
+  impossible* for the no-overlap policy (`mode.noOverlapPolicy`) to leak into negotiation — the type no
+  longer carries it. The strict-vs-lenient consequence lives solely in `onClientHello`.
+- **Proofs reparametrized over `AlpnPreference`.** `negotiateAlpn_offered_and_allowed`,
+  `_absent_notOffered`, `_notOffered_iff_absent`, `_noOverlap_offered` now quantify over preference. The two
+  previously-identical server theorems (`_requireOverlap_noOverlap`, `_serverPreference_noOverlap`) merge
+  into `negotiateAlpn_server_noOverlap`; added the symmetric `negotiateAlpn_client_noOverlap`;
+  `_noOverlap_modeIndependent` → `negotiateAlpn_noOverlap_anyPreference`. Audited theorems steady at 109.
+- **Tests.** ALPN negotiation tests restated over `.server`/`.client`; added `alpnModeMapping` covering the
+  total `AlpnSelectionMode → (preference, noOverlapPolicy)` map — the bridge that keeps `requireOverlap`
+  fatal and server-ordered end-to-end now that negotiation no longer sees the mode.
+
+Full gate green: 27 suites, 109-theorem axiom audit, 37 pure-zone deps, hygiene, fuzz 20000, ASan/UBSan,
+OpenSSL/Python/curl interop. No new data flow or external integration; threat model unchanged.
+
 ## [0.117.1] — ALPN fact/policy closeout: doc parity + mode-independence proof — 2026-06-29
 
 Closes the ALPN `notOffered`-overload item per review of 0.117.0 (accepted as the substantive Option D

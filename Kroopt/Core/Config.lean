@@ -300,21 +300,22 @@ This reports a **fact**, not a policy outcome (ALPN `notOffered`-overload review
 
 * no extension ⇒ `.notOffered` — and `.notOffered` means *only* this, never a
   downgraded no-overlap;
-* overlap ⇒ `.selected p`, picked by `mode.preference`: `.server` order (the
-  default and `requireOverlap`) lets the server pick among the client's advertised
-  protocols by its own preference (RFC 7301); `.client` order
+* overlap ⇒ `.selected p`, picked by `preference`: `.server` order (the default
+  and `requireOverlap`, via `mode.preference`) lets the server pick among the
+  client's advertised protocols by its own preference (RFC 7301); `.client` order
   (`clientPreferenceWithinAllowed`) picks by the client's order;
 * the client offered ALPN but nothing overlaps the endpoint's allowed set ⇒
-  `.noOverlap` — **regardless of mode**. Whether that fact is fatal is the caller's
-  policy: the handshake fails with `no_application_protocol` only under a `fatal`
-  `mode.noOverlapPolicy` (the strict `requireOverlap`); the lenient modes proceed
-  with no protocol selected. -/
-def negotiateAlpn (mode : AlpnSelectionMode)
+  `.noOverlap`. **By construction `negotiateAlpn` takes only an `AlpnPreference`**, so
+  the no-overlap *policy* cannot leak into negotiation: whether that fact is fatal is
+  the caller's decision via `mode.noOverlapPolicy` — the handshake fails with
+  `no_application_protocol` only under a `fatal` policy (the strict `requireOverlap`);
+  the lenient modes proceed with no protocol selected. -/
+def negotiateAlpn (preference : AlpnPreference)
     (offered : Option (List AlpnProtocol)) (allowed : List AlpnProtocol) : AlpnDecision :=
   match offered with
   | none => .notOffered
   | some os =>
-    let pick := match mode.preference with
+    let pick := match preference with
       | .client => os.find? (fun a => alpnMem a allowed)
       | .server => allowed.find? (fun a => alpnMem a os)
     match pick with

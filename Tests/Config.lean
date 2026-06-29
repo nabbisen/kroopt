@@ -124,42 +124,47 @@ def checks : List Check :=
     , ok := (match validated 0 with
              | some v => (selectEndpoint v (some (name "nope.test"))).isSome
              | none => false) }
-    -- ALPN negotiation (RFC 7301 §3.2, RFC 011 §5) — A1 strict no-overlap, AlpnDecision
-  , { name := "alpnOverlapRequireOverlapSelects: requireOverlap selects by server preference"
-    , ok := (match negotiateAlpn .requireOverlap (some [alpnH2, alpnH11]) [alpnH11, alpnH2] with
+    -- ALPN negotiation (RFC 7301 §3.2, RFC 011 §5) — fact-only negotiateAlpn over AlpnPreference
+  , { name := "ALPN server preference picks the server's first overlapping protocol"
+    , ok := (match negotiateAlpn .server (some [alpnH2, alpnH11]) [alpnH11, alpnH2] with
              | .selected a => a.eq alpnH11 | _ => false) }
-  , { name := "ALPN serverPreference picks the server's first overlapping protocol"
-    , ok := (match negotiateAlpn .serverPreference (some [alpnH2, alpnH11]) [alpnH11, alpnH2] with
-             | .selected a => a.eq alpnH11 | _ => false) }
-  , { name := "ALPN clientPreference picks the client's first overlapping protocol"
-    , ok := (match negotiateAlpn .clientPreferenceWithinAllowed (some [alpnH2, alpnH11]) [alpnH11, alpnH2] with
+  , { name := "ALPN client preference picks the client's first overlapping protocol"
+    , ok := (match negotiateAlpn .client (some [alpnH2, alpnH11]) [alpnH11, alpnH2] with
              | .selected a => a.eq alpnH2 | _ => false) }
   , { name := "alpnSelectedIsOfferedAndAllowed: a selection is both offered and allowed"
-    , ok := (match negotiateAlpn .serverPreference (some [alpnH11]) [alpnH2, alpnH11] with
+    , ok := (match negotiateAlpn .server (some [alpnH11]) [alpnH2, alpnH11] with
              | .selected a => alpnMem a [alpnH11] && alpnMem a [alpnH2, alpnH11] | _ => false) }
   , { name := "alpnUnknownPlusAllowedIgnoresUnknownAndSelectsAllowed"
-    , ok := (match negotiateAlpn .serverPreference (some [alpnUnknown, alpnH11]) [alpnH11] with
+    , ok := (match negotiateAlpn .server (some [alpnUnknown, alpnH11]) [alpnH11] with
              | .selected a => a.eq alpnH11 | _ => false) }
-  , { name := "alpnAbsentRequireOverlapProceeds: no ALPN extension ⇒ notOffered, no failure"
-    , ok := (match negotiateAlpn .requireOverlap none [alpnH11] with
+  , { name := "alpnAbsentProceeds: no ALPN extension ⇒ notOffered, no failure"
+    , ok := (match negotiateAlpn .server none [alpnH11] with
              | .notOffered => true | _ => false) }
-  , { name := "alpnNoOverlapRequireOverlapFailsNoApplicationProtocol: strict no-overlap ⇒ noOverlap"
-    , ok := (match negotiateAlpn .requireOverlap (some [alpnH2]) [alpnH11] with
+  , { name := "alpnServerNoOverlapReturnsNoOverlap: strict/server no-overlap ⇒ noOverlap fact"
+    , ok := (match negotiateAlpn .server (some [alpnH2]) [alpnH11] with
              | .noOverlap => true | _ => false) }
-  , { name := "alpnLenientNoOverlapServerPreferenceReturnsNoOverlap (fact, not notOffered)"
-    , ok := (match negotiateAlpn .serverPreference (some [alpnH2]) [alpnH11] with
+  , { name := "alpnClientNoOverlapReturnsNoOverlap: client no-overlap ⇒ noOverlap fact"
+    , ok := (match negotiateAlpn .client (some [alpnH2]) [alpnH11] with
              | .noOverlap => true | _ => false) }
-  , { name := "alpnLenientNoOverlapClientPreferenceReturnsNoOverlap (fact, not notOffered)"
-    , ok := (match negotiateAlpn .clientPreferenceWithinAllowed (some [alpnH2]) [alpnH11] with
-             | .noOverlap => true | _ => false) }
-  , { name := "notOfferedNeverMeansOfferedNoOverlap: an offer never yields notOffered, in any mode"
-    , ok := ([AlpnSelectionMode.serverPreference, .clientPreferenceWithinAllowed, .requireOverlap].all
-               (fun m => match negotiateAlpn m (some [alpnH2]) [alpnH11] with
+  , { name := "notOfferedNeverMeansOfferedNoOverlap: an offer never yields notOffered, in any preference"
+    , ok := ([AlpnPreference.server, .client].all
+               (fun pf => match negotiateAlpn pf (some [alpnH2]) [alpnH11] with
                          | .notOffered => false | _ => true)
-             -- and absence yields notOffered in every mode
-             && [AlpnSelectionMode.serverPreference, .clientPreferenceWithinAllowed, .requireOverlap].all
-               (fun m => match negotiateAlpn m none [alpnH11] with
+             -- and absence yields notOffered under either preference
+             && [AlpnPreference.server, .client].all
+               (fun pf => match negotiateAlpn pf none [alpnH11] with
                          | .notOffered => true | _ => false)) }
+  , { name := "alpnModeMapping: mode → (preference, noOverlapPolicy) is the intended total mapping"
+    , ok := ((match AlpnSelectionMode.serverPreference.preference with | .server => true | .client => false)
+             && (match AlpnSelectionMode.serverPreference.noOverlapPolicy with
+                 | .proceedWithoutProtocol => true | .fatal => false)
+             && (match AlpnSelectionMode.clientPreferenceWithinAllowed.preference with
+                 | .client => true | .server => false)
+             && (match AlpnSelectionMode.clientPreferenceWithinAllowed.noOverlapPolicy with
+                 | .proceedWithoutProtocol => true | .fatal => false)
+             && (match AlpnSelectionMode.requireOverlap.preference with | .server => true | .client => false)
+             && (match AlpnSelectionMode.requireOverlap.noOverlapPolicy with
+                 | .fatal => true | .proceedWithoutProtocol => false)) }
   , { name := "alertNoApplicationProtocolRoundTrips120: 120 ⇄ no_application_protocol via ofByte/toByte, fatal"
     , ok := (AlertDescription.ofByte 120 == some .noApplicationProtocol
              && AlertDescription.noApplicationProtocol.toByte == 120

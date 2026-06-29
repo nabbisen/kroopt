@@ -185,7 +185,7 @@ theorem onClientHello_selectedGroup_allowed
         simp only [Except.ok.injEq, Prod.mk.injEq] at h
         obtain ⟨rfl, -⟩ := h
         simp only [reduceCtorEq] at hsucc
-      · cases hdec : negotiateAlpn s.serverConfig.alpnMode (vch.alpn.map (·.map AlpnProtocol.mk))
+      · cases hdec : negotiateAlpn s.serverConfig.alpnMode.preference (vch.alpn.map (·.map AlpnProtocol.mk))
             ((Option.map (fun x => x.allowedAlpn) (selectEndpoint s.serverConfig vch.sni)).getD []) with
         | noOverlap =>
           simp only [hdec] at h
@@ -308,7 +308,7 @@ theorem onClientHello_legal
     · have hx := hsFail_legal _ _ _ _ _ h hnt; exact hx
     · split at h
       · have hx := hsFail_legal _ _ _ _ _ h hnt; exact hx
-      · cases hdec : negotiateAlpn s.serverConfig.alpnMode (vch.alpn.map (·.map AlpnProtocol.mk))
+      · cases hdec : negotiateAlpn s.serverConfig.alpnMode.preference (vch.alpn.map (·.map AlpnProtocol.mk))
             ((Option.map (fun x => x.allowedAlpn) (selectEndpoint s.serverConfig vch.sni)).getD []) with
         | noOverlap =>
           simp only [hdec] at h
@@ -581,7 +581,7 @@ private theorem hs_no_emit_onClientHello
         obtain ⟨-, rfl⟩ := h
         simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
           or_self, or_false] at hmem
-      · cases hdec : negotiateAlpn s.serverConfig.alpnMode (vch.alpn.map (·.map AlpnProtocol.mk))
+      · cases hdec : negotiateAlpn s.serverConfig.alpnMode.preference (vch.alpn.map (·.map AlpnProtocol.mk))
             ((Option.map (fun x => x.allowedAlpn) (selectEndpoint s.serverConfig vch.sni)).getD []) with
         | noOverlap =>
           simp only [hdec] at h
@@ -842,7 +842,7 @@ private theorem hs_no_accept_generic_onClientHello
         obtain ⟨-, rfl⟩ := h
         simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
           or_self, or_false] at hmem
-      · cases hdec : negotiateAlpn s.serverConfig.alpnMode (vch.alpn.map (·.map AlpnProtocol.mk))
+      · cases hdec : negotiateAlpn s.serverConfig.alpnMode.preference (vch.alpn.map (·.map AlpnProtocol.mk))
             ((Option.map (fun x => x.allowedAlpn) (selectEndpoint s.serverConfig vch.sni)).getD []) with
         | noOverlap =>
           simp only [hdec] at h
@@ -1100,7 +1100,7 @@ private theorem hs_no_aeadOpen_onClientHello
         obtain ⟨-, rfl⟩ := h
         simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
           or_self, or_false, and_false, OutputAction.callCrypto.injEq] at hmem
-      · cases hdec : negotiateAlpn s.serverConfig.alpnMode (vch.alpn.map (·.map AlpnProtocol.mk))
+      · cases hdec : negotiateAlpn s.serverConfig.alpnMode.preference (vch.alpn.map (·.map AlpnProtocol.mk))
             ((Option.map (fun x => x.allowedAlpn) (selectEndpoint s.serverConfig vch.sni)).getD []) with
         | noOverlap =>
           simp only [hdec] at h
