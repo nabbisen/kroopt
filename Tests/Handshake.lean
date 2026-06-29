@@ -107,6 +107,13 @@ def s0EdRequireOverlap : State :=
             signatureSchemes := [.ed25519]
             allowedAlpn := [⟨"http/1.1".toUTF8⟩] } } }
 
+/-- Same no-overlap situation as `s0EdRequireOverlap`, but under the lenient `serverPreference` mode: the
+handler applies `noOverlapPolicy = proceedWithoutProtocol`, so the no-overlap *fact* does **not** fail the
+handshake — it proceeds with no protocol selected (ALPN overload review, Option D). -/
+def s0EdLenientNoOverlap : State :=
+  { s0EdRequireOverlap with
+    serverConfig := { s0EdRequireOverlap.serverConfig with alpnMode := .serverPreference } }
+
 def checks : List Check :=
   [ { name := "full synthetic handshake reaches connected"
     , ok := (match runHandshake with
@@ -138,6 +145,11 @@ def checks : List Check :=
              | .ok (_, acts) =>
                  acts.any (fun a => match a with
                    | .writeAlert _ .initial _ .noApplicationProtocol => true | _ => false)
+             | _ => false) }
+  , { name := "handlerLenientNoOverlapProceedsWithNoSelectedAlpn (Option D: fact ≠ fatal)"
+    , ok := (match onClientHello s0EdLenientNoOverlap vch chWire with
+             | .ok ({ handshake := .failed .noApplicationProtocol, .. }, _) => false
+             | .ok (s, _) => (match s.negotiated.selectedAlpn with | none => true | some _ => false)
              | _ => false) }
   , { name := "onClientHello with a matching scheme advances past start (no spurious failure)"
     , ok := (match onClientHello s0Ed vch chWire with

@@ -428,8 +428,27 @@ theorem onClientHello_pp
             ((Option.map (fun x => x.allowedAlpn) (selectEndpoint s.serverConfig vch.sni)).getD []) with
         | noOverlap =>
           simp only [hdec] at h
-          simp only [Except.ok.injEq, Prod.mk.injEq] at h
-          obtain ⟨rfl, -⟩ := h; right; rfl
+          cases hpol : s.serverConfig.alpnMode.noOverlapPolicy with
+          | fatal =>
+            simp only [hpol] at h
+            simp only [Except.ok.injEq, Prod.mk.injEq] at h
+            obtain ⟨rfl, -⟩ := h; right; rfl
+          | proceedWithoutProtocol =>
+            simp only [hpol] at h
+            cases hsel : selectGroup vch.offeredShares
+                  ((Option.map (fun x => x.namedGroups) (selectEndpoint s.serverConfig vch.sni)).getD []) with
+              | none =>
+                simp only [hsel, Except.ok.injEq, Prod.mk.injEq] at h
+                obtain ⟨rfl, -⟩ := h; right; rfl
+              | some gp =>
+                obtain ⟨selGroup, selShare⟩ := gp
+                simp only [hsel, allocOpOrFail_eq] at h
+                split at h
+                · unfold hsFail at h
+                  simp only [Except.ok.injEq, Prod.mk.injEq] at h
+                  obtain ⟨rfl, -⟩ := h; right; rfl
+                simp only [Except.ok.injEq, Prod.mk.injEq] at h
+                obtain ⟨rfl, -⟩ := h; left; rfl
         | notOffered =>
           simp only [hdec] at h
           cases hsel : selectGroup vch.offeredShares

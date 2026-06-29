@@ -245,13 +245,15 @@ def onClientHello (s : State) (vch : ValidClientHello) (chWire : ByteArray) : Hs
     let s := { s with budgets := b' }
     let ep := selectEndpoint s.serverConfig vch.sni
     -- ALPN (RFC 7301 §3.2, RFC 011 §5): negotiate against the resolved endpoint's allowed set.
-    -- Under `requireOverlap` an offered-but-non-overlapping list is a fatal `no_application_protocol`
-    -- (§3.2): fail here, *before* any ServerHello / random / key-schedule action, so no server flight
-    -- is produced. An absent offer, or either lenient mode, proceeds with no protocol selected.
+    -- `negotiateAlpn` reports the *fact* (notOffered / selected / noOverlap); the *policy* is applied
+    -- here. Only `.noOverlap` under a `.fatal` no-overlap policy (the strict `requireOverlap` mode) is a
+    -- fatal `no_application_protocol` (§3.2), failed *before* any ServerHello / random / key-schedule
+    -- action so no server flight is produced. Absence, a selection, or no-overlap under a lenient mode
+    -- proceeds with no protocol selected.
     match negotiateAlpn s.serverConfig.alpnMode (vch.alpn.map (·.map AlpnProtocol.mk))
-            ((ep.map (·.allowedAlpn)).getD []) with
-    | .noOverlap => hsFail s .noApplicationProtocol (.protocol .noApplicationProtocol)
-    | alpnDec =>
+            ((ep.map (·.allowedAlpn)).getD []), s.serverConfig.alpnMode.noOverlapPolicy with
+    | .noOverlap, .fatal => hsFail s .noApplicationProtocol (.protocol .noApplicationProtocol)
+    | alpnDec, _ =>
     let selAlpn := match alpnDec with | .selected p => some p | _ => none
     let cert := ep.map (·.chain)
     let certDer := (ep.map (·.der)).getD (ByteArray.mk #[])

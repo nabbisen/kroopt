@@ -77,10 +77,37 @@ inductive AlpnSelectionMode where
   | requireOverlap
   deriving DecidableEq, Repr, Inhabited
 
-/-- The outcome of ALPN negotiation (RFC 7301 §3.2, RFC 011 §5). The handshake
-treats the three cases differently: the client offered no ALPN (proceed with no
-protocol), a protocol was selected, or the client offered ALPN with no overlap
-against the endpoint's allowed set — a failure only under the strict mode. -/
+/-- The two orthogonal axes hidden inside `AlpnSelectionMode`, split out so `negotiateAlpn` can report
+*facts* without baking in policy (RFC 042-style fact/policy separation; ALPN `notOffered`-overload review).
+`preference` is which side's order wins a selection; `noOverlapPolicy` is what an offered-but-non-overlapping
+list *means* — and is applied by the handshake caller, not by `negotiateAlpn`. -/
+inductive AlpnPreference where
+  | server
+  | client
+  deriving DecidableEq, Repr
+
+inductive AlpnNoOverlapPolicy where
+  | proceedWithoutProtocol
+  | fatal
+  deriving DecidableEq, Repr
+
+def AlpnSelectionMode.preference : AlpnSelectionMode → AlpnPreference
+  | .serverPreference              => .server
+  | .clientPreferenceWithinAllowed => .client
+  | .requireOverlap                => .server
+
+def AlpnSelectionMode.noOverlapPolicy : AlpnSelectionMode → AlpnNoOverlapPolicy
+  | .serverPreference              => .proceedWithoutProtocol
+  | .clientPreferenceWithinAllowed => .proceedWithoutProtocol
+  | .requireOverlap                => .fatal
+
+/-- The **fact** ALPN negotiation establishes (RFC 7301 §3.2, RFC 011 §5): the
+client offered no ALPN, a protocol was selected, or the client offered ALPN but
+nothing overlapped the endpoint's allowed set. `.noOverlap` is the no-overlap
+*fact* — it is not itself fatal; the handshake caller applies `mode.noOverlapPolicy`
+to decide whether it fails (`requireOverlap`) or proceeds with no protocol (the
+lenient modes). `.notOffered` means *only* "no extension", never a downgraded
+no-overlap. Internal: the public surface exposes `negotiatedAlpn : Option …`. -/
 inductive AlpnDecision where
   | notOffered
   | selected (p : AlpnProtocol)
@@ -269,27 +296,29 @@ list: `none` = the client sent no ALPN extension; `some os` = it offered `os` (t
 parser guarantees `os` non-empty and well-formed, rejecting an empty list or empty
 name as malformed). `allowed` is the endpoint's configured set.
 
-* no extension ⇒ `.notOffered` (the handshake proceeds with no protocol);
-* overlap ⇒ `.selected p` — `serverPreference` and the strict `requireOverlap`
-  select by the **server's** order (RFC 7301: the server picks among the client's
-  advertised protocols by its own preference); `clientPreferenceWithinAllowed`
-  selects by the client's order;
-* no overlap ⇒ `.noOverlap` under the strict `requireOverlap` (the caller then
-  fails the handshake with `no_application_protocol`); under the two lenient
-  modes it is `.notOffered` — the handshake proceeds with no protocol selected. -/
+This reports a **fact**, not a policy outcome (ALPN `notOffered`-overload review):
+
+* no extension ⇒ `.notOffered` — and `.notOffered` means *only* this, never a
+  downgraded no-overlap;
+* overlap ⇒ `.selected p`, picked by `mode.preference`: `.server` order (the
+  default and `requireOverlap`) lets the server pick among the client's advertised
+  protocols by its own preference (RFC 7301); `.client` order
+  (`clientPreferenceWithinAllowed`) picks by the client's order;
+* the client offered ALPN but nothing overlaps the endpoint's allowed set ⇒
+  `.noOverlap` — **regardless of mode**. Whether that fact is fatal is the caller's
+  policy: the handshake fails with `no_application_protocol` only under a `fatal`
+  `mode.noOverlapPolicy` (the strict `requireOverlap`); the lenient modes proceed
+  with no protocol selected. -/
 def negotiateAlpn (mode : AlpnSelectionMode)
     (offered : Option (List AlpnProtocol)) (allowed : List AlpnProtocol) : AlpnDecision :=
   match offered with
   | none => .notOffered
   | some os =>
-    let pick := match mode with
-      | .clientPreferenceWithinAllowed => os.find? (fun a => alpnMem a allowed)
-      | _ => allowed.find? (fun a => alpnMem a os)
+    let pick := match mode.preference with
+      | .client => os.find? (fun a => alpnMem a allowed)
+      | .server => allowed.find? (fun a => alpnMem a os)
     match pick with
     | some p => .selected p
-    | none =>
-      match mode with
-      | .requireOverlap => .noOverlap
-      | _               => .notOffered
+    | none   => .noOverlap
 
 end Kroopt.Core

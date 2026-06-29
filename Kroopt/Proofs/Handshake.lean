@@ -189,10 +189,37 @@ theorem onClientHello_selectedGroup_allowed
             ((Option.map (fun x => x.allowedAlpn) (selectEndpoint s.serverConfig vch.sni)).getD []) with
         | noOverlap =>
           simp only [hdec] at h
-          unfold hsFail at h
-          simp only [Except.ok.injEq, Prod.mk.injEq] at h
-          obtain ⟨rfl, -⟩ := h
-          simp only [reduceCtorEq] at hsucc
+          cases hpol : s.serverConfig.alpnMode.noOverlapPolicy with
+          | fatal =>
+            simp only [hpol] at h
+            unfold hsFail at h
+            simp only [Except.ok.injEq, Prod.mk.injEq] at h
+            obtain ⟨rfl, -⟩ := h
+            simp only [reduceCtorEq] at hsucc
+          | proceedWithoutProtocol =>
+            simp only [hpol] at h
+            cases hsel : selectGroup vch.offeredShares
+                ((Option.map (fun x => x.namedGroups) (selectEndpoint s.serverConfig vch.sni)).getD []) with
+            | none =>
+              unfold hsFail at h
+              simp only [hsel, Except.ok.injEq, Prod.mk.injEq] at h
+              obtain ⟨rfl, -⟩ := h
+              simp only [reduceCtorEq] at hsucc
+            | some gp =>
+              obtain ⟨selGroup, selShare⟩ := gp
+              simp only [hsel] at h
+              simp only [allocOpOrFail_eq, TranscriptState.snapshot, KeyScheduleDriver.startPostEcdhe] at h
+              split at h
+              · unfold hsFail at h
+                simp only [Except.ok.injEq, Prod.mk.injEq] at h
+                obtain ⟨rfl, -⟩ := h
+                simp only [reduceCtorEq] at hsucc
+              · simp only [Except.ok.injEq, Prod.mk.injEq] at h
+                obtain ⟨rfl, -⟩ := h
+                refine ⟨selGroup, rfl, ?_⟩
+                have ha := (selectGroup_authorized hsel).1
+                rw [hep] at ha
+                exact ha
         | notOffered =>
           simp only [hdec] at h
           cases hsel : selectGroup vch.offeredShares
@@ -285,7 +312,26 @@ theorem onClientHello_legal
             ((Option.map (fun x => x.allowedAlpn) (selectEndpoint s.serverConfig vch.sni)).getD []) with
         | noOverlap =>
           simp only [hdec] at h
-          have hx := hsFail_legal _ _ _ _ _ h hnt; exact hx
+          cases hpol : s.serverConfig.alpnMode.noOverlapPolicy with
+          | fatal =>
+            simp only [hpol] at h
+            have hx := hsFail_legal _ _ _ _ _ h hnt; exact hx
+          | proceedWithoutProtocol =>
+            simp only [hpol] at h
+            cases hsel : selectGroup vch.offeredShares
+                ((Option.map (fun x => x.namedGroups) (selectEndpoint s.serverConfig vch.sni)).getD []) with
+            | none =>
+              simp only [hsel] at h
+              have hl := hsFail_legal _ _ _ _ _ h hnt
+              exact hl
+            | some gp =>
+              obtain ⟨selGroup, selShare⟩ := gp
+              simp only [hsel, allocOpOrFail_eq] at h
+              split at h
+              · have hx := hsFail_legal _ _ _ _ _ h hnt; exact hx
+              simp only [Except.ok.injEq, Prod.mk.injEq] at h
+              obtain ⟨hs, -⟩ := h
+              rw [← hs, hcond]; rfl
         | notOffered =>
           simp only [hdec] at h
           cases hsel : selectGroup vch.offeredShares
@@ -539,9 +585,34 @@ private theorem hs_no_emit_onClientHello
             ((Option.map (fun x => x.allowedAlpn) (selectEndpoint s.serverConfig vch.sni)).getD []) with
         | noOverlap =>
           simp only [hdec] at h
-          simp only [Except.ok.injEq, Prod.mk.injEq] at h
-          obtain ⟨-, rfl⟩ := h
-          simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq, or_self, or_false] at hmem
+          cases hpol : s.serverConfig.alpnMode.noOverlapPolicy with
+          | fatal =>
+            simp only [hpol] at h
+            simp only [Except.ok.injEq, Prod.mk.injEq] at h
+            obtain ⟨-, rfl⟩ := h
+            simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq, or_self, or_false] at hmem
+          | proceedWithoutProtocol =>
+            simp only [hpol] at h
+            cases hsel : selectGroup vch.offeredShares
+                  ((Option.map (fun x => x.namedGroups) (selectEndpoint s.serverConfig vch.sni)).getD []) with
+              | none =>
+                simp only [hsel, Except.ok.injEq, Prod.mk.injEq] at h
+                obtain ⟨-, rfl⟩ := h
+                simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+                  or_self, or_false] at hmem
+              | some gp =>
+                obtain ⟨selGroup, selShare⟩ := gp
+                simp only [hsel, allocOpOrFail_eq] at h
+                split at h
+                · try unfold hsFail at h
+                  simp only [Except.ok.injEq, Prod.mk.injEq] at h
+                  obtain ⟨-, rfl⟩ := h
+                  simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+                    or_self, or_false] at hmem
+                simp only [Except.ok.injEq, Prod.mk.injEq] at h
+                obtain ⟨-, rfl⟩ := h
+                simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+                  or_self, or_false] at hmem
         | notOffered =>
           simp only [hdec] at h
           cases hsel : selectGroup vch.offeredShares
@@ -775,9 +846,34 @@ private theorem hs_no_accept_generic_onClientHello
             ((Option.map (fun x => x.allowedAlpn) (selectEndpoint s.serverConfig vch.sni)).getD []) with
         | noOverlap =>
           simp only [hdec] at h
-          simp only [Except.ok.injEq, Prod.mk.injEq] at h
-          obtain ⟨-, rfl⟩ := h
-          simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq, or_self, or_false] at hmem
+          cases hpol : s.serverConfig.alpnMode.noOverlapPolicy with
+          | fatal =>
+            simp only [hpol] at h
+            simp only [Except.ok.injEq, Prod.mk.injEq] at h
+            obtain ⟨-, rfl⟩ := h
+            simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq, or_self, or_false] at hmem
+          | proceedWithoutProtocol =>
+            simp only [hpol] at h
+            cases hsel : selectGroup vch.offeredShares
+                  ((Option.map (fun x => x.namedGroups) (selectEndpoint s.serverConfig vch.sni)).getD []) with
+              | none =>
+                simp only [hsel, Except.ok.injEq, Prod.mk.injEq] at h
+                obtain ⟨-, rfl⟩ := h
+                simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+                  or_self, or_false] at hmem
+              | some gp =>
+                obtain ⟨selGroup, selShare⟩ := gp
+                simp only [hsel, allocOpOrFail_eq] at h
+                split at h
+                · try unfold hsFail at h
+                  simp only [Except.ok.injEq, Prod.mk.injEq] at h
+                  obtain ⟨-, rfl⟩ := h
+                  simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+                    or_self, or_false] at hmem
+                simp only [Except.ok.injEq, Prod.mk.injEq] at h
+                obtain ⟨-, rfl⟩ := h
+                simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+                  or_self, or_false] at hmem
         | notOffered =>
           simp only [hdec] at h
           cases hsel : selectGroup vch.offeredShares
@@ -1008,9 +1104,34 @@ private theorem hs_no_aeadOpen_onClientHello
             ((Option.map (fun x => x.allowedAlpn) (selectEndpoint s.serverConfig vch.sni)).getD []) with
         | noOverlap =>
           simp only [hdec] at h
-          simp only [Except.ok.injEq, Prod.mk.injEq] at h
-          obtain ⟨-, rfl⟩ := h
-          simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq, or_self, or_false, and_false, OutputAction.callCrypto.injEq] at hmem
+          cases hpol : s.serverConfig.alpnMode.noOverlapPolicy with
+          | fatal =>
+            simp only [hpol] at h
+            simp only [Except.ok.injEq, Prod.mk.injEq] at h
+            obtain ⟨-, rfl⟩ := h
+            simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq, or_self, or_false, and_false, OutputAction.callCrypto.injEq] at hmem
+          | proceedWithoutProtocol =>
+            simp only [hpol] at h
+            cases hsel : selectGroup vch.offeredShares
+                  ((Option.map (fun x => x.namedGroups) (selectEndpoint s.serverConfig vch.sni)).getD []) with
+              | none =>
+                simp only [hsel, Except.ok.injEq, Prod.mk.injEq] at h
+                obtain ⟨-, rfl⟩ := h
+                simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+                  or_self, or_false, and_false, OutputAction.callCrypto.injEq] at hmem
+              | some gp =>
+                obtain ⟨selGroup, selShare⟩ := gp
+                simp only [hsel, allocOpOrFail_eq] at h
+                split at h
+                · try unfold hsFail at h
+                  simp only [Except.ok.injEq, Prod.mk.injEq] at h
+                  obtain ⟨-, rfl⟩ := h
+                  simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+                    or_self, or_false, and_false, OutputAction.callCrypto.injEq] at hmem
+                simp only [Except.ok.injEq, Prod.mk.injEq] at h
+                obtain ⟨-, rfl⟩ := h
+                simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, reduceCtorEq,
+                  or_self, or_false, and_false, OutputAction.callCrypto.injEq] at hmem
         | notOffered =>
           simp only [hdec] at h
           cases hsel : selectGroup vch.offeredShares

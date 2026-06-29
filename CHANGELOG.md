@@ -5,6 +5,32 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.117.0] — ALPN: fact/policy split (Option D); first bare X.Y.Z label — 2026-06-29
+
+Implements the ALPN `notOffered`-overload review (Option D), and adopts the bare `X.Y.Z` version label
+(no `-dev`) from this increment onward — "anchored release" is the tag + sidecar + GitHub release, not the
+version string (RFC 030).
+
+- **`negotiateAlpn` is now fact-only.** It reports `notOffered` / `selected` / `noOverlap`, where
+  `noOverlap` is the no-overlap *fact* **under every mode** — never folded into `notOffered`. `notOffered`
+  now means *only* "no ALPN extension." This removes the semantic overload where a lenient-mode no-overlap
+  masqueraded as `notOffered`.
+- **Strict-vs-lenient policy moved to `onClientHello`.** The mode is split into two orthogonal axes —
+  `AlpnSelectionMode.preference` (server/client selection order) and `AlpnSelectionMode.noOverlapPolicy`
+  (`fatal` for `requireOverlap`, `proceedWithoutProtocol` for the lenient modes). The handler maps the
+  `noOverlap` fact to a fatal `no_application_protocol` only under a `fatal` policy; otherwise it proceeds
+  with no protocol selected. Public metadata is unchanged (`negotiatedAlpn : Option AlpnProtocol`); no
+  ALPN metric added (event taxonomy recorded for a future RFC 020 increment).
+- **Proofs.** Updated `negotiateAlpn_serverPreference_noOverlap` (now `.noOverlap`), added
+  `negotiateAlpn_notOffered_iff_absent` (the overload is gone — `notOffered ⇒ offered = none`) and
+  `negotiateAlpn_noOverlap_offered`; extended all six `onClientHello`-walking proofs with the
+  `noOverlapPolicy` case-split. Audited theorems 106 → 108.
+- **Tests.** `negotiateAlpn` facts (lenient no-overlap ⇒ `noOverlap`; `notOfferedNeverMeansOfferedNoOverlap`)
+  and the handler (`handlerLenientNoOverlapProceedsWithNoSelectedAlpn`). `AlpnDecision` stays internal.
+
+Full gate green: 27 suites, 108-theorem axiom audit, 37 pure-zone deps, hygiene, fuzz 20000, ASan/UBSan,
+OpenSSL/Python/curl interop. No new data flow or external integration; threat model unchanged.
+
 ## [0.116.0-dev] — RFC 042 closeout: review cleanup (stale docs + send terminal precedence) — 2026-06-28
 
 The 0.115 implementation review **accepted** RFC 042 as correct in substance and listed four non-blocking

@@ -146,12 +146,20 @@ def checks : List Check :=
   , { name := "alpnNoOverlapRequireOverlapFailsNoApplicationProtocol: strict no-overlap ⇒ noOverlap"
     , ok := (match negotiateAlpn .requireOverlap (some [alpnH2]) [alpnH11] with
              | .noOverlap => true | _ => false) }
-  , { name := "serverPreferenceNoOverlapLenientProceedsNone"
+  , { name := "alpnLenientNoOverlapServerPreferenceReturnsNoOverlap (fact, not notOffered)"
     , ok := (match negotiateAlpn .serverPreference (some [alpnH2]) [alpnH11] with
-             | .notOffered => true | _ => false) }
-  , { name := "clientPreferenceNoOverlapLenientProceedsNone"
+             | .noOverlap => true | _ => false) }
+  , { name := "alpnLenientNoOverlapClientPreferenceReturnsNoOverlap (fact, not notOffered)"
     , ok := (match negotiateAlpn .clientPreferenceWithinAllowed (some [alpnH2]) [alpnH11] with
-             | .notOffered => true | _ => false) }
+             | .noOverlap => true | _ => false) }
+  , { name := "notOfferedNeverMeansOfferedNoOverlap: an offer never yields notOffered, in any mode"
+    , ok := ([AlpnSelectionMode.serverPreference, .clientPreferenceWithinAllowed, .requireOverlap].all
+               (fun m => match negotiateAlpn m (some [alpnH2]) [alpnH11] with
+                         | .notOffered => false | _ => true)
+             -- and absence yields notOffered in every mode
+             && [AlpnSelectionMode.serverPreference, .clientPreferenceWithinAllowed, .requireOverlap].all
+               (fun m => match negotiateAlpn m none [alpnH11] with
+                         | .notOffered => true | _ => false)) }
   , { name := "alertNoApplicationProtocolRoundTrips120: 120 ⇄ no_application_protocol via ofByte/toByte, fatal"
     , ok := (AlertDescription.ofByte 120 == some .noApplicationProtocol
              && AlertDescription.noApplicationProtocol.toByte == 120

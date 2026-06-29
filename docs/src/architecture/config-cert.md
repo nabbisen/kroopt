@@ -27,16 +27,16 @@ pure function with no callbacks, so it cannot block, recurse into user code, or
 produce a non-reproducible result during ClientHello processing (RFC 011 §8).
 
 `negotiateAlpn` matches the client's offered list against the endpoint's allow
-list under the configured mode and returns an `AlpnDecision`: `notOffered` (the
-client sent no ALPN extension, or a lenient mode found no overlap — proceed with
-no protocol), `selected p` (a protocol both offered and allowed), or `noOverlap`.
-`serverPreference` and the strict `requireOverlap` select by the **server's**
-order; `clientPreferenceWithinAllowed` by the client's. The modes differ only when
-the client offers ALPN with no overlap: the two lenient modes proceed with no
-selection, while `requireOverlap` yields `noOverlap`, which the handshake caller
-turns into a fatal **`no_application_protocol`** (alert 120) *before* any
+list and returns an `AlpnDecision` reporting a **fact**: `notOffered` (the client
+sent no ALPN extension — and *only* that), `selected p` (a protocol both offered and
+allowed), or `noOverlap` (the client offered ALPN but nothing overlaps — **under every
+mode**). Selection order follows `mode.preference`: `serverPreference` and the strict
+`requireOverlap` use the **server's** order; `clientPreferenceWithinAllowed` the
+client's. The strict-vs-lenient *consequence* of `noOverlap` is the handshake caller's
+policy (`mode.noOverlapPolicy`), not part of negotiation: `requireOverlap` maps it to a
+fatal **`no_application_protocol`** (alert 120) *before* any
 ServerHello, random, or key-schedule action — no server flight is produced (RFC
-7301 §3.2). The alert is *classified* and the connection terminates; as with every
+7301 §3.2), while the lenient modes proceed with no protocol selected. The alert is *classified* and the connection terminates; as with every
 fatal handshake failure today, the description byte itself is not transmitted (see
 [Alerts and close](./alerts-close.md)). A client sending no ALPN extension never
 triggers this (it is
