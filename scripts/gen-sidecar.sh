@@ -16,9 +16,11 @@ cd "$ROOT"
 
 PROFILE="local-dry-run"
 VERSION=""
+LEDGER_OVERRIDE=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --profile) PROFILE="$2"; shift 2 ;;
+    --ledger) LEDGER_OVERRIDE="$2"; shift 2 ;;
     *) VERSION="$1"; shift ;;
   esac
 done
@@ -27,10 +29,10 @@ done
 TARBALL="${OUT_DIR:-$ROOT/dist}/kroopt-$VERSION.tar.gz"
 OUT="${OUT_DIR:-$ROOT/dist}/kroopt-$VERSION.release-verification.json"
 
-exec python3 - "$ROOT" "$VERSION" "$PROFILE" "$TARBALL" "$OUT" <<'PY'
+exec python3 - "$ROOT" "$VERSION" "$PROFILE" "$TARBALL" "$OUT" "$LEDGER_OVERRIDE" <<'PY'
 import sys, os, json, hashlib, datetime
 
-root, version, profile, tarball, out = sys.argv[1:6]
+root, version, profile, tarball, out, ledger_override = sys.argv[1:7]
 def fail(m): print("FAIL: " + m); sys.exit(1)
 def sha(p):
     h=hashlib.sha256()
@@ -38,7 +40,7 @@ def sha(p):
         for c in iter(lambda:f.read(65536), b""): h.update(c)
     return h.hexdigest()
 
-led_path = os.path.join(root, "gate-out", "gate-ledger.json")
+led_path = ledger_override if ledger_override else os.path.join(root, "gate-out", "gate-ledger.json")
 man_path = os.path.join(root, "Kroopt", "Native", "hacl-provenance", "HACL-PROVENANCE.json")
 gaterun  = os.path.join(root, "gate-out", "GATE-RUN.md")
 lakem    = os.path.join(root, "lake-manifest.json")
@@ -65,6 +67,31 @@ if profile == "real-release":
         fail("real-release requires a clean tree; ledger git_dirty=%r" % git_dirty)
     if not led.get("required_gates_passed"):
         fail("real-release requires required_gates_passed=true in the ledger")
+    # the real-release sidecar is a transcription of the CANONICAL full-release ship gate
+    reg_path = os.path.join(root, "scripts", "gate-registry.json")
+    try:
+        reg = json.load(open(reg_path, encoding="utf-8"))
+    except Exception as e:
+        fail("cannot read scripts/gate-registry.json: %s" % e)
+    if led.get("gate_registry") != reg.get("gate_registry"):
+        fail("ledger gate_registry %r != registry %r" % (led.get("gate_registry"), reg.get("gate_registry")))
+    if led.get("release_profile") != "full-release":
+        fail("real-release requires a full-release ledger; got release_profile=%r" % led.get("release_profile"))
+    led_gates = led.get("gates", [])
+    if led.get("gate_count") != len(led_gates):
+        fail("ledger gate_count %r != len(gates) %d" % (led.get("gate_count"), len(led_gates)))
+    expected = set(reg["profiles"]["full-release"]["required_gate_ids"])
+    got = set(g.get("id") for g in led_gates)
+    if expected != got:
+        fail("ledger gate set != registry full-release: missing=%s extra=%s"
+             % (sorted(expected-got), sorted(got-expected)))
+    for g in led_gates:
+        if g.get("status") != "pass":
+            fail("real-release requires every gate to pass; %s status=%r" % (g.get("id"), g.get("status")))
+        if g.get("criticality") != "required":
+            fail("real-release requires every gate criticality=required; %s=%r" % (g.get("id"), g.get("criticality")))
+    if led.get("registry_consistent") is False:
+        fail("ledger marked registry_consistent=false")
     attestation_status = "release-attestation"
     must_not_publish = False
 elif profile == "local-dry-run":
@@ -78,7 +105,8 @@ gates = []
 for g in led.get("gates", []):
     gates.append({
         "id": g.get("id"), "name": g.get("name"), "command": g.get("command"),
-        "status": g.get("status"), "duration_ms": g.get("duration_ms"),
+        "status": g.get("status"), "exit_code": g.get("exit_code"),
+        "duration_ms": g.get("duration_ms"), "timestamp_utc": g.get("timestamp_utc"),
         "criticality": g.get("criticality", "required"),
         "stdout_log": g.get("stdout_log"), "stdout_sha256": g.get("stdout_sha256"),
         "stderr_log": g.get("stderr_log"), "stderr_sha256": g.get("stderr_sha256"),
@@ -114,6 +142,7 @@ sidecar = {
     "must_not_publish": must_not_publish,
     "gate_registry": led.get("gate_registry"),
     "required_gates_passed": led.get("required_gates_passed"),
+    "gate_count": led.get("gate_count"),
     "timestamp_utc": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     "generation_context": gen_ctx,
     "git_commit": git_commit,

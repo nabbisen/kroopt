@@ -5,6 +5,36 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.121.1] — Stage B release-readiness hardening (gate exit-code + canonical-ledger checks) — 2026-06-30
+
+Closes the two release-readiness blockers from the 0.121.0 Stage B review, plus the profile-consistency and
+label-drift hardenings, before Stage C. No library/proof changes; theorem count unchanged (109). Gate set
+remains 37 (full-release) / 33 (pr).
+
+- **Blocker 1 — gate pass-detection now requires exit code 0.** `scripts/gate.sh` `passed()` requires
+  `exit_code == 0` for every kind (`ok`/`fuzz`/`san`/`interop` previously matched only on success text); a
+  nonzero gate can no longer be recorded `pass`. Added `gate.sh --selftest-passdetect` proving exit1+success-
+  text → fail for each kind.
+- **Blocker 2 — real-release sidecar requires the canonical full-release ledger.** `scripts/gen-sidecar.sh
+  --profile real-release` now validates the ledger against a new single source of truth
+  `scripts/gate-registry.json`: `gate_registry`, `release_profile == full-release`, `gate_count == len(gates)`,
+  exact required gate-ID set, and every gate `status == pass` / `criticality == required`. `gate.sh` also
+  self-checks that its emitted gate set matches the registry (`registry_consistent` in the ledger; the run
+  fails on drift).
+- **check-provenance hardening.** Enforces profile-metadata consistency in all modes (`local-dry-run` ⟹
+  `must_not_publish=true` + `local-dry-run-not-an-attestation`; `real-release` ⟹ `must_not_publish=false` +
+  `release-attestation`) and a canonical `kroopt-<version>.tar.gz` archive name. `--require-release` now also
+  checks `attestation_status`, `required_gates_passed`, `gate_registry`, and the full canonical gate set
+  (present + pass + required).
+- **Label-drift guard.** `package-release.sh --release` requires the version to be bare `X.Y.Z` and equal to
+  the top CHANGELOG heading (workflow-side tag check lands in Stage C).
+- **Tests.** `scripts/check-release-machinery.sh` regression harness (gate exit-code self-test; real-release
+  rejects pr/missing-gate/bad-registry/non-pass ledgers and accepts a well-formed one; check-provenance
+  rejects contradictory profile metadata). Run as standalone/CI steps, not in-loop gates (they depend on a
+  completed gate ledger). Per-gate `timestamp_utc` and `gate_count` now carried into the sidecar.
+
+RFC 030 §4.x updated. Stage C (`release.yml` + `RELEASES.md`) remains the next increment.
+
 ## [0.121.0] — RFC 030 Stage B: real release sidecar machinery (package + gen-sidecar + self-verify) — 2026-06-30
 
 Tooling increment (no library/proof changes; theorem count unchanged, 109). Lands the Stage B release-provenance

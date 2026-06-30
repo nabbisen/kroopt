@@ -21,11 +21,13 @@
 set -u
 
 PROFILE="full-release"
+SELFTEST=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --profile) PROFILE="${2:-}"; shift 2 ;;
     --profile=*) PROFILE="${1#*=}"; shift ;;
-    -h|--help) echo "usage: gate.sh [--profile full-release|pr]"; exit 0 ;;
+    --selftest-passdetect) SELFTEST=1; shift ;;
+    -h|--help) echo "usage: gate.sh [--profile full-release|pr] [--selftest-passdetect]"; exit 0 ;;
     *) echo "gate.sh: unknown arg '$1'" >&2; exit 2 ;;
   esac
 done
@@ -34,6 +36,42 @@ case "$PROFILE" in full-release|pr) ;; *) echo "gate.sh: unknown profile '$PROFI
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 GATE_REGISTRY="kroopt-gate/v1"
+
+# --- pass detection: exit code is REQUIRED; success markers are additional, never sufficient ----
+passed() { # kind exit_code logfile
+  k="$1"; ec="$2"; log="$3"
+  case "$k" in
+    build)   [ "$ec" -eq 0 ] ;;
+    suite)   [ "$ec" -eq 0 ] && ! grep -qE 'FAILED|FAIL ' "$log" ;;
+    ok)      [ "$ec" -eq 0 ] && grep -qE '^OK:' "$log" ;;
+    fuzz)    [ "$ec" -eq 0 ] && grep -q 'no invariant violations' "$log" ;;
+    san)     [ "$ec" -eq 0 ] && grep -qiE 'ALL sanitizer.*passed|sanitizer.*clean' "$log" ;;
+    interop) [ "$ec" -eq 0 ] && grep -qiE 'ALL .*passed' "$log" ;;
+    *)       [ "$ec" -eq 0 ] ;;
+  esac
+}
+
+# Self-test: a nonzero exit must NEVER be recorded as pass, even with the success marker present.
+if [ "$SELFTEST" = "1" ]; then
+  tmp="$(mktemp)"; fails=0
+  chk() { # desc kind ec text want(pass|fail)
+    printf '%s\n' "$4" > "$tmp"
+    if passed "$2" "$3" "$tmp"; then got=pass; else got=fail; fi
+    [ "$got" = "$5" ] || { echo "selftest FAIL: $1 (got $got, want $5)"; fails=1; }
+  }
+  chk "ok ec=1+marker"      ok      1 "OK: all good"                fail
+  chk "ok ec=0+marker"      ok      0 "OK: all good"                pass
+  chk "fuzz ec=1+marker"    fuzz    1 "no invariant violations"     fail
+  chk "fuzz ec=0+marker"    fuzz    0 "no invariant violations"     pass
+  chk "san ec=1+marker"     san     1 "ALL sanitizer checks passed" fail
+  chk "san ec=0+marker"     san     0 "ALL sanitizer checks passed" pass
+  chk "interop ec=1+marker" interop 1 "ALL interop passed"          fail
+  chk "interop ec=0+marker" interop 0 "ALL interop passed"          pass
+  rm -f "$tmp"
+  [ "$fails" = "0" ] && { echo "OK: gate pass-detection self-test passed (exit code required)"; exit 0; }
+  exit 1
+fi
+
 OUT="$ROOT/gate-out"
 LOGS="$OUT/logs"
 rm -rf "$OUT"; mkdir -p "$LOGS"
@@ -64,19 +102,7 @@ if [ "$PROFILE" = "full-release" ]; then
   emit interop:record interop "record-layer interop (Record13 vs Python cryptography)" "bash scripts/record-interop.sh"
 fi
 
-# --- pass detection ---------------------------------------------------------------------
-passed() { # kind exit_code logfile
-  k="$1"; ec="$2"; log="$3"
-  case "$k" in
-    build)   [ "$ec" -eq 0 ] ;;
-    suite)   [ "$ec" -eq 0 ] && ! grep -qE 'FAILED|FAIL ' "$log" ;;
-    ok)      grep -qE '^OK:' "$log" ;;
-    fuzz)    grep -q 'no invariant violations' "$log" ;;
-    san)     grep -qiE 'ALL sanitizer.*passed|sanitizer.*clean' "$log" ;;
-    interop) grep -qiE 'ALL .*passed' "$log" ;;
-    *)       [ "$ec" -eq 0 ] ;;
-  esac
-}
+# --- pass detection: see exit-code-required passed() defined near the top --------------
 
 # --- run gates (no pipe into the loop, so state persists) -------------------------------
 ALLPASS=true
@@ -143,16 +169,36 @@ with open(results) as f:
         })
 
 policy_scripts = ["scripts/gate.sh","scripts/check-axioms.sh","scripts/check-deps.sh",
-                  "scripts/check-hygiene.sh","scripts/check-hacl-provenance.sh",
+                  "scripts/check-hygiene.sh","scripts/check-hacl-provenance.sh","scripts/check-release-machinery.sh",
                   "scripts/sanitizer-check.sh","scripts/tls-interop.sh",
                   "scripts/ed25519-interop.sh","scripts/record-interop.sh"]
 gate_policy = {os.path.basename(s).replace("-","_").replace(".sh","")+"_sha256": sh(os.path.join(root,s))
                for s in policy_scripts if sh(os.path.join(root,s))}
 
+# Registry consistency: the gates that actually ran must equal the declared set for this profile.
+# This keeps scripts/gate-registry.json (the single source consumed by gen-sidecar/check-provenance)
+# from silently drifting away from what gate.sh emits.
+registry_ok, registry_msg = True, ""
+prof = os.environ["KROOPT_PROFILE"]
+try:
+    reg = json.load(open(os.path.join(root, "scripts", "gate-registry.json")))
+    if reg.get("gate_registry") != os.environ["KROOPT_REGISTRY"]:
+        registry_ok, registry_msg = False, "gate-registry.json gate_registry != %s" % os.environ["KROOPT_REGISTRY"]
+    else:
+        exp = set(reg["profiles"][prof]["required_gate_ids"])
+        got = set(g["id"] for g in gates)
+        if exp != got:
+            registry_ok = False
+            registry_msg = "gate set != registry for %s: missing=%s extra=%s" % (
+                prof, sorted(exp-got), sorted(got-exp))
+except Exception as e:
+    registry_ok, registry_msg = False, "cannot read scripts/gate-registry.json: %s" % e
+
 ledger = {
     "gate_registry": os.environ["KROOPT_REGISTRY"],
     "release_profile": os.environ["KROOPT_PROFILE"],
     "required_gates_passed": allpass,
+    "registry_consistent": registry_ok,
     "timestamp_utc": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     "generation_context": gen_ctx,
     "git_commit": commit, "git_ref": ref, "git_dirty": dirty,
@@ -189,9 +235,13 @@ lines += ["","Per-gate stdout/stderr hashes are recorded in `gate-ledger.json`. 
           "`release-verification.json` only on a real tagged release.",""]
 open(os.path.join(out,"GATE-RUN.md"),"w").write("\n".join(lines))
 print(f"\ngate-ledger.json + GATE-RUN.md written to {out}/ ({npass}/{len(gates)} pass, profile={ledger['release_profile']})")
+if not registry_ok:
+    print("GATE: registry consistency FAIL: " + registry_msg)
+    sys.exit(7)
 PY
+PYRC=$?
 
-if [ "$ALLPASS" = "true" ]; then
+if [ "$ALLPASS" = "true" ] && [ "$PYRC" = "0" ]; then
   echo "GATE: PASS ($N gates, profile=$PROFILE)"; exit 0
 else
   echo "GATE: FAIL (profile=$PROFILE) — see $OUT/gate-ledger.json"; exit 1

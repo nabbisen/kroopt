@@ -56,6 +56,25 @@ s = json.loads(raw)
 if s.get("manifest_schema") != 1: fail("manifest_schema != 1")
 if s.get("version") != version: fail("version mismatch: sidecar %r != %r" % (s.get("version"), version))
 
+# 1b) profile consistency — reject contradictory profile metadata even without --require-release
+prof = s.get("release_profile")
+mnp = s.get("must_not_publish")
+ast = s.get("attestation_status")
+if prof == "local-dry-run":
+    if mnp is not True: fail("local-dry-run must imply must_not_publish=true (got %r)" % mnp)
+    if ast != "local-dry-run-not-an-attestation":
+        fail("local-dry-run must imply attestation_status=local-dry-run-not-an-attestation (got %r)" % ast)
+elif prof == "real-release":
+    if mnp is not False: fail("real-release must imply must_not_publish=false (got %r)" % mnp)
+    if ast != "release-attestation":
+        fail("real-release must imply attestation_status=release-attestation (got %r)" % ast)
+else:
+    fail("unknown release_profile: %r" % prof)
+
+# 1c) source_archive name must be canonical kroopt-<version>.tar.gz
+if s.get("source_archive", {}).get("name") != ("kroopt-%s.tar.gz" % version):
+    fail("source_archive.name not canonical kroopt-%s.tar.gz" % version)
+
 # 2) source archive: name / size / sha256
 sa = s.get("source_archive", {})
 if sa.get("name") != os.path.basename(tarball): fail("source_archive.name mismatch")
@@ -125,12 +144,34 @@ profile = s.get("release_profile")
 if require_release:
     if profile != "real-release": fail("--require-release: release_profile=%r (not real-release)" % profile)
     if s.get("must_not_publish") is not False: fail("--require-release: must_not_publish must be false")
+    if s.get("attestation_status") != "release-attestation":
+        fail("--require-release: attestation_status must be release-attestation")
+    if s.get("required_gates_passed") is not True:
+        fail("--require-release: required_gates_passed must be true")
     gc = s.get("git_commit")
     if not (isinstance(gc,str) and len(gc)==40 and all(c in HEX for c in gc)):
         fail("--require-release: git_commit not a real 40-hex commit (%r)" % gc)
     if s.get("git_dirty") not in (False,"false"): fail("--require-release: git_dirty not clean")
-    print("OK: sidecar verified AND publishable (real-release).")
+    # the sidecar's gates must be exactly the canonical full-release set, all pass, all required
+    try:
+        reg = json.load(open(os.path.join(root,"scripts","gate-registry.json"), encoding="utf-8"))
+    except Exception as e:
+        fail("--require-release: cannot read gate-registry.json: %s" % e)
+    if s.get("gate_registry") != reg.get("gate_registry"):
+        fail("--require-release: gate_registry %r != %r" % (s.get("gate_registry"), reg.get("gate_registry")))
+    sgates = s.get("gates", [])
+    if s.get("gate_count") not in (None, len(sgates)):
+        fail("--require-release: gate_count %r != len(gates) %d" % (s.get("gate_count"), len(sgates)))
+    expected = set(reg["profiles"]["full-release"]["required_gate_ids"])
+    got = set(g.get("id") for g in sgates)
+    if expected != got:
+        fail("--require-release: gate set != registry full-release: missing=%s extra=%s"
+             % (sorted(expected-got), sorted(got-expected)))
+    for g in sgates:
+        if g.get("status") != "pass": fail("--require-release: gate %s status=%r" % (g.get("id"), g.get("status")))
+        if g.get("criticality") != "required": fail("--require-release: gate %s criticality=%r" % (g.get("id"), g.get("criticality")))
+    print("OK: sidecar verified AND publishable (real-release; %d canonical gates, all pass)." % len(sgates))
 else:
     note = "" if profile=="real-release" else "  [%s — not publishable]" % profile
-    print("OK: sidecar internally consistent (all hashes match, HACL anchored, no stubs/forbidden paths).%s" % note)
+    print("OK: sidecar internally consistent (all hashes match, HACL anchored, profile consistent, no stubs/forbidden paths).%s" % note)
 PY
