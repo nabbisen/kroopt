@@ -54,7 +54,7 @@ within that audited set.
 > `hacl-star` OCaml package release **`ocaml-v0.4.5`** (`hacl-star.0.4.5.tar.gz`, sha256
 > `47bf253f…05e174`, corroborated by `ocaml/opam-repository`). 166 upstream files match, `local_modifications: []`,
 > `source_tree_sha256 ff82d9a7…daf1cd`. The anchor is recorded in
-> [`Kroopt/Native/hacl-provenance/HACL-PROVENANCE.json`](../../../Kroopt/Native/hacl-provenance/VENDOR.md)
+> [`Kroopt/Native/hacl-provenance/HACL-PROVENANCE.json`](../../../Kroopt/Native/hacl-provenance/HACL-PROVENANCE.json) (see [VENDOR.md](../../../Kroopt/Native/hacl-provenance/VENDOR.md))
 > and re-checked **every build** by the offline `scripts/check-hacl-provenance.sh` gate (tree == manifest),
 > with on-demand online re-verification (manifest == upstream) via `scripts/verify-hacl-upstream.sh`.
 > **What this means precisely:** *proven by kroopt* — vendored bytes are byte-identical to the named

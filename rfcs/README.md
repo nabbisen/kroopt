@@ -63,7 +63,6 @@ control), then 017–030 (cross-cutting security, lifecycle, and release governa
 | 035 | [Browser-Grade Crypto Surface](proposed/035-browser-grade-crypto-surface.md) | Deferred — AES-GCM/P-256/ECDSA/RSA + cert-ecosystem story only after M36/M37/M38 green |
 | 037 | [Native FFI Safety, Secret Arena, and Resource-Budget Enforcement](proposed/037-native-safety-and-budget-enforcement.md) | FFI length contracts (all `uint32_t` params); native/classified secret arena; budget charging in the core; record-size guards; sanitizers (M37) |
 | 040 | [Native Traffic-Secret Arena and the IO Production Interpreter](proposed/040-native-traffic-secret-arena.md) | **Blocked on RFC 031.** Stable/v1 gate — migrate connection traffic secrets onto the C-owned zeroizing arena via a two-interpreter (pure model + IO production) architecture; records the D-now/A-later decision |
-| 043 | [HACL*/EverCrypt Vendoring and Provenance Discipline](proposed/043-hacl-evercrypt-vendoring-and-provenance.md) | Architect ratification + first exercise of the bump procedure. Anchor + offline/online gates shipped in 0.120.0 |
 
 ## Done
 
@@ -72,6 +71,7 @@ milestone where the work substantively landed (see CHANGELOG/ROADMAP for detail)
 
 | ID | Title | Shipped in |
 |----|-------|------------|
+| 043 | [HACL*/EverCrypt Vendoring and Provenance Discipline](done/043-hacl-evercrypt-vendoring-and-provenance.md) | Implemented (0.120.0–0.120.2) — byte-level anchor of the vendored tree to the named upstream `ocaml-v0.4.5` artifact (166 files, 0 mods); per-file manifest outside the hash-covered tree; offline `check-hacl-provenance.sh` gate (tree==manifest) in `gate.sh` + online `verify-hacl-upstream.sh` (manifest==upstream); trust-matrix restored to anchored-inherited. First upstream bump exercises §10, not a done-gate |
 | 041 | [Fatal-alert wire transmission](done/041-fatal-alert-wire-transmission.md) | Implemented (0.111–0.114.0-dev) — core `writeAlert` action + `AlertDescription.toByte` round-trip proof; plaintext (initial, live-observed) + sealed (handshake/application) fatal alerts; dual `alertsClassified`/`alertsSent`; record-path `recordFailAlert` wired (0.113); doc/comment closeout (0.114) |
 | 000 | [RFC lifecycle policy](done/000-rfc-lifecycle-policy.md) | Implemented |
 | 039 | [Named-Group Policy and Selection Enforcement](done/039-named-group-policy-and-enforcement.md) | Implemented (0.81.0-dev) |

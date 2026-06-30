@@ -1,7 +1,7 @@
 # RFC 043 — HACL\*/EverCrypt Vendoring and Provenance Discipline
 
 **Project.** kroopt  
-**Status.** Proposed  
+**Status.** Implemented (0.120.0 anchor mechanism; RFC 0.120.1; ratified after review cleanup 0.120.2)  
 **Type.** Cross-cutting policy RFC (external-dependency trust discipline)  
 **Depends on.** RFC 008 (crypto-provider capability and FFI contract), RFC 009 (HACL\* shim/KAT/sanitizer)  
 **Relates to.** RFC 030 (release runbook / provenance sidecar), RFC 034 (provider-capability honesty)  
@@ -162,8 +162,11 @@ manifest is missing, carries stub/placeholder values, or disagrees with the reco
 The anchor mechanism shipped in **0.120.0**: `HACL-PROVENANCE.json` + `VENDOR.md`, the offline
 `check-hacl-provenance.sh` gate wired into `gate.sh` (both profiles; 37 gates in `full-release`), the online
 `verify-hacl-upstream.sh` re-verification, and the trust-matrix/`third-party.md`/`proof-assumptions.md`
-restoration to anchored wording. This RFC records the design and governs future vendoring; what remains before
-`done/` is architect ratification and first exercise of the bump procedure (§10) on a future upstream change.
+restoration to anchored wording. The RFC document shipped in 0.120.1; review-cleanup (anchor-metadata schema
+checks in the offline gate, doc-link fixes) shipped in 0.120.2. This RFC is therefore Implemented: the policy
+is adopted and enforced. The first future upstream bump will *exercise* the §10 procedure and may produce
+follow-up amendments, but is **not** a prerequisite for ratifying the policy — it is future validation
+evidence, not a done-gate.
 
 ## 16. Open questions
 

@@ -5,6 +5,29 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.120.2] — HACL\* provenance review cleanup + RFC 043 ratified to done/ — 2026-06-30
+
+Review-cleanup increment for the HACL\*/EverCrypt provenance discipline; no library/proof changes (theorem
+count unchanged, 109). Addresses the 0.120.1 review's required fixes and ratifies RFC 043.
+
+- **Offline gate hardening** (`scripts/check-hacl-provenance.sh`): added anchor-metadata schema validation so
+  malformed manifest fields fail offline before Stage B's sidecar generator consumes them —
+  `provenance_status == "external-upstream-vendored"`, non-empty `upstream_repo_url` (hacl-star) /
+  `upstream_release_tag` / `upstream_artifact_name` / `upstream_artifact_url`, 64-lowercase-hex
+  `upstream_artifact_sha256` and `source_tree_sha256`, non-empty per-entry `upstream_path`, duplicate
+  `upstream_path` rejection, `path_mapping` present, and `excluded_metadata_files` a list of relative paths.
+  Verified: clean tree still passes; bad `provenance_status` and non-hex artifact sha now fail.
+- **Doc-link fixes**: `docs/src/verification/trust-matrix.md` and `docs/src/crypto/third-party.md` — the
+  anchor link displayed `HACL-PROVENANCE.json` but pointed to `VENDOR.md`; now points to
+  `HACL-PROVENANCE.json` with a second link to `VENDOR.md`.
+- **RFC 043 ratified → `rfcs/done/`**: Status set to Implemented (0.120.0 mechanism; RFC 0.120.1; ratified
+  0.120.2); §15 reworded so the first upstream bump is future validation evidence, not a done-gate; README
+  index moved from Proposed to Done.
+
+Unblocks RFC 030 Stage B (real sidecar), which sources HACL\* fields from `HACL-PROVENANCE.json` and whose
+self-verifier will recheck the provenance manifest. The kroopt-side `LICENSE` relocation and a
+`gen-hacl-provenance` script remain tracked as non-blocking follow-ups (RFC 043 §16 / first-bump prep).
+
 ## [0.120.1] — RFC 043: HACL\*/EverCrypt vendoring & provenance discipline (proposed) — 2026-06-30
 
 Documentation/RFC increment (no library / proof / tooling changes). Adds the dedicated RFC governing the

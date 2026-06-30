@@ -56,13 +56,41 @@ def sha256_file(p):
         for c in iter(lambda: f.read(65536), b""): h.update(c)
     return h.hexdigest()
 
+# 0) anchor-metadata schema sanity — Stage B's sidecar generator consumes this manifest offline,
+#    so malformed anchor fields must fail here, not just at online re-verify.
+if m.get("provenance_status") != "external-upstream-vendored":
+    fail("provenance_status must be 'external-upstream-vendored', got %r" % m.get("provenance_status"))
+repo = m.get("upstream_repo_url")
+if not (isinstance(repo, str) and repo.startswith("https://github.com/hacl-star/hacl-star")):
+    fail("upstream_repo_url missing or unexpected: %r" % repo)
+for k in ("upstream_release_tag", "upstream_artifact_name", "upstream_artifact_url"):
+    v = m.get(k)
+    if not (isinstance(v, str) and v.strip()):
+        fail("%s missing or empty" % k)
+if not is_hex64(m.get("upstream_artifact_sha256", "")):
+    fail("upstream_artifact_sha256 not 64 lowercase hex")
+if not is_hex64(m.get("source_tree_sha256", "")):
+    fail("source_tree_sha256 not 64 lowercase hex")
+pm = m.get("path_mapping")
+if not (isinstance(pm, dict) and pm):
+    fail("path_mapping missing or empty")
+exl = m.get("excluded_metadata_files", [])
+if not isinstance(exl, list) or any((not isinstance(x, str)) or x.startswith("/") or x == "" for x in exl):
+    fail("excluded_metadata_files must be a list of non-empty relative paths")
+
 # 1) every manifest-listed file: well-formed, present, hash matches
 listed = {}
+seen_upstream = set()
 lines = []
 for e in files:
-    vp = e.get("vendored_path"); sh = e.get("sha256")
+    vp = e.get("vendored_path"); sh = e.get("sha256"); up = e.get("upstream_path")
     if not vp or not is_hex64(sh):
         fail("malformed manifest file entry: %r" % e)
+    if not (isinstance(up, str) and up.strip()):
+        fail("manifest file entry has empty upstream_path: %s" % vp)
+    if up in seen_upstream:
+        fail("duplicate upstream_path in manifest: %s" % up)
+    seen_upstream.add(up)
     if vp in listed:
         fail("duplicate vendored_path in manifest: %s" % vp)
     listed[vp] = sh

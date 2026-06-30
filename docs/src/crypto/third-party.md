@@ -31,7 +31,7 @@ AES-GCM/Vale/EverCrypt and P-256/RSA-PSS additions — see
 > `hacl-star.0.4.5.tar.gz` (release tag `ocaml-v0.4.5`, sha256 `47bf253f…05e174`, corroborated by
 > `ocaml/opam-repository`). 166 upstream files match with zero local modifications; the per-file record and
 > `source_tree_sha256` (`ff82d9a7…daf1cd`) live in
-> [`Kroopt/Native/hacl-provenance/HACL-PROVENANCE.json`](../../../Kroopt/Native/hacl-provenance/VENDOR.md)
+> [`Kroopt/Native/hacl-provenance/HACL-PROVENANCE.json`](../../../Kroopt/Native/hacl-provenance/HACL-PROVENANCE.json) (see [VENDOR.md](../../../Kroopt/Native/hacl-provenance/VENDOR.md))
 > and are re-checked every build by the offline `scripts/check-hacl-provenance.sh` gate (with on-demand
 > online re-verification via `scripts/verify-hacl-upstream.sh`). "Vendored verbatim" is therefore an
 > established byte-level fact for this subset, not merely an intent. The KreMLin-318b7fa8 marker sits inside
