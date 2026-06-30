@@ -143,6 +143,8 @@ provider does not weaken any proof: the core's guarantees hold for *any* provide
 provider is outside the proof boundary. Cryptographic correctness and
 constant-time behaviour of the primitives remain ASSUMED (inherited from
 HACL\*/EverCrypt), never proved here, exactly as the trust matrix states. (That
-inheritance presumes the vendored bytes *are* the upstream verified artifact; the
-byte-level provenance anchor establishing that is currently pending — see the trust
+inheritance presumes the vendored bytes *are* the upstream verified artifact; that
+byte-level identity is now anchored — byte-identical to the named `ocaml-v0.4.5`
+artifact, recorded in `Kroopt/Native/hacl-provenance/HACL-PROVENANCE.json` and
+re-checked every build by `scripts/check-hacl-provenance.sh` — see the trust
 matrix's provenance-anchor row.)

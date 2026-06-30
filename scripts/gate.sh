@@ -55,6 +55,7 @@ for s in $SUITES; do emit "suite:$s" suite "$s test suite" "lake exe kroopt-$s-t
 emit axioms   ok    "axiom audit"                 "bash scripts/check-axioms.sh"
 emit deps     ok    "dependency purity"           "bash scripts/check-deps.sh"
 emit hygiene  ok    "hygiene"                      "bash scripts/check-hygiene.sh"
+emit provenance ok  "HACL* vendored-byte provenance" "bash scripts/check-hacl-provenance.sh"
 emit fuzz     fuzz  "parser fuzz (20000)"          "lake exe kroopt-parse-fuzz 20000"
 if [ "$PROFILE" = "full-release" ]; then
   emit sanitizers     san     "ASan/UBSan sanitizer harness"            "bash scripts/sanitizer-check.sh"
@@ -142,7 +143,8 @@ with open(results) as f:
         })
 
 policy_scripts = ["scripts/gate.sh","scripts/check-axioms.sh","scripts/check-deps.sh",
-                  "scripts/check-hygiene.sh","scripts/sanitizer-check.sh","scripts/tls-interop.sh",
+                  "scripts/check-hygiene.sh","scripts/check-hacl-provenance.sh",
+                  "scripts/sanitizer-check.sh","scripts/tls-interop.sh",
                   "scripts/ed25519-interop.sh","scripts/record-interop.sh"]
 gate_policy = {os.path.basename(s).replace("-","_").replace(".sh","")+"_sha256": sh(os.path.join(root,s))
                for s in policy_scripts if sh(os.path.join(root,s))}

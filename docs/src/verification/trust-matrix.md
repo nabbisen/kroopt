@@ -48,19 +48,24 @@ within that audited set.
 
 ## Borrowed cryptography — ASSUMED (HACL\*/EverCrypt) + KAT/interop TESTED
 
-> **⚠ Byte-level provenance anchoring is PENDING (known gap).** Every row below inherits the upstream
-> Project Everest verification claim — but that inheritance holds *only if* the vendored bytes under
-> `Kroopt/Native/hacl/` provably **are** the named upstream verified artifact. That anchor does **not yet
-> exist**: there is no recorded upstream commit/release, no per-file provenance manifest, and no gate
-> verifying the tree against upstream. The KAT/interop evidence below proves the primitives *behave*
-> correctly; it does **not** establish byte identity to upstream — a functionally-correct reimplementation
-> would pass the same vectors. Until strict anchoring lands (dedicated HACL\*/EverCrypt vendoring &
-> provenance RFC), these are ASSUMED dependencies **with a known provenance gap**, not fully anchored
-> inherited-verified claims.
+> **✓ Byte-level provenance anchored.** Every row below inherits the upstream Project Everest verification
+> claim, and that inheritance is now backed by a byte-level identity anchor: the vendored bytes under
+> `Kroopt/Native/hacl/` are **byte-identical** to a named, checksum-verified upstream artifact — the
+> `hacl-star` OCaml package release **`ocaml-v0.4.5`** (`hacl-star.0.4.5.tar.gz`, sha256
+> `47bf253f…05e174`, corroborated by `ocaml/opam-repository`). 166 upstream files match, `local_modifications: []`,
+> `source_tree_sha256 ff82d9a7…daf1cd`. The anchor is recorded in
+> [`Kroopt/Native/hacl-provenance/HACL-PROVENANCE.json`](../../../Kroopt/Native/hacl-provenance/VENDOR.md)
+> and re-checked **every build** by the offline `scripts/check-hacl-provenance.sh` gate (tree == manifest),
+> with on-demand online re-verification (manifest == upstream) via `scripts/verify-hacl-upstream.sh`.
+> **What this means precisely:** *proven by kroopt* — vendored bytes are byte-identical to the named
+> `ocaml-v0.4.5` artifact subset; *inherited / ASSUMED* — upstream's verification and KaRaMeL extraction
+> claims about that artifact; *not proven by kroopt* — cryptographic correctness, secrecy, or constant-time
+> behavior. The anchor restores the legitimacy of *inheriting* the upstream claim; it does not convert it
+> into a kroopt proof.
 
 | Claim | Status | Evidence (KAT vector / suite) | Owner | Remaining gap | Release gate |
 |---|---|---|---|---|---|
-| **Vendored byte identity = named upstream verified artifact** | **ASSUMED — provenance anchor PENDING** | none yet — KAT/interop prove behavior, not identity | kroopt (vendoring discipline) | strict byte-level anchor: pinned upstream commit + per-file manifest + offline provenance gate | blocks real release sidecar (RFC 030 Stage B) |
+| **Vendored byte identity = named upstream verified artifact** | **ASSUMED-inherited, byte-identity PROVEN by gate** | `scripts/check-hacl-provenance.sh` (offline, every build) + `verify-hacl-upstream.sh` (online); manifest pins `ocaml-v0.4.5` / sha256 `47bf253f…` / tree `ff82d9a7…`, 166 files, 0 mods | kroopt (vendoring discipline) | — | met |
 | AEAD correctness (AES-128/256-GCM, ChaCha20-Poly1305) | ASSUMED + KAT TESTED | NIST GCM TC4; RFC 8439; `kroopt-hacl-test` | HACL\*/Project Everest | AES-GCM on the wire (interop) | v0.4 |
 | HKDF / HMAC correctness | ASSUMED + KAT TESTED | RFC 5869 §A.1; RFC 4231 §4.2; `kroopt-hacl-test` | HACL\* | — | met |
 | ECDHE correctness (X25519, P-256) | ASSUMED + KAT/interop TESTED | RFC 7748 §6.1; NIST CAVP KAS; `kroopt-hacl-test` + interop | HACL\* | — | met |
@@ -85,4 +90,4 @@ tickets, HRR, KeyUpdate, mTLS, and the client role are all OUTSCOPE for the cons
 see [deferred scope](deferred-scope.md). The honest one-line summary kroopt always states: **it proves
 the protocol holds together; it trusts HACL\*/EverCrypt that the cryptography is sound; it does not
 prove the cryptography — and the byte-level provenance anchor binding the vendored tree to that upstream
-verified artifact is currently pending (see the provenance-anchor row above).**
+verified artifact (`ocaml-v0.4.5`) is recorded and re-checked every build (see the provenance-anchor row above).**

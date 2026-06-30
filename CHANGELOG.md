@@ -5,6 +5,43 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.120.0] — HACL\*/EverCrypt byte-level provenance anchor + offline gate; trust matrix restored to anchored-inherited — 2026-06-30
+
+Lands the strict provenance anchor for the vendored HACL\*/EverCrypt sources and restores the trust-matrix
+HACL\* rows from "provenance PENDING" (0.119.1) to a clean anchored-inherited posture. Resolves the
+trust-anchoring blocker: kroopt's inherited-verified crypto claim is now backed by a recorded, gate-checked
+byte-level identity to a named upstream artifact.
+
+Identify-and-verify result (accepted): the 166 vendored upstream files are **byte-identical** to the
+`hacl-star` OCaml package release `ocaml-v0.4.5` (`hacl-star.0.4.5.tar.gz`, sha256
+`47bf253f804ec369b2fbc76c892ba89275fde17d7444d291d5eb5c179a05e174`, corroborated by `ocaml/opam-repository`);
+0 mismatches, 0 missing, `local_modifications: []`. The 167th file (`LICENSE`) is kroopt-authored metadata,
+excluded.
+
+- **Manifest (tree kept pure):** `Kroopt/Native/hacl-provenance/HACL-PROVENANCE.json` (166 per-file
+  `vendored_path → upstream_path → sha256`, artifact anchor, path mapping, `source_tree_sha256`
+  `ff82d9a7360cf04d677300a0a107d105245b454befd2c4e6b51e9ebe05daf1cd` via method `sorted-file-sha256-v1`) +
+  `Kroopt/Native/hacl-provenance/VENDOR.md`. Metadata lives outside the hash-covered source tree.
+- **Offline gate:** `scripts/check-hacl-provenance.sh` re-checks tree == manifest byte-for-byte every build
+  (all listed files present + hash-match, no unlisted/undocumented files, excluded metadata exactly as
+  declared, `local_modifications` empty, `source_tree_sha256` recomputed, no stub/placeholder sentinels). No
+  network. Wired into `scripts/gate.sh` as gate `provenance` (both `full-release` and `pr` profiles;
+  full-release 36 → 37 gates, pr 32 → 33) and added to the hashed `policy_scripts`.
+- **Online re-verification (separate, not a CI gate):** `scripts/verify-hacl-upstream.sh` re-establishes
+  manifest == upstream on demand — downloads the pinned artifact, confirms its sha256, byte-compares every
+  manifest file against its recorded `upstream_path`.
+- **Trust-matrix / docs restored to anchored:** `docs/src/verification/trust-matrix.md` (anchored caveat +
+  row + the proven/inherited/not-proven precision), `docs/src/crypto/third-party.md`, and
+  `docs/src/verification/proof-assumptions.md` flipped from "pending" to the recorded anchor.
+
+What this establishes precisely: *proven by kroopt* — vendored bytes are byte-identical to the named
+`ocaml-v0.4.5` artifact subset; *inherited / ASSUMED* — upstream Project Everest verification + KaRaMeL
+extraction claims; *not proven by kroopt* — cryptographic correctness, secrecy, or constant-time behavior.
+
+No library/proof changes; theorem count unchanged (109). Unblocks RFC 030 Stage B's real sidecar (which will
+read the HACL\* dependency fields from the manifest). A dedicated HACL\*/EverCrypt vendoring & provenance RFC
+(bump procedure, pin policy, zero-modification rule) follows.
+
 ## [0.119.1] — Trust-matrix honesty: HACL\*/EverCrypt byte-level provenance anchoring marked PENDING — 2026-06-30
 
 Documentation-only honesty correction (no library / proof / tooling changes). The trust matrix and vendored-crypto

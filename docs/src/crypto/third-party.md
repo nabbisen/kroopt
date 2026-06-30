@@ -26,15 +26,16 @@ AES-GCM/Vale/EverCrypt and P-256/RSA-PSS additions — see
 
 ### Cryptographic provenance
 
-> **⚠ Provenance status — byte-level anchor pending.** The "version 0.4.5" attribution above comes from an
-> embedded comment in the vendored sources (and a "KreMLin version 318b7fa8" marker), i.e. a *lead*, not a
-> verified anchor: no upstream commit/release is recorded, no per-file manifest ties these bytes to a named
-> upstream artifact, and no gate checks the tree against upstream. "Vendored verbatim" is therefore the
-> *intent*, not yet an established byte-level fact. Strict anchoring — identify-and-verify against the
-> upstream dist (or re-vendor from a pinned artifact), a per-file provenance manifest, and an offline
-> provenance gate — is tracked as a known gap in the [trust matrix](../verification/trust-matrix.md) and a
-> dedicated HACL\*/EverCrypt vendoring & provenance RFC. Until it lands, treat the 0.4.5 attribution as
-> indicative.
+> **✓ Provenance status — byte-level anchor recorded.** The "version 0.4.5" attribution is now backed by a
+> byte-level identity anchor: the vendored sources are byte-identical to the named upstream artifact
+> `hacl-star.0.4.5.tar.gz` (release tag `ocaml-v0.4.5`, sha256 `47bf253f…05e174`, corroborated by
+> `ocaml/opam-repository`). 166 upstream files match with zero local modifications; the per-file record and
+> `source_tree_sha256` (`ff82d9a7…daf1cd`) live in
+> [`Kroopt/Native/hacl-provenance/HACL-PROVENANCE.json`](../../../Kroopt/Native/hacl-provenance/VENDOR.md)
+> and are re-checked every build by the offline `scripts/check-hacl-provenance.sh` gate (with on-demand
+> online re-verification via `scripts/verify-hacl-upstream.sh`). "Vendored verbatim" is therefore an
+> established byte-level fact for this subset, not merely an intent. The KreMLin-318b7fa8 marker sits inside
+> a header that itself byte-matched upstream, so it is corroborated by the match.
 
 What each primitive is, where it comes from, and how it is exercised. "Advertised" means the real
 provider lists it in `realCapabilities`, so a config may select it; "bound only" means the FFI and
@@ -87,8 +88,8 @@ and to drop the earlier stale "no vale/EverCrypt" note.
 Both are permissive and compatible with kroopt's Apache-2.0. The files are
 redistributed **verbatim** with their per-file license headers retained; kroopt
 introduces no modifications to the vendored algorithm sources (zero-modification is
-the vendoring rule — though byte-level identity to a pinned upstream artifact is
-itself pending the strict anchor noted above). The MIT requirement — that the copyright and
+the vendoring rule, and byte-level identity to the pinned upstream `ocaml-v0.4.5`
+artifact is recorded and gate-checked — see the provenance note above). The MIT requirement — that the copyright and
 permission notice travel with the code — is met by those intact headers, and the
 full texts are also reproduced in `Kroopt/Native/hacl/LICENSE`. A repository-root
 [`THIRD-PARTY-NOTICES.md`](https://github.com/nabbisen/kroopt/blob/main/THIRD-PARTY-NOTICES.md)
