@@ -16,7 +16,15 @@ on:
   workflow_dispatch: {}
 
 permissions:
-  contents: write   # create the GitHub release + upload assets (tag path only)
+  contents: write   # create the GitHub release + upload assets (tag path only).
+  # Future hardening (RFC 030, non-blocking): split dry-run and publish into separate jobs so only the
+  # publish job holds contents: write; the dry-run path needs no write permission.
+
+# Immutability defense-in-depth: serialize workflows per ref so two runs can't race to publish the same
+# tag (the `gh release view` existence check below is the primary guard).
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   release:

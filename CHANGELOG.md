@@ -5,6 +5,50 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.123.0] — RFC 040 internal-design kickoff ratified (sync-first / staged / proved-core+tested-lift) — 2026-06-30
+
+Lands the architect-ratified RFC 040 design branch and the detailed internal design; no library/proof
+changes (theorem count unchanged, 109). RFC 040 stays Proposed (design in progress) — implementation
+(Slice 1) is the next increment.
+
+- **RFC 040 unblocked + label fixed**: Status corrected from "blocked on RFC 031 (not started)" to "design in
+  progress" — preconditions met (RFC 031 done; RFC 037's native zeroizing arena exists and is sanitizer-clean;
+  RFC 013 done). Clarified RFC 037 does not block 040; 040 is the remaining traffic-secret migration branch of
+  that broader native-secret arc.
+- **Branch ratified (architect review 2026-06-30)**: sync-first (synchronous FFI; no async sealing); staged
+  native crypto surface; proved-shared-core + tested IO lift.
+- **§4.4 / §10 softened**: RFC 040 designs the async-ready handle defenses (generation-bearing handles,
+  stale-fails-closed, terminal invalidation, no released-slot aliasing) but does **not** exercise a live async
+  path and claims **no** live async correspondence. The live async result path, its negative-space tests, and
+  the jemmet egress-accounting contract change move to a follow-up RFC (likely 044). Sync-first preserves the
+  jemmet `connOwnedPlaintext`=0 commitment (0.114.0-dev §6) exactly.
+- **New §11 Non-goals + §12 staged migration plan + §12.1 promotion gate**: per-slice trust posture; the trust
+  matrix stays BEST-EFFORT until every connection-lifetime secret class is native-owned end-to-end.
+- **Companion handoff** `rfcs/handoffs/040-native-traffic-secret-arena/` (RFC 000 convention; status inherited):
+  `implementation-handoff.md` (the 14 internal-design sections, incl. the six Slice 1 adjustments),
+  `task-breakdown-pr-plan.md` (Slices 1–3), `acceptance-qa-checklist.md` (Slice 1 criteria + honesty guard +
+  promotion gate). README index updated.
+
+## [0.122.1] — RFC 030 ratified to done/; release-workflow concurrency + first-tag honesty note — 2026-06-30
+
+Ratification + minor non-blocking hardening from the 0.122.0 Stage C review; no library/proof changes
+(theorem count unchanged, 109).
+
+- **RFC 030 → `rfcs/done/`**: Status set to Implemented (Stage A 0.119.0; Stage B 0.121.0–0.121.1; Stage C
+  0.122.0; ratified 0.122.1). README index moved Proposed → Done. The release-runbook machinery is in-repo and
+  exercised end-to-end up to self-verification; the GitHub publish step is first exercised by the next real
+  tag (operational validation, not a design gap).
+- **`.github/workflows/release.yml`**: added `concurrency: group: release-${{ github.ref }}`,
+  `cancel-in-progress: false` so two runs can't race to publish the same tag (defense-in-depth alongside the
+  `gh release view` existence check). Noted the future dry-run/publish permission split as a tracked
+  non-blocking hardening.
+- **`RELEASES.md`**: added an operational-status note — the publish step is first exercised by the next real
+  `vX.Y.Z` tag and any environment-specific publishing issue is a workflow follow-up, not a provenance-design
+  gap.
+
+RFC 030 (release runbook) and RFC 043 (HACL\* provenance) are both done; the RFC 030 A→B→C provenance
+machinery is complete.
+
 ## [0.122.0] — RFC 030 Stage C: release workflow + RELEASES.md (publish pipeline) — 2026-06-30
 
 Tooling increment (no library/proof changes; theorem count unchanged, 109). Completes the RFC 030 release

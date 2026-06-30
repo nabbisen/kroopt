@@ -60,6 +60,14 @@ attestation posture. Or verify the headline hashes by hand:
 sha256sum dist/kroopt-X.Y.Z.tar.gz   # must equal source_archive.sha256 in the sidecar
 ```
 
+## Operational status
+
+The release workflow is authored and dry-run verified (the non-tag `workflow_dispatch` path and the local
+script chain are exercised). The **publish step (`gh release create`) is first exercised by the next real
+`vX.Y.Z` tag.** Any environment-specific GitHub publishing issue found there is handled as a release-workflow
+follow-up, not as a provenance-design gap — the gate, packaging, sidecar generation, and self-verification
+that produce the evidence are all already exercised.
+
 ## Versioning
 
 Versions are bare `X.Y.Z` (RFC 030; SemVer-style, `0.` major conveying pre-1.0 instability). The tag is
