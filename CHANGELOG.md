@@ -5,6 +5,17 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.124.1] — sidecar `git_ref` captures the tag on a tagged release — 2026-06-30
+
+Cosmetic provenance fix. No library / proof / runtime change (theorem count unchanged, 109; gate 37/37).
+
+- **`gate.sh` records the tag ref in `git_ref` on a tagged release.** A tag checkout is a detached HEAD, where
+  `git rev-parse --abbrev-ref HEAD` reads `HEAD` — which is why the 0.124.0 sidecar showed `git_ref: HEAD`.
+  The gate now prefers the tag pointing at HEAD (`git tag --points-at HEAD` → `refs/tags/X.Y.Z`), falling back
+  to `GITHUB_REF`, then the symbolic / abbrev ref. `git_commit` was always the authoritative provenance field;
+  this only makes `git_ref` human-meaningful (e.g. `refs/tags/0.124.1`). `gen-sidecar` transcribes the ledger
+  value unchanged — no sidecar-schema change, and `check-provenance` does not constrain the field.
+
 ## [0.124.0] — release tag X.Y.Z + handoff consolidation + secp256r1 handoff resolved; first real release — 2026-06-30
 
 Honesty-hygiene + structure increment ahead of kroopt's first real tagged release. No library/proof change

@@ -147,7 +147,16 @@ def git(args):
 has_git = os.path.isdir(os.path.join(root, ".git")) and bool(git(["rev-parse","--git-dir"]))
 if has_git:
     commit = git(["rev-parse","HEAD"]) or "unavailable"
-    ref = git(["rev-parse","--abbrev-ref","HEAD"]) or "unavailable"
+    # git_ref: a tag checkout is a detached HEAD, where --abbrev-ref reads "HEAD". Prefer the tag pointing
+    # at HEAD (the release case) -> refs/tags/X.Y.Z; then the CI-provided ref; then the symbolic/abbrev ref.
+    tags_at = [t for t in git(["tag","--points-at","HEAD"]).split("\n") if t]
+    if tags_at:
+        ref = "refs/tags/" + sorted(tags_at)[0]
+    else:
+        ref = os.environ.get("GITHUB_REF","").strip() \
+              or git(["symbolic-ref","HEAD"]) \
+              or git(["rev-parse","--abbrev-ref","HEAD"]) \
+              or "unavailable"
     dirty = bool(git(["status","--porcelain"]))
     gen_ctx = "git"
 else:
