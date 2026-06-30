@@ -29,6 +29,11 @@ jobs:
       - name: Run canonical gate (scripts/gate.sh, full-release profile)
         run: bash scripts/gate.sh --profile full-release
 
+      - name: Release-machinery regression tests (gate exit-code + canonical-ledger guards)
+        run: |
+          bash scripts/gate.sh --selftest-passdetect
+          bash scripts/check-release-machinery.sh
+
       - name: Upload gate ledger + per-gate logs
         if: always()                       # retain the ledger + logs even when a gate fails
         uses: actions/upload-artifact@v4

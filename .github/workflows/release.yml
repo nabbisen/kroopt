@@ -1,0 +1,123 @@
+name: release
+
+# RFC 030 Stage C. Two paths:
+#   - tag push `vX.Y.Z`  -> real release: gate -> package -> real-release sidecar -> strict self-verify
+#                           -> publish exact assets (tarball + sidecar + GATE-RUN.md). Immutable: never
+#                           re-cut a published version; no --clobber.
+#   - workflow_dispatch  -> dry run: same path up to self-verification, but a LOCAL-DRY-RUN sidecar only,
+#                           uploaded as CI artifacts (never release assets).
+#
+# NOTE: the publish step (gh release create) is not exercisable outside a real tagged CI run; it is
+# authored to spec and runs only on a `vX.Y.Z` tag. The dry-run path is the locally/CI-reviewable one.
+
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+  workflow_dispatch: {}
+
+permissions:
+  contents: write   # create the GitHub release + upload assets (tag path only)
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install elan (Lean toolchain manager)
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
+            | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Install gate dependencies (interop/sanitizer harnesses)
+        run: python3 -m pip install --break-system-packages cryptography
+
+      - name: Resolve version + label-drift guard
+        id: ver
+        run: |
+          set -eu
+          TOP=$(grep -m1 -oE '^## \[[0-9]+\.[0-9]+\.[0-9]+\]' CHANGELOG.md | tr -d '#[] ')
+          if [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
+            TAG="${GITHUB_REF_NAME}"
+            case "$TAG" in
+              v[0-9]*.[0-9]*.[0-9]*) : ;;
+              *) echo "::error::tag '$TAG' is not vX.Y.Z"; exit 1 ;;
+            esac
+            VERSION="${TAG#v}"
+            [ "$VERSION" = "$TOP" ] || { echo "::error::tag version '$VERSION' != top CHANGELOG heading '$TOP'"; exit 1; }
+            echo "is_tag=true" >> "$GITHUB_OUTPUT"
+          else
+            VERSION="$TOP"
+            echo "is_tag=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved version $VERSION (ref_type=${GITHUB_REF_TYPE:-none})"
+
+      - name: Canonical gate (full-release)
+        run: bash scripts/gate.sh --profile full-release
+
+      - name: Release-machinery regression tests
+        run: |
+          bash scripts/gate.sh --selftest-passdetect
+          bash scripts/check-release-machinery.sh
+
+      - name: Package reproducible source tarball
+        run: bash scripts/package-release.sh --release "${{ steps.ver.outputs.version }}"
+
+      # ---------- TAG path: real release sidecar, strict self-verify, publish ----------
+      - name: Generate real-release sidecar (tag only)
+        if: steps.ver.outputs.is_tag == 'true'
+        run: bash scripts/gen-sidecar.sh --profile real-release "${{ steps.ver.outputs.version }}"
+
+      - name: Strict self-verify --require-release (tag only)
+        if: steps.ver.outputs.is_tag == 'true'
+        run: bash scripts/check-provenance.sh --require-release "${{ steps.ver.outputs.version }}"
+
+      - name: Publish immutable release assets (tag only; never clobber)
+        if: steps.ver.outputs.is_tag == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          V: ${{ steps.ver.outputs.version }}
+        run: |
+          set -eu
+          cp gate-out/GATE-RUN.md "dist/kroopt-$V.GATE-RUN.md"   # ship the gate summary beside the assets
+          # Immutability (RELEASES.md): a published version is never re-cut.
+          if gh release view "v$V" >/dev/null 2>&1; then
+            echo "::error::release v$V already exists — published versions are immutable; publish a new version instead"
+            exit 1
+          fi
+          # No --clobber: gh release create fails rather than overwrite any pre-existing asset.
+          gh release create "v$V" \
+            "dist/kroopt-$V.tar.gz" \
+            "dist/kroopt-$V.release-verification.json" \
+            "dist/kroopt-$V.GATE-RUN.md" \
+            --title "kroopt v$V" \
+            --notes-file gate-out/GATE-RUN.md
+
+      # ---------- NON-TAG path: dry-run sidecar + consistency check + CI artifacts only ----------
+      - name: Generate local-dry-run sidecar (non-tag)
+        if: steps.ver.outputs.is_tag != 'true'
+        run: bash scripts/gen-sidecar.sh "${{ steps.ver.outputs.version }}"
+
+      - name: Self-verify consistency (non-tag)
+        if: steps.ver.outputs.is_tag != 'true'
+        run: bash scripts/check-provenance.sh "${{ steps.ver.outputs.version }}"
+
+      - name: Upload dry-run artifacts (non-tag; CI artifacts, NOT release assets)
+        if: steps.ver.outputs.is_tag != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-dry-run-${{ steps.ver.outputs.version }}-${{ github.run_id }}
+          path: |
+            dist/
+            gate-out/
+          retention-days: 30
+
+      - name: Always upload gate ledger + logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate-out-${{ github.run_id }}-${{ github.run_attempt }}
+          path: gate-out/
+          retention-days: 90

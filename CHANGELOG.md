@@ -5,6 +5,33 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.122.0] — RFC 030 Stage C: release workflow + RELEASES.md (publish pipeline) — 2026-06-30
+
+Tooling increment (no library/proof changes; theorem count unchanged, 109). Completes the RFC 030 release
+machinery: a tagged publish pipeline plus the immutability policy. The publish step runs only on a real
+`vX.Y.Z` CI tag and is not exercisable locally; the non-tag dry-run path is the locally/CI-reviewable one.
+
+- `.github/workflows/release.yml`: on a `vX.Y.Z` tag — checks tag == `vX.Y.Z` == top CHANGELOG heading, runs
+  `gate.sh --profile full-release` + the release-machinery regression tests, packages with
+  `package-release.sh --release`, generates a `--profile real-release` sidecar (clean-tree/real-commit/
+  canonical full-release ledger enforced), self-verifies with `check-provenance.sh --require-release`, and
+  publishes exactly `kroopt-X.Y.Z.tar.gz` + `…release-verification.json` + `…GATE-RUN.md`. Releases are
+  immutable: the workflow refuses if the tag's release already exists and never uses `--clobber`. Non-tag
+  (`workflow_dispatch`) runs emit only a `local-dry-run` sidecar uploaded as CI artifacts, never release
+  assets.
+- `RELEASES.md`: per-release assets, the immutability policy (wrong asset ⇒ new version, never replace under
+  the same version), how a release is produced, and how to verify a downloaded release
+  (`check-provenance.sh --require-release`).
+- `.github/workflows/ci.yml`: now also runs `gate.sh --selftest-passdetect` and
+  `scripts/check-release-machinery.sh` on every push/PR, so the gate exit-code and canonical-ledger guards
+  are CI-enforced.
+- `scripts/check-release-machinery.sh`: made self-contained from a clean tarball extraction — it provisions a
+  throwaway `gate-out/GATE-RUN.md` only when absent and cleans it up, so the positive-control path no longer
+  depends on a pre-existing gate ledger (0.121.1 review cleanup).
+
+RFC 030 §4.x updated (Stage C authored). RFC 030's provenance machinery (A→B→C) is now complete; publish
+itself awaits a real tagged CI run.
+
 ## [0.121.1] — Stage B release-readiness hardening (gate exit-code + canonical-ledger checks) — 2026-06-30
 
 Closes the two release-readiness blockers from the 0.121.0 Stage B review, plus the profile-consistency and

@@ -249,9 +249,16 @@ The provenance generator is staged A → B → C:
   guarded by `gate.sh --selftest-passdetect` and `scripts/check-release-machinery.sh` (CI steps). The HACL\*
   anchor it consumes landed in 0.120.0–0.120.2 (RFC 043). Demonstrated locally end-to-end against a
   `local-dry-run` sidecar; publish is not exercisable outside CI/git.
-- **Stage C — `release.yml` + `RELEASES.md` — PENDING.** Tag → gate → package → gen-sidecar → self-verify →
-  upload exact assets; non-tag runs do an artifacts dry-run. Avoids `--clobber` on published immutable
-  releases. Authored-and-reviewed only here; real publish is untestable in this environment.
+- **Stage C — `release.yml` + `RELEASES.md` — AUTHORED (0.122.0).** `.github/workflows/release.yml`: on a
+  `vX.Y.Z` tag it checks tag == `vX.Y.Z` == top CHANGELOG heading, runs `gate.sh --profile full-release` + the
+  release-machinery regression tests, packages with `package-release.sh --release`, generates the sidecar with
+  `--profile real-release`, self-verifies with `check-provenance.sh --require-release`, and publishes exactly
+  `kroopt-X.Y.Z.tar.gz` + `…release-verification.json` + `…GATE-RUN.md`. Releases are **immutable**: the
+  workflow refuses to publish if the tag's release already exists and never uses `--clobber`; a wrong
+  published asset requires a new version (`RELEASES.md`). Non-tag (`workflow_dispatch`) runs exercise the same
+  path but emit only a `local-dry-run` sidecar as CI artifacts. `ci.yml` also runs the regression tests on
+  every push/PR. The publish step itself is not exercisable outside a real tagged CI run; it is authored to
+  spec and the dry-run path is the locally/CI-reviewable one.
 
 ---
 

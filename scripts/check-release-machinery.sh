@@ -24,7 +24,24 @@ echo "[1] gate pass-detection requires exit code 0"
 if expect_ok bash scripts/gate.sh --selftest-passdetect; then pass "selftest passed"; else bad "selftest failed"; fi
 
 echo "[2] gen-sidecar --profile real-release ledger validation"
-TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
+TMP="$(mktemp -d)"
+
+# gen-sidecar reads gate-out/GATE-RUN.md from the repo root. From a clean tarball extraction that file
+# is absent (gate-out/ is gitignored + tarball-excluded), so the positive-control path would fail for an
+# unrelated reason. Provide a throwaway one only if absent, and clean it (and gate-out/, if we made it).
+MADE_GATERUN=0; MADE_GATEOUT=0
+if [ ! -f gate-out/GATE-RUN.md ]; then
+  [ -d gate-out ] || { mkdir -p gate-out; MADE_GATEOUT=1; }
+  printf '# placeholder GATE-RUN.md for release-machinery self-test\n' > gate-out/GATE-RUN.md
+  MADE_GATERUN=1
+fi
+cleanup() {
+  rm -rf "$TMP"
+  [ "$MADE_GATERUN" = "1" ] && rm -f gate-out/GATE-RUN.md
+  [ "$MADE_GATEOUT" = "1" ] && rmdir gate-out 2>/dev/null || true
+}
+trap cleanup EXIT
+
 V="9.9.9"
 : > "$TMP/kroopt-$V.tar.gz"   # dummy tarball so the existence check passes; we fail earlier on ledger
 
