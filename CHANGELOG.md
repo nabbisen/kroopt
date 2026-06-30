@@ -5,6 +5,23 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.120.1] — RFC 043: HACL\*/EverCrypt vendoring & provenance discipline (proposed) — 2026-06-30
+
+Documentation/RFC increment (no library / proof / tooling changes). Adds the dedicated RFC governing the
+external-dependency trust discipline ratified by 0.120.0, fulfilling decision D5 of the HACL\* trust-anchoring
+review.
+
+- `rfcs/proposed/043-hacl-evercrypt-vendoring-and-provenance.md`: records the strict-management principle, the
+  current anchor (`ocaml-v0.4.5`, artifact sha256, `source_tree_sha256`, 166 files, zero mods), the manifest
+  schema and tree-pure rule, the `sorted-file-sha256-v1` method spec, the zero-modification rule, the offline
+  gate + online re-verification split, the upstream-bump-as-trust-tier procedure, the pin policy, the
+  trust-matrix coupling, and the RFC 030 sidecar coupling. Implementation status notes the anchor + gates
+  shipped in 0.120.0; what remains before `done/` is architect ratification + first bump exercise.
+- `rfcs/README.md`: indexed RFC 043 under Proposed.
+
+Theorem count unchanged (109). Next: RFC 030 Stage B real sidecar, sourcing HACL\* dependency fields from the
+manifest.
+
 ## [0.120.0] — HACL\*/EverCrypt byte-level provenance anchor + offline gate; trust matrix restored to anchored-inherited — 2026-06-30
 
 Lands the strict provenance anchor for the vendored HACL\*/EverCrypt sources and restores the trust-matrix

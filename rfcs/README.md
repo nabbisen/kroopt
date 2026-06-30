@@ -63,6 +63,7 @@ control), then 017–030 (cross-cutting security, lifecycle, and release governa
 | 035 | [Browser-Grade Crypto Surface](proposed/035-browser-grade-crypto-surface.md) | Deferred — AES-GCM/P-256/ECDSA/RSA + cert-ecosystem story only after M36/M37/M38 green |
 | 037 | [Native FFI Safety, Secret Arena, and Resource-Budget Enforcement](proposed/037-native-safety-and-budget-enforcement.md) | FFI length contracts (all `uint32_t` params); native/classified secret arena; budget charging in the core; record-size guards; sanitizers (M37) |
 | 040 | [Native Traffic-Secret Arena and the IO Production Interpreter](proposed/040-native-traffic-secret-arena.md) | **Blocked on RFC 031.** Stable/v1 gate — migrate connection traffic secrets onto the C-owned zeroizing arena via a two-interpreter (pure model + IO production) architecture; records the D-now/A-later decision |
+| 043 | [HACL*/EverCrypt Vendoring and Provenance Discipline](proposed/043-hacl-evercrypt-vendoring-and-provenance.md) | Architect ratification + first exercise of the bump procedure. Anchor + offline/online gates shipped in 0.120.0 |
 
 ## Done
 
