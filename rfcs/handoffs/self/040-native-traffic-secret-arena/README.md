@@ -1,6 +1,6 @@
 # RFC 040 handoff — native traffic-secret arena + IO production interpreter
 
-Implementation companion to [`../../proposed/040-native-traffic-secret-arena.md`](../../proposed/040-native-traffic-secret-arena.md).
+Implementation companion to [`../../../proposed/040-native-traffic-secret-arena.md`](../../../proposed/040-native-traffic-secret-arena.md).
 Status is **inherited** from RFC 040 (Proposed — design in progress); this is not a separate lifecycle item
 (RFC 000 policy).
 

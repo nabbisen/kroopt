@@ -12,7 +12,7 @@ key on it; 040 migrates the connection-lifetime traffic secrets onto it).
 **Branch (architect review 2026-06-30).** Sync-first; staged native crypto surface; proved-shared-core +
 tested IO lift. Async sealing/open offload is an explicit **non-goal** here (§11) and moves to a follow-up
 RFC (likely 044).
-**Companion handoff.** [`../handoffs/040-native-traffic-secret-arena/`](../handoffs/040-native-traffic-secret-arena/README.md)
+**Companion handoff.** [`../handoffs/self/040-native-traffic-secret-arena/`](../handoffs/self/040-native-traffic-secret-arena/README.md)
 — detailed internal design, slice/PR plan, and Slice 1 acceptance/QA checklist.
 **Touches.** `Kroopt/Conn` (a new IO production interpreter), `Kroopt/Crypto` (`NativeSecret`,
 the production provider), the trust-matrix docs.

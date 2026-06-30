@@ -1,6 +1,6 @@
 # RFC 040 — implementation handoff (detailed internal design)
 
-**Companion to.** [`../../proposed/040-native-traffic-secret-arena.md`](../../proposed/040-native-traffic-secret-arena.md)
+**Companion to.** [`../../../proposed/040-native-traffic-secret-arena.md`](../../../proposed/040-native-traffic-secret-arena.md)
 **Status.** Inherited from RFC 040 (Proposed — design in progress). Branch: **sync-first, staged,
 proved-shared-core + tested IO lift** (architect review 2026-06-30).
 **Authority.** The RFC owns *what/why*; this handoff owns *how to implement and verify*. If this handoff and

@@ -8,7 +8,7 @@
 > `Tests/IotaktBinding.lean` is the tested translation *reference*. The historical text is left intact below.
 
 
-**Companion to:** `handoff/HANDOFF-iotakt-consumer-review.md`
+**Companion to:** `HANDOFF-iotakt-consumer-review.md`
 **Date:** 2026-06-13
 **Subject:** Directives and acceptance criteria for the kroopt↔iotakt consumer-contract review.
 

@@ -1,7 +1,23 @@
 # Review request — secp256r1 / P-256 ECDHE: advertised-vs-negotiated group mismatch
 
+> **RESOLVED (2026-06-30) — superseded by [RFC 039](../../done/039-named-group-policy-and-enforcement.md)
+> (Named-Group Policy and Selection Enforcement, Implemented v0.81.0-dev).** Both the advertise-vs-negotiate
+> mismatch and its structural cause are closed:
+> - **Advertise (Option B):** `realCapabilities.groups = [.x25519, .secp256r1]` — advertised set matches the
+>   negotiable set.
+> - **Structural (Option A):** `EndpointConfig.namedGroups` exists; `requiredCryptoOfServerConfig.groups` is
+>   sourced from it (no longer `[]`), so `.unsupportedGroup` is reachable and authoritative; the parallel
+>   `hashAlgorithms` inertness is fixed (`deriveHashesFromSuites`).
+> - **Tests:** `Tests/EndToEnd.lean` `runE2EP256` drives a secp256r1-only ClientHello to `connected`, plus the
+>   x25519-only-server rejection case, unknown-group dropping, duplicate, and malformed-point negatives.
+> - **Docs:** trust-matrix, proof-assumptions, interop, and theorem-inventory state the true x25519 + P-256 set.
+>
+> No action remains. The `[Unreleased]` pointer in **Found by** below is historical — the findings shipped in
+> v0.81.0-dev. The original problem statement is retained below as the historical record (RFC 000: completed
+> design context is not deleted).
+
 **Type.** Review request (problem statement for architect decision; not yet an RFC).
-**Status.** Open — awaiting decision on which resolution to take.
+**Status.** Resolved — superseded by RFC 039 (Implemented v0.81.0-dev); see banner above.
 **Found by.** 5-dimension audit, 2026-06-14 (see `CHANGELOG.md` `[Unreleased]`).
 **Severity.** Low impact today (fails in the *safe* direction), but it leaves an
 RFC 034 honesty guarantee only half-implemented and ships an untested negotiation

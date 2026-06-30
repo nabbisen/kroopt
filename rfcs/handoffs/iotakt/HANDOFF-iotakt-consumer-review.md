@@ -13,7 +13,7 @@
 **Date:** 2026-06-13
 **Subject:** Review kroopt's use of iotakt as a non-blocking I/O consumer, before kroopt binds to the
 real iotakt and before jemmet is layered on top.
-**Enclosed:** this handoff, the order statements (`handoff/iotakt-review-orders.md`), and the kroopt
+**Enclosed:** this handoff, the order statements (`iotakt-review-orders.md`), and the kroopt
 project (latest tagged build).
 
 ---
@@ -173,5 +173,5 @@ only tells you the seam is the **last** unvalidated assumption.
   design rationale; still `proposed`, not frozen).
 - Requirements §2.3 and External Design §10 — kroopt's stated iotakt relationship.
 
-The order statements in `handoff/iotakt-review-orders.md` enumerate exactly what we ask you to confirm
+The order statements in `iotakt-review-orders.md` enumerate exactly what we ask you to confirm
 or return.

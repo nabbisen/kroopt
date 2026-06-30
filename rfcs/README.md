@@ -61,7 +61,7 @@ control), then 017–030 (cross-cutting security, lifecycle, and release governa
 | 029 | [Developer Documentation and Examples](proposed/029-developer-documentation-and-examples.md) | Tested/compile-checked API + progress-loop examples |
 | 035 | [Browser-Grade Crypto Surface](proposed/035-browser-grade-crypto-surface.md) | Deferred — AES-GCM/P-256/ECDSA/RSA + cert-ecosystem story only after M36/M37/M38 green |
 | 037 | [Native FFI Safety, Secret Arena, and Resource-Budget Enforcement](proposed/037-native-safety-and-budget-enforcement.md) | FFI length contracts (all `uint32_t` params); native/classified secret arena; budget charging in the core; record-size guards; sanitizers (M37) |
-| 040 | [Native Traffic-Secret Arena and the IO Production Interpreter](proposed/040-native-traffic-secret-arena.md) | **Design in progress (0.123.x).** Preconditions met (031 done; 037 arena exists/sanitizer-clean; 013 done) — 040 is the remaining traffic-secret branch of the native-secret arc. Branch: sync-first / staged / proved-core+tested-lift; async sealing is a non-goal (→ future 044). Stable/v1 gate. [Handoff](handoffs/040-native-traffic-secret-arena/README.md): internal design + slice plan + Slice 1 acceptance |
+| 040 | [Native Traffic-Secret Arena and the IO Production Interpreter](proposed/040-native-traffic-secret-arena.md) | **Design in progress (0.123.x).** Preconditions met (031 done; 037 arena exists/sanitizer-clean; 013 done) — 040 is the remaining traffic-secret branch of the native-secret arc. Branch: sync-first / staged / proved-core+tested-lift; async sealing is a non-goal (→ future 044). Stable/v1 gate. [Handoff](handoffs/self/040-native-traffic-secret-arena/README.md): internal design + slice plan + Slice 1 acceptance |
 
 ## Done
 

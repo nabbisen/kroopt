@@ -5,7 +5,7 @@ import Kroopt.Core.Event
 # Tests.IotaktBinding
 
 Binding **translation reference** for the iotakt boundary, transcribed from the **accepted** iotakt
-v0.13.1-dev consumer review (`handoff/iotakt-review-orders.md` + the iotakt team's response §O11; surface
+v0.13.1-dev consumer review (`rfcs/handoffs/iotakt/iotakt-review-orders.md` + the iotakt team's response §O11; surface
 re-confirmed current at iotakt 0.14.5, one RFC 061 namespace rename). It transcribes the iotakt API surface
 the review delivered and gives the pure translation the review *corrected*: the `FdKey` shape (O5), the extra
 `ReadResult`/`WriteResult` cases (O7/O9), the `IoEvent` classification (O9), and the result→outcome mapping.

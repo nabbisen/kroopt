@@ -56,7 +56,7 @@ def gate(i): return {"id":i,"name":i,"command":i,"status":"pass","exit_code":0,"
                      "stdout_log":"logs/x","stdout_sha256":"0"*64,"stderr_log":"logs/y","stderr_sha256":"0"*64}
 def led(**kw):
     d={"gate_registry":"kroopt-gate/v1","release_profile":"full-release","required_gates_passed":True,
-       "registry_consistent":True,"git_commit":"a"*40,"git_ref":"refs/tags/v9.9.9","git_dirty":False,
+       "registry_consistent":True,"git_commit":"a"*40,"git_ref":"refs/tags/9.9.9","git_dirty":False,
        "generation_context":"git","github_run_id":"1","runner_os":"Linux","runner_arch":"x86_64",
        "gate_count":len(ids),"gate_policy":{},"gates":[gate(i) for i in ids]}
     d.update(kw); return d

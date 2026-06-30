@@ -1,6 +1,6 @@
 # RFC 040 — task breakdown / PR plan
 
-**Companion to.** [`../../proposed/040-native-traffic-secret-arena.md`](../../proposed/040-native-traffic-secret-arena.md)
+**Companion to.** [`../../../proposed/040-native-traffic-secret-arena.md`](../../../proposed/040-native-traffic-secret-arena.md)
 Branch: sync-first, staged. Slices ship as discrete tagged increments; **Slice 1 is not blocked on 2–3**.
 
 ## Slice 1 — handle ABI + AEAD-by-handle (exposure reduction; no promotion)

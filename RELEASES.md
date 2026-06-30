@@ -1,11 +1,11 @@
 # Releases
 
 kroopt releases are cut by [`.github/workflows/release.yml`](.github/workflows/release.yml) (RFC 030
-Stage C) from a `vX.Y.Z` tag. Each release carries verifiable provenance.
+Stage C) from a `X.Y.Z` tag. Each release carries verifiable provenance.
 
 ## Assets per release
 
-A published `vX.Y.Z` release attaches exactly three assets:
+A published `X.Y.Z` release attaches exactly three assets:
 
 - `kroopt-X.Y.Z.tar.gz` — the reproducible, files-at-root source archive.
 - `kroopt-X.Y.Z.release-verification.json` — the provenance sidecar (henret `manifest_schema 1`): the gate
@@ -30,9 +30,9 @@ artifacts).
 
 ## How a release is produced
 
-On a `vX.Y.Z` tag, the workflow:
+On a `X.Y.Z` tag, the workflow:
 
-1. checks the tag is `vX.Y.Z` and equals the top `CHANGELOG.md` heading `[X.Y.Z]`;
+1. checks the tag is `X.Y.Z` and equals the top `CHANGELOG.md` heading `[X.Y.Z]`;
 2. runs the canonical gate, `scripts/gate.sh --profile full-release`, and the release-machinery regression
    tests;
 3. packages the exact source tarball, `scripts/package-release.sh --release X.Y.Z`;
@@ -64,12 +64,12 @@ sha256sum dist/kroopt-X.Y.Z.tar.gz   # must equal source_archive.sha256 in the s
 
 The release workflow is authored and dry-run verified (the non-tag `workflow_dispatch` path and the local
 script chain are exercised). The **publish step (`gh release create`) is first exercised by the next real
-`vX.Y.Z` tag.** Any environment-specific GitHub publishing issue found there is handled as a release-workflow
+`X.Y.Z` tag.** Any environment-specific GitHub publishing issue found there is handled as a release-workflow
 follow-up, not as a provenance-design gap — the gate, packaging, sidecar generation, and self-verification
 that produce the evidence are all already exercised.
 
 ## Versioning
 
 Versions are bare `X.Y.Z` (RFC 030; SemVer-style, `0.` major conveying pre-1.0 instability). The tag is
-`vX.Y.Z`; the sidecar `version`, the tag, and the top CHANGELOG heading must all agree, enforced at release
+`X.Y.Z`; the sidecar `version`, the tag, and the top CHANGELOG heading must all agree, enforced at release
 time.

@@ -17,7 +17,7 @@ honesty), RFC 006 (handshake, no HRR), RFC 002 (proof/runtime correspondence), R
 `Tests/EndToEnd.lean`, `Tests/Capabilities.lean`, `Tests/Handshake.lean`,
 `scripts/tls-interop.sh`, `docs/src/crypto/crypto-ffi-contract.md`,
 `docs/src/architecture/handshake.md`.  
-**Canonical source.** `handoff/REVIEW-secp256r1-capability-gap.md` (problem statement and
+**Canonical source.** `rfcs/handoffs/self/REVIEW-secp256r1-capability-gap.md` (problem statement and
 Option C decision) and the architect's two review responses (the Option-C verdict and the
 default-policy ruling). 0.76.0-dev shipped Stage 1 (Option B) of that review; this RFC is
 Stages 2–5.  
@@ -467,7 +467,7 @@ Proof:
 
 ## 11. References
 
-- `handoff/REVIEW-secp256r1-capability-gap.md`; architect Option-C and default-policy
+- `rfcs/handoffs/self/REVIEW-secp256r1-capability-gap.md`; architect Option-C and default-policy
   rulings.
 - RFC 8446 §4.2.7–§4.2.8 (supported_groups / key_share), §9.1 (mandatory secp256r1,
   recommended X25519).

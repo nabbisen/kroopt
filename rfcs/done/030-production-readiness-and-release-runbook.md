@@ -1,7 +1,7 @@
 # RFC 030 — Production Readiness and Release Runbook
 
 **Project.** kroopt  
-**Status.** Implemented (Stage A 0.119.0; Stage B 0.121.0–0.121.1; Stage C 0.122.0; ratified after review 0.122.1). The release-runbook machinery is in-repo and exercised end-to-end up to self-verification. **Deferred (operational/non-blocking):** the GitHub publish step (`gh release create`) is first exercised by the next real `vX.Y.Z` tag (operational validation, not a design gap); splitting dry-run vs publish into separate jobs so only publish holds `contents: write` is a future workflow hardening.  
+**Status.** Implemented (Stage A 0.119.0; Stage B 0.121.0–0.121.1; Stage C 0.122.0; ratified after review 0.122.1). The release-runbook machinery is in-repo and exercised end-to-end up to self-verification. **Deferred (operational/non-blocking):** the GitHub publish step (`gh release create`) is first exercised by the next real `X.Y.Z` tag (operational validation, not a design gap); splitting dry-run vs publish into separate jobs so only publish holds `contents: write` is a future workflow hardening.  
 **Type.** Implementation RFC  
 **Target milestone.** v0.4 and every release after  
 **Depends on.** RFC 020, RFC 022, RFC 026, RFC 028, RFC 029  
@@ -159,7 +159,7 @@ scope — worth not re-learning):
    - carries a **label-drift guard**: abort unless `VERSION` equals the latest `CHANGELOG.md` release heading,
      so the tag, the manifest `version`, and the changelog can never disagree (this is exactly the guard that
      would have caught iotakt's 0.14.4 drift, where the manifest said `0.14.4` but the docs said `0.14.4-dev`);
-2. a **release-publish CI workflow** (separate from the gate `ci.yml`, triggered on a `vX.Y.Z` tag) that, in
+2. a **release-publish CI workflow** (separate from the gate `ci.yml`, triggered on a `X.Y.Z` tag) that, in
    one run: runs the full gate, invokes the packaging script, **self-verifies the sidecar against the
    just-built archive before publishing**, and then `gh release upload --clobber`s the exact archive + sidecar
    as release assets (non-tag/dispatch runs upload them as workflow artifacts instead — a dry-run path). So
@@ -213,7 +213,7 @@ edge; see below).
   them, having no iotakt edge.)
 - **One version scheme: bare `X.Y.Z`** (no `-dev`). Mirrors iotakt, which dropped `-dev` after it caused
   exactly the 0.14.4 label drift. "Anchored release" is **not** a version-string property — it is the
-  presence of a `vX.Y.Z` tag + a `release-verification.json` sidecar + a GitHub release. A plain
+  presence of a `X.Y.Z` tag + a `release-verification.json` sidecar + a GitHub release. A plain
   `kroopt-X.Y.Z.tar.gz` build makes no such claim; the sidecar is the claim (and is the signal `-dev` was
   standing in for). kroopt's `0.` major already conveys pre-1.0 instability per SemVer. This is a deliberate
   divergence from iotakt/henret's *frozen-`-dev`* pin: kroopt pins a bare `X.Y.Z` (worth telling jemmet, who
@@ -250,7 +250,7 @@ The provenance generator is staged A → B → C:
   anchor it consumes landed in 0.120.0–0.120.2 (RFC 043). Demonstrated locally end-to-end against a
   `local-dry-run` sidecar; publish is not exercisable outside CI/git.
 - **Stage C — `release.yml` + `RELEASES.md` — AUTHORED (0.122.0).** `.github/workflows/release.yml`: on a
-  `vX.Y.Z` tag it checks tag == `vX.Y.Z` == top CHANGELOG heading, runs `gate.sh --profile full-release` + the
+  `X.Y.Z` tag it checks tag == `X.Y.Z` == top CHANGELOG heading, runs `gate.sh --profile full-release` + the
   release-machinery regression tests, packages with `package-release.sh --release`, generates the sidecar with
   `--profile real-release`, self-verifies with `check-provenance.sh --require-release`, and publishes exactly
   `kroopt-X.Y.Z.tar.gz` + `…release-verification.json` + `…GATE-RUN.md`. Releases are **immutable**: the

@@ -5,6 +5,34 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.124.0] — release tag X.Y.Z + handoff consolidation + secp256r1 handoff resolved; first real release — 2026-06-30
+
+Honesty-hygiene + structure increment ahead of kroopt's first real tagged release. No library/proof change
+(theorem count unchanged, 109; gate 37/37).
+
+- **Release CI triggers on a bare `X.Y.Z` tag** (was `vX.Y.Z`), aligning the tag with kroopt's bare-version
+  convention (version lives only in CHANGELOG headings; deliverables and the sidecar `version` are already
+  bare). `.github/workflows/release.yml`: trigger glob `['[0-9]+.[0-9]+.[0-9]+']`, the tag-shape guard and
+  `tag == X.Y.Z == top CHANGELOG heading` check, and `gh release view/create "$V"` + title `kroopt $V` all drop
+  the `v`. `RELEASES.md` and RFC 030's release-tag references updated to match; the
+  `check-release-machinery.sh` fixture uses a bare `refs/tags/9.9.9`. (The upstream HACL\* tag `ocaml-v0.4.5`
+  and the RFC status-field notation are unaffected.)
+
+- **Handoff directories consolidated.** The duplicate top-level `handoff/` and `rfcs/handoffs/` are merged into
+  a single `rfcs/handoffs/`, organized by owner: **`rfcs/handoffs/self/`** (kroopt-internal — the RFC 040
+  implementation handoff and the secp256r1 review) and **`rfcs/handoffs/iotakt/`** (cross-project records with
+  the iotakt sibling — the consumer-review handoff and order statements). All inbound references updated
+  (`Tests/IotaktBinding.lean`, `rfcs/README.md`, RFC 040, RFC 039, and the intra-handoff links, with the moved
+  files' relative depths corrected); a new `rfcs/handoffs/README.md` documents the split.
+- **`rfcs/handoffs/self/REVIEW-secp256r1-capability-gap.md` marked Resolved** — superseded by RFC 039
+  (Named-Group Policy and Selection Enforcement, Implemented v0.81.0-dev). The advertise-vs-negotiate mismatch
+  the 2026-06-14 audit flagged was closed long ago: `realCapabilities.groups = [.x25519, .secp256r1]`
+  (advertise); the capabilities-authoritative group policy (`EndpointConfig.namedGroups`,
+  `requiredCryptoOfServerConfig.groups` sourced, `.unsupportedGroup` reachable, hash dimension de-inerted via
+  `deriveHashesFromSuites`); comprehensive negotiation + negative tests (`runE2EP256` reaches `connected`, plus
+  rejection / unknown-group / duplicate / malformed-point); and corrected docs. The stale "Open" status was the
+  only remaining inconsistency; the body is retained as the historical problem statement.
+
 ## [0.123.1] — IotaktTransport ownership reconcile (no kroopt iotakt edge) — 2026-06-30
 
 Honesty/consistency fix surfaced by jemmet's RFC 015 fixture reply: kroopt's tree framed a future

@@ -1,6 +1,6 @@
 # RFC 040 — acceptance / QA checklist
 
-**Companion to.** [`../../proposed/040-native-traffic-secret-arena.md`](../../proposed/040-native-traffic-secret-arena.md)
+**Companion to.** [`../../../proposed/040-native-traffic-secret-arena.md`](../../../proposed/040-native-traffic-secret-arena.md)
 
 ## Slice 1 acceptance criteria (all must hold)
 
