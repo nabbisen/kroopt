@@ -85,6 +85,43 @@ Each link must be a published, fetchable artifact so a consumer can run the chai
 archive hash → the archive's internal `lake-manifest.json` / `lean-toolchain` matching the sidecar's claims →
 files-at-root layout).
 
+**Confirmed field set (jemmet, round 6): mirror henret 0.34.4's actual `release-verification.json` as the
+literal template.** jemmet will send henret 0.34.4's published sidecar (byte-verified copy, `21d6e9d0…`) to
+mirror exactly; the top-level skeleton to author against is:
+
+```
+manifest_schema, generated_by, package, version, gate_registry, release_profile,
+required_gates_passed, timestamp_utc, git_commit, git_dirty, git_dirty_paths,
+tarball_sha256, source_archive{name,sha256,size_bytes}, lake_manifest_sha256,
+lean_toolchain_sha256, os, runner, gate_policy{…script sha256s…},
+gates[{id,name,command,status,duration_ms,stdout_log,stdout_sha256,stderr_log,
+       stderr_sha256,criticality}…], validation_reports[], runtime_package{…},
+human_summary{name,sha256}, dependencies[…]
+```
+
+kroopt's 27-suite gate + axiom audit + fuzz + sanitizers + interop maps directly onto `gates[]` (no new
+verification work, only its publication). Keep the `verification` block too (theorem count,
+`sorry`/`admit`/`project_axioms` = 0): jemmet reads the gate ledger as the per-package evidence tier and
+`verification` as the corpus summary. **Dry-run loop (stub-first):** send jemmet a schema-shaped stub
+(right keys/nesting, placeholder hashes) to settle structure through `verify_release_manifest.py` +
+`verify_stack_release.py` fast; *then* wire the real gate ledger and re-run on the real-gate sidecar — two
+cheap loops beat one expensive one.
+
+**Loop-1 result (done, jemmet dry-run of `kroopt-0.0.0-stub`).** Structure is validated.
+`verify_stack_release.py` is **green** — kroopt resolves as a single node with **zero edges**, and HACL\* is
+correctly absent as a stack edge (the verifier only checks `dependency_edges` against `dependencies`, never
+the reverse), confirming the corrected zero-edge model. `verify_release_manifest.py` passes **every**
+structural check — `source_archive.sha256` == tarball, `tarball_sha256` == `source_archive.sha256`,
+`size_bytes`, `lake_manifest_sha256`, `lean_toolchain_sha256`, `package`, `manifest_schema 1` (anchors
+independently recomputed by jemmet, all hold) — and trips **only** on the gate-evidence tier: it requires
+every required gate `status == "pass"` and correctly rejects the 34 self-marked `status: "stub"` gates. That
+is the evidence tier doing its job, not a schema-shape problem, so it is **not** a blocker — loop-2 (real
+`pass` gates) clears it. Two follow-ons: (1) a repeatable `--structure-only` dry-run mode that treats
+self-marked stub gates as "structure-OK, evidence-pending" is a **henret** RFC 095 tooling item (the script
+is shared stack tooling), which jemmet is raising upstream; it does not gate kroopt. (2) The canonical
+`release-verification.json` basename is for the **real** release only; a `*-stub.provenance.json` basename is
+correct for dry-runs (the verifiers take explicit paths and index by hash).
+
 **The pitfall to avoid is a *publication* problem, not a layout problem (the iotakt lesson).** iotakt's
 release asset *was* files-at-root; it still failed verification because the asset the manifest named was not
 published as a downloadable attachment — only GitHub's auto-generated "Source code" tarball was fetchable,
@@ -128,17 +165,52 @@ scope — worth not re-learning):
    as release assets (non-tag/dispatch runs upload them as workflow artifacts instead — a dry-run path). So
    the artifact the manifest names is, by construction, the artifact a consumer can fetch.
 
-The dependency edges (§below) follow the same offline-rebind pattern iotakt uses: kroopt **vendors** each
-dependency's sidecar (iotakt's, HACL\*'s) and the provenance check re-binds each declared edge against the
-vendored sidecar by name + hash + pin, rather than trusting an unanchored pin.
+kroopt's sole dependency record (§below) follows the offline-rebind discipline, but kroopt's case is narrow:
+its only link is HACL\*/EverCrypt, recorded as a vendored-source entry that **kroopt's own**
+`check-provenance.sh` re-binds by hash — not a stack edge, and not an iotakt sidecar (kroopt has no iotakt
+edge; see below).
 
 **kroopt-specific manifest notes.**
 
-- The `dependencies` block must carry both the **iotakt** and **HACL\*/EverCrypt** pins (package name +
-  hash), even though kroopt's verified core is dependency-free (`lake-manifest.json` is `packages: []`,
-  confirmed). The deployment tiers consume iotakt (the `Conn` interpreter) and HACL\*/EverCrypt (crypto); the
-  stack verifier cross-checks edges by package name + hash, so those pins are what let kroopt slot into
-  `jemmet-edge-runtime.stack-release.json` as a node with verifiable edges.
+- **The `dependencies` block declares only HACL\*/EverCrypt — and it is not a stack edge (settled, jemmet
+  round 6).** kroopt's verified core is dependency-free (`lake-manifest.json` is `packages: []`, confirmed),
+  and the only thing kroopt *links* is HACL\*/EverCrypt via FFI. kroopt does **not** link iotakt: kroopt's
+  core defines the abstract `Transport` typeclass, and **jemmet's** `IotaktTransport` (jemmet RFC 009)
+  supplies the iotakt-backed instance. So the iotakt edge in the deployment closure is **jemmet→iotakt**,
+  owned by jemmet's binding node — **kroopt must not emit an iotakt edge** (it would be a phantom/duplicate).
+  kroopt has no henret edge either. Net: **kroopt's stack node has zero outgoing stack edges.**
+  - **HACL\*/EverCrypt is a vendored-source entry in kroopt's *own* sidecar, re-bound by kroopt's own
+    `check-provenance.sh` — never by jemmet's stack verifier.** jemmet's `verify_stack_release.py` resolves
+    every `dependency_edge` provider to a package entry with a resolvable `manifest_sha256` + `tarball_sha256`
+    and cross-checks it against the consumer's `dependencies`; it has **no vendored-source / hash-only edge
+    path**, so an upstream C project with no Lean-stack sidecar cannot be a stack edge. But the verifier only
+    checks `dependency_edges` *against* `dependencies` — it does not require every `dependencies` entry to be
+    an edge. So HACL\* lives in kroopt's `dependencies` as a structured vendored-source record (RFC 017
+    structured-absence shape), bound by vendored bytes: the vendored C tree hashes to the recorded value at
+    the recorded commit, status honestly "upstream-trusted, not sidecar-verified." **No jemmet verifier change
+    is needed and the HACL\* record can never block a green stack run** — crypto provenance stays
+    kroopt-internal, matching jemmet treating crypto as ASSUMED (RFC 011), not stack-proven.
+  - **Field shape (kroopt's to choose — jemmet does not consume these keys):** `name`, `upstream_commit`,
+    `upstream_version`, `source_tree_sha256`, `provenance_status` (e.g. `"external-upstream-vendored"`),
+    `provenance_note` — parallel to RFC 017.
+  - **Binding shape resolved by fact: kroopt *vendors* HACL\*/EverCrypt, so the bind is vendored-tree, not a
+    system-link pin.** kroopt vendors the EverCrypt/HACL\* C sources in-tree at `Kroopt/Native/hacl` (167
+    files; the shim + sanitizer/interop scripts compile and link them). So `check-provenance.sh` binds the
+    edge by hashing that vendored tree into `source_tree_sha256` (jemmet confirmed either shape is fine since
+    HACL\* is not a stack edge; the system-link "pin the upstream release tarball" shape does not apply because
+    kroopt has the tree in-hand). **Loop-2 prerequisite / open gap:** the vendored tree currently records **no
+    upstream provenance** — there is no `VERSION`/`README`/commit marker noting which EverCrypt/HACL\* upstream
+    tag or commit it was vendored from, so `upstream_commit` / `upstream_version` cannot be derived from the
+    tree alone and must be recorded (maintainer knowledge of the vendoring source), and a **canonical
+    `source_tree_sha256` method** must be fixed (e.g. sorted per-file sha256 over `Kroopt/Native/hacl` then
+    hash-of-hashes — a sample run yields `aaf8b179…` — or a deterministic-tar hash). Both are loop-2 work, not
+    stub blockers; the stub carried placeholders for exactly these fields.
+- **kroopt declares no iotakt or henret pin.** The single shared-stack pins — iotakt `0.14.5`
+  (`8c1db19e…` / sidecar `8a125c2b…`) and the one henret `0.34.4` (`21d6e9d0…`) — live on jemmet's and
+  iotakt's nodes, not kroopt's. The only shared-pin discipline touching kroopt is the unique-package-name rule
+  and matching kroopt's *own* node hash. (kroopt has separately verified the published iotakt 0.14.5 assets —
+  tarball `8c1db19e…`/315016 bytes, sidecar `8a125c2b…`, files-at-root — as diligence, but does not vendor
+  them, having no iotakt edge.)
 - **One version scheme: bare `X.Y.Z`** (no `-dev`). Mirrors iotakt, which dropped `-dev` after it caused
   exactly the 0.14.4 label drift. "Anchored release" is **not** a version-string property — it is the
   presence of a `vX.Y.Z` tag + a `release-verification.json` sidecar + a GitHub release. A plain

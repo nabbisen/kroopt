@@ -5,6 +5,34 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.119.0] — RFC 030 Stage A: canonical `gate.sh` + CI consolidation — 2026-06-29
+
+Tooling increment (no library/proof changes). Introduces the single canonical ship gate and rewires CI to
+it, closing the CI-vs-ship-gate divergence RFC 030 flagged. First stage of the loop-2 provenance generator
+(A → B → C); Stages B/C follow.
+
+- **`scripts/gate.sh`** — one gate runner shared by `ci.yml` and (later) `release.yml`, so the development
+  gate and the release gate can never diverge. Runs the gate set for a profile, captures per-gate
+  stdout/stderr + timings + pass/fail, and writes a machine-readable `gate-out/gate-ledger.json` plus a human
+  `gate-out/GATE-RUN.md`. The release sidecar's `gates[]` will be a direct transcription of this ledger, never
+  a hand-authored reconstruction. Pass detection is per-gate-kind (suites scan for `FAILED|FAIL` since a suite
+  can exit 0 while reporting failures). Run-context (`git_commit`/`git_ref`/`git_dirty`/runner) is sourced
+  from the environment — real in CI, honestly labeled `local-dry-run` / `unavailable-local` otherwise. Exit 0
+  iff every required gate passes; the ledger is written even on failure for diagnosis.
+- **Profiles.** `full-release` (default) = the full canonical set — `lake build` + 27 test suites + axiom
+  audit + dependency purity + hygiene + parser fuzz (20000) + ASan/UBSan + live TLS interop + Ed25519 and
+  record-layer interop = **36 gates**, the *union* of the old `ci.yml` checks and the prior ship gate (nothing
+  lost). `pr` = `full-release` minus the expensive native/live gates (sanitizers + interop), for fast PR
+  feedback; the profile is explicit and recorded in the ledger, never a silent ad-hoc subset.
+- **`ci.yml` rewired** to call `scripts/gate.sh --profile full-release` (replacing its bespoke 25-suite subset
+  that included the stale `realhandshake` and omitted `correspondence`/`nativesecret`/`replay`/`socketdriver`/
+  `trace`, and lacked sanitizers + full interop), and to upload `gate-out/` as a retained artifact (even on
+  failure). CI now runs exactly the ship gate.
+- `gate-out/` gitignored and excluded from release archives.
+
+Gate-green via the new runner itself: `scripts/gate.sh --profile full-release` → 36/36 pass. No data flow or
+external integration changed; threat model unchanged.
+
 ## [0.118.0] — ALPN: negotiateAlpn takes AlpnPreference (policy unreachable by construction) — 2026-06-29
 
 Internal-design follow-up to the ALPN fact/policy split (review optional #2). No behavior change, no public
