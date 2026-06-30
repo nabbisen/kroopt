@@ -1,5 +1,13 @@
 # HANDOFF — kroopt → iotakt team: consumer-contract review
 
+> **Reconcile (2026-06-30, RFC 015 / RFC 009).** Where this historical record refers to *kroopt's*
+> `IotaktTransport` / a future `Kroopt/Conn/IotaktTransport.lean`, ownership has since been settled the
+> other way: the real adapter is **jemmet's** (`Jemmet/Conn/IotaktTransport.lean`, instantiating kroopt's
+> `Transport` over `IotaktRuntime.*`), and **kroopt declares no iotakt edge** (HACL\*-only release sidecar;
+> RFC 030). The §O11 binding spec below is the contract jemmet's adapter implements; kroopt's
+> `Tests/IotaktBinding.lean` is the tested translation *reference*. The historical text is left intact below.
+
+
 **From:** kroopt (TLS 1.3 secure-channel library, Lean 4)
 **To:** iotakt architect / team
 **Date:** 2026-06-13

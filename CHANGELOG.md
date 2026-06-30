@@ -5,6 +5,44 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.123.1] — IotaktTransport ownership reconcile (no kroopt iotakt edge) — 2026-06-30
+
+Honesty/consistency fix surfaced by jemmet's RFC 015 fixture reply: kroopt's tree framed a future
+kroopt-owned `Kroopt/Conn/IotaktTransport.lean`, which contradicts kroopt's own provenance graph (HACL\*-only
+release sidecar; RFC 030 "no iotakt edge"). The real adapter is jemmet's. No library/proof change (109
+theorems; gate 37/37).
+
+- **`Tests/IotaktBinding.lean`** reframed from "kroopt's future `IotaktTransport`" to a **tested translation
+  reference** the jemmet adapter implements against: the real adapter is `Jemmet/Conn/IotaktTransport.lean`
+  (kroopt's `Transport` over `IotaktRuntime.*`); the jemmet→iotakt edge lives on jemmet's node; kroopt declares
+  no iotakt edge. The file depends only on `Kroopt.Conn.Transport` and invokes no real iotakt IO, so kroopt's
+  build and proofs carry no iotakt dependency.
+- **`handoff/HANDOFF-iotakt-consumer-review.md`, `handoff/iotakt-review-orders.md`**: dated reconcile banner —
+  the §O11 binding spec is the contract jemmet's adapter implements; historical text left intact.
+- **`rfcs/README.md`**: clarified the two live-index phrasings that implied a kroopt iotakt edge.
+
+Consistent with the settled cross-project split: kroopt brings `TlsConn`/`Transport` + TLS crypto + the
+TLS-negative assertions; jemmet brings `IotaktTransport` + `Conn` + handler.
+
+## [0.123.1] — IotaktTransport ownership reconcile (no kroopt iotakt edge) — 2026-06-30
+
+Honesty/consistency fix surfaced by jemmet's RFC 015 fixture reply: kroopt's tree framed a future
+kroopt-owned `Kroopt/Conn/IotaktTransport.lean`, which contradicts kroopt's own provenance graph (HACL\*-only
+release sidecar; RFC 030 "no iotakt edge"). The real adapter is jemmet's. No library/proof change (109
+theorems; gate 37/37).
+
+- **`Tests/IotaktBinding.lean`** reframed from "kroopt's future `IotaktTransport`" to a **tested translation
+  reference** the jemmet adapter implements against: the real adapter is `Jemmet/Conn/IotaktTransport.lean`
+  (kroopt's `Transport` over `IotaktRuntime.*`); the jemmet→iotakt edge lives on jemmet's node; kroopt declares
+  no iotakt edge. The file depends only on `Kroopt.Conn.Transport` and invokes no real iotakt IO, so kroopt's
+  build and proofs carry no iotakt dependency.
+- **`handoff/HANDOFF-iotakt-consumer-review.md`, `handoff/iotakt-review-orders.md`**: dated reconcile banner —
+  the §O11 binding spec is the contract jemmet's adapter implements; historical text left intact.
+- **`rfcs/README.md`**: clarified the two live-index phrasings that implied a kroopt iotakt edge.
+
+Consistent with the settled cross-project split: kroopt brings `TlsConn`/`Transport` + TLS crypto + the
+TLS-negative assertions; jemmet brings `IotaktTransport` + `Conn` + handler.
+
 ## [0.123.0] — RFC 040 internal-design kickoff ratified (sync-first / staged / proved-core+tested-lift) — 2026-06-30
 
 Lands the architect-ratified RFC 040 design branch and the detailed internal design; no library/proof

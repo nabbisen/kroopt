@@ -4,23 +4,28 @@ import Kroopt.Core.Event
 /-!
 # Tests.IotaktBinding
 
-Binding harness for the **accepted** iotakt v0.13.1-dev consumer review (`handoff/iotakt-review-orders.md`
-+ the iotakt team's response §O11). It transcribes the iotakt API surface the review delivered and
-implements the `IotaktTransport` **translation layer** against it — the part the review *corrected*:
-the `FdKey` shape (O5), the extra `ReadResult`/`WriteResult` cases (O7/O9), the `IoEvent` classification
-(O9), and the result→outcome mapping. These translations are pure and are unit-tested exhaustively here.
+Binding **translation reference** for the iotakt boundary, transcribed from the **accepted** iotakt
+v0.13.1-dev consumer review (`handoff/iotakt-review-orders.md` + the iotakt team's response §O11; surface
+re-confirmed current at iotakt 0.14.5, one RFC 061 namespace rename). It transcribes the iotakt API surface
+the review delivered and gives the pure translation the review *corrected*: the `FdKey` shape (O5), the extra
+`ReadResult`/`WriteResult` cases (O7/O9), the `IoEvent` classification (O9), and the result→outcome mapping.
+These translations are pure and are unit-tested exhaustively here.
 
-This lives under `Tests/` rather than the shipped `Kroopt` library because iotakt is an external sibling
-not yet vendored in this build. The transcribed `IotaktSpec` types stand in for `import Iotakt`; no real
-iotakt IO is invoked. When iotakt v0.13.1-dev is available, the translation graduates into
-`Kroopt/Conn/IotaktTransport.lean` over the real `Iotakt.Model` types, the IO driver loop is wired
-(`runStepAuto` + `recvAck`/`sendAck`, per the review skeleton reproduced at the foot of this file), the
-stub is deleted, and live validation re-runs `scripts/tls-interop.sh` / `https-e2e.sh` over the real loop
-(the three probes in the review §5).
+**Ownership (RFC 015 / RFC 009 reconcile, 2026-06-30).** The real iotakt adapter is **jemmet's**, not
+kroopt's: `Jemmet/Conn/IotaktTransport.lean` instantiates kroopt's `Transport` over `IotaktRuntime.*`, and the
+jemmet→iotakt edge lives there. **kroopt declares no iotakt edge** — its release sidecar lists only the
+vendored HACL\* source, and RFC 030 records "no iotakt pin." kroopt ships the generic `TlsConn` over the
+abstract `Transport`; this file is a *reference* jemmet's adapter implements against, **not** a future
+kroopt-owned `Kroopt/Conn/IotaktTransport.lean` (which would re-introduce the very edge the provenance graph
+excludes).
 
-What is NOT here: the IO driver loop and live interop — they require real iotakt sockets and are the
-swap-and-validate step. What IS here: the boundary semantics, isolated and proven, so that step is
-mechanical.
+This lives under `Tests/` and depends only on `Kroopt.Conn.Transport`; the transcribed `IotaktSpec` types
+stand in for the real iotakt surface, and **no real iotakt IO is invoked** — so kroopt's build and proofs
+carry no iotakt dependency. What is NOT here: the live IO driver loop and wire interop — those are jemmet's
+`IotaktTransport` over the real `IotaktRuntime.Loop` (`runStepAuto` + `recvAck`/`sendAck`, per the review
+skeleton reproduced at the foot of this file), validated at the three-project standup
+(`scripts/tls-interop.sh` / `https-e2e.sh`). What IS here: the boundary semantics, isolated and tested, so
+jemmet's adapter is a faithful instantiation rather than a fresh derivation.
 -/
 
 namespace Tests.IotaktBinding
