@@ -142,4 +142,7 @@ deterministic `Kroopt.Crypto.fakeProvider` remains available for the pure model 
 provider does not weaken any proof: the core's guarantees hold for *any* provider result, so the
 provider is outside the proof boundary. Cryptographic correctness and
 constant-time behaviour of the primitives remain ASSUMED (inherited from
-HACL\*/EverCrypt), never proved here, exactly as the trust matrix states.
+HACL\*/EverCrypt), never proved here, exactly as the trust matrix states. (That
+inheritance presumes the vendored bytes *are* the upstream verified artifact; the
+byte-level provenance anchor establishing that is currently pending — see the trust
+matrix's provenance-anchor row.)

@@ -5,6 +5,30 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.119.1] — Trust-matrix honesty: HACL\*/EverCrypt byte-level provenance anchoring marked PENDING — 2026-06-30
+
+Documentation-only honesty correction (no library / proof / tooling changes). The trust matrix and vendored-crypto
+pages presented the borrowed HACL\*/EverCrypt primitives as cleanly inherited-verified, but the vendored bytes
+under `Kroopt/Native/hacl/` are not yet anchored to a named upstream verified artifact: no recorded upstream
+commit/release, no per-file provenance manifest, and no gate checking the tree against upstream. KAT/interop prove
+behavior, not byte identity — a functionally-correct reimplementation would pass the same vectors. Until strict
+anchoring lands (identify-and-verify against upstream, or re-vendor from a pin; a per-file provenance manifest; and
+an offline provenance gate — to be specified in a dedicated HACL\*/EverCrypt vendoring & provenance RFC), these are
+ASSUMED dependencies with a known provenance gap.
+
+- `docs/src/verification/trust-matrix.md`: added a provenance-gap caveat plus a dedicated
+  "Vendored byte identity = named upstream verified artifact — ASSUMED, provenance anchor PENDING" row to the
+  Borrowed-cryptography section; updated the one-line summary.
+- `docs/src/crypto/third-party.md`: marked the "version 0.4.5 / vendored verbatim" attribution as an
+  embedded-comment lead rather than a verified anchor; softened the "makes no modifications" licensing wording to
+  state zero-modification as the rule, with byte-level identity to a pinned upstream artifact itself pending.
+- `docs/src/verification/proof-assumptions.md`: cross-referenced the provenance gap at the inherited-from-HACL\*
+  assumption.
+
+Blocks RFC 030 Stage B's real release sidecar until the anchor lands (no real `upstream_commit` /
+`source_tree_sha256` presented as verified provenance before then). No code, no proofs changed; theorem count
+unchanged (109).
+
 ## [0.119.0] — RFC 030 Stage A: canonical `gate.sh` + CI consolidation — 2026-06-29
 
 Tooling increment (no library/proof changes). Introduces the single canonical ship gate and rewires CI to

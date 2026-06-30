@@ -48,8 +48,19 @@ within that audited set.
 
 ## Borrowed cryptography — ASSUMED (HACL\*/EverCrypt) + KAT/interop TESTED
 
+> **⚠ Byte-level provenance anchoring is PENDING (known gap).** Every row below inherits the upstream
+> Project Everest verification claim — but that inheritance holds *only if* the vendored bytes under
+> `Kroopt/Native/hacl/` provably **are** the named upstream verified artifact. That anchor does **not yet
+> exist**: there is no recorded upstream commit/release, no per-file provenance manifest, and no gate
+> verifying the tree against upstream. The KAT/interop evidence below proves the primitives *behave*
+> correctly; it does **not** establish byte identity to upstream — a functionally-correct reimplementation
+> would pass the same vectors. Until strict anchoring lands (dedicated HACL\*/EverCrypt vendoring &
+> provenance RFC), these are ASSUMED dependencies **with a known provenance gap**, not fully anchored
+> inherited-verified claims.
+
 | Claim | Status | Evidence (KAT vector / suite) | Owner | Remaining gap | Release gate |
 |---|---|---|---|---|---|
+| **Vendored byte identity = named upstream verified artifact** | **ASSUMED — provenance anchor PENDING** | none yet — KAT/interop prove behavior, not identity | kroopt (vendoring discipline) | strict byte-level anchor: pinned upstream commit + per-file manifest + offline provenance gate | blocks real release sidecar (RFC 030 Stage B) |
 | AEAD correctness (AES-128/256-GCM, ChaCha20-Poly1305) | ASSUMED + KAT TESTED | NIST GCM TC4; RFC 8439; `kroopt-hacl-test` | HACL\*/Project Everest | AES-GCM on the wire (interop) | v0.4 |
 | HKDF / HMAC correctness | ASSUMED + KAT TESTED | RFC 5869 §A.1; RFC 4231 §4.2; `kroopt-hacl-test` | HACL\* | — | met |
 | ECDHE correctness (X25519, P-256) | ASSUMED + KAT/interop TESTED | RFC 7748 §6.1; NIST CAVP KAS; `kroopt-hacl-test` + interop | HACL\* | — | met |
@@ -73,4 +84,5 @@ Cryptographic secrecy / IND-CCA, peer certificate path validation, TLS 1.2 / DTL
 tickets, HRR, KeyUpdate, mTLS, and the client role are all OUTSCOPE for the constrained server profile —
 see [deferred scope](deferred-scope.md). The honest one-line summary kroopt always states: **it proves
 the protocol holds together; it trusts HACL\*/EverCrypt that the cryptography is sound; it does not
-prove the cryptography.**
+prove the cryptography — and the byte-level provenance anchor binding the vendored tree to that upstream
+verified artifact is currently pending (see the provenance-anchor row above).**
