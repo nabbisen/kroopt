@@ -228,6 +228,26 @@ The gate ledger in the sidecar maps directly onto kroopt's existing full gate (2
 dependency and hygiene gates, fuzz, sanitizers, interop), so no new verification work is implied — only its
 publication in a fetchable, hash-linked form.
 
+### 4.x Implementation staging status
+
+The provenance generator is staged A → B → C:
+
+- **Stage A — canonical gate + CI consolidation — SHIPPED (0.119.0).** One `scripts/gate.sh` shared by CI
+  and (future) release, emitting `gate-out/gate-ledger.json` + `GATE-RUN.md`; CI rewired to it.
+- **Stage B — release machinery + real local sidecar — SHIPPED (0.121.0).** `scripts/package-release.sh`
+  (reproducible, files-at-root source tarball; sidecar is a sibling, never inside), `scripts/gen-sidecar.sh`
+  (assembles `release-verification.json` / `manifest_schema 1` from the ledger + HACL provenance manifest;
+  HACL\* as a vendored-source `dependencies` entry, not a stack edge; run-context sourced from the ledger and
+  labeled honestly — a real-release profile requires a real git commit and clean tree, else a
+  `local-dry-run` sidecar marked `must_not_publish`), and `scripts/check-provenance.sh` (self-verifies every
+  hash against on-disk artifacts, re-runs the HACL gate, rejects stubs/placeholders/forbidden-paths, and with
+  `--require-release` enforces a publishable real-release). The HACL\* anchor it consumes landed in
+  0.120.0–0.120.2 (RFC 043). Demonstrated locally end-to-end against a `local-dry-run` sidecar; publish is not
+  exercisable outside CI/git.
+- **Stage C — `release.yml` + `RELEASES.md` — PENDING.** Tag → gate → package → gen-sidecar → self-verify →
+  upload exact assets; non-tag runs do an artifacts dry-run. Avoids `--clobber` on published immutable
+  releases. Authored-and-reviewed only here; real publish is untestable in this environment.
+
 ---
 
 ## 5. Release notes structure

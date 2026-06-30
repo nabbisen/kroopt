@@ -3,3 +3,4 @@
 
 # canonical gate output (gate-ledger.json, per-gate logs, GATE-RUN.md)
 gate-out/
+dist/

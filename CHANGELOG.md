@@ -5,6 +5,36 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.121.0] — RFC 030 Stage B: real release sidecar machinery (package + gen-sidecar + self-verify) — 2026-06-30
+
+Tooling increment (no library/proof changes; theorem count unchanged, 109). Lands the Stage B release-provenance
+machinery that produces and self-verifies a real `release-verification.json` sidecar locally; publish (Stage C)
+remains untestable here. Consumes the HACL\* anchor from RFC 043.
+
+- `scripts/package-release.sh`: reproducible, files-at-root source tarball (`tar --sort=name --mtime='@0'
+  --owner=0 --group=0 --numeric-owner | gzip -n`) — same tree yields a byte-identical tarball. The sidecar is a
+  sibling artifact, never placed inside. Excludes build/vcs/gate-out/dist/scratch; fails on forbidden paths.
+- `scripts/gen-sidecar.sh`: assembles the henret `manifest_schema 1` sidecar from `gate-out/gate-ledger.json`
+  (gates + log hashes + gate-policy + run-context), the source tarball (name/sha256/size), `lake-manifest.json`,
+  `lean-toolchain`, and `GATE-RUN.md` (human summary). HACL\*/EverCrypt is declared as a **vendored-source**
+  `dependencies` entry read from `HACL-PROVENANCE.json` (upstream tag + artifact sha256 + `source_tree_sha256`,
+  `local_modifications: []`) — not a stack edge, and no bare upstream commit is fabricated. Run-context is taken
+  from the ledger and labeled honestly: `--profile real-release` requires a real 40-hex git commit, a clean
+  tree, and `required_gates_passed`; otherwise it refuses, and the default `local-dry-run` sidecar is marked
+  `attestation_status: local-dry-run-not-an-attestation` + `must_not_publish: true`.
+- `scripts/check-provenance.sh`: self-verifies a sidecar against on-disk artifacts — recomputes the tarball
+  (name/size/sha256), lake-manifest, lean-toolchain, every gate stdout/stderr log hash, the gate-policy script
+  hashes, and the `GATE-RUN.md` hash; re-runs `check-hacl-provenance.sh` and matches the HACL dependency's
+  `source_tree_sha256` / artifact sha256 / tag to the manifest; rejects stub/placeholder sentinels, non-hex
+  hashes, and forbidden paths inside the tarball. `--require-release` additionally enforces
+  `release_profile=real-release`, `must_not_publish=false`, a real git commit, and a clean tree.
+- `dist/` gitignored and excluded from the source tarball. RFC 030 §4.x records the A→B→C staging
+  (A shipped 0.119.0; B shipped here; C — `release.yml` + `RELEASES.md` — pending, publish untestable here).
+
+Verified locally end-to-end: reproducible tarball is byte-identical across runs; `gen-sidecar` produces a
+`local-dry-run` sidecar (git unavailable here); `check-provenance.sh` passes consistency and correctly fails
+`--require-release`; `gen-sidecar --profile real-release` correctly refuses without git.
+
 ## [0.120.2] — HACL\* provenance review cleanup + RFC 043 ratified to done/ — 2026-06-30
 
 Review-cleanup increment for the HACL\*/EverCrypt provenance discipline; no library/proof changes (theorem
