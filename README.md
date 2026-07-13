@@ -6,6 +6,12 @@
 
 **A verification-first TLS 1.3 secure-channel library for Lean 4 — a pure, proven protocol core driven by a thin interpreter.**
 
+> **Pre-production status.** Independent architecture review of `0.124.1` found eight open remediation
+> blockers. kroopt is suitable for development and evaluation, but production/stable adoption is **NO-GO**
+> until AR0–AR3 complete; stable/v1 additionally requires AR4. See the
+> [current security state](docs/src/verification/current-security-state.md) and
+> [remediation roadmap](ROADMAP.md#0-architecture-review-remediation-program-2026-07-13).
+
 ## Overview
 
 kroopt turns a non-blocking byte transport into an encrypted, authenticated TLS 1.3
@@ -28,14 +34,17 @@ terminator — the attack surface just moves to the proxy. kroopt exists so a Le
 server can terminate HTTPS itself with a small, auditable, verification-first
 channel. Reach for it when you want TLS termination whose protocol-structural safety
 is machine-checked rather than assumed, and you can accept a deliberately narrow
-scope (see *Design notes*).
+scope (see *Design notes*). Until the remediation gates close, use it for development
+and evaluation rather than production traffic.
 
 ## Quick start
 
 Requires the Lean toolchain pinned in [`lean-toolchain`](lean-toolchain), managed by
 [elan](https://github.com/leanprover/elan). The pure core, parser, and proofs build
 with no C toolchain; only the HACL\* FFI library and its KAT executables need a C
-compiler.
+compiler. The canonical release profile additionally requires the declared
+[gate environment](docs/src/operations/release-gate-environment.md) and
+[`requirements-gate.txt`](requirements-gate.txt).
 
 ```sh
 lake build                          # core + parser + proofs + test executables
@@ -57,30 +66,32 @@ three proof gates run in CI on every change.
   kroopt proves the TLS state machine, record layer, transcript binding, and action
   discipline. The trust boundary is explicit: protocol structure is *proven*, the
   primitives are *assumed* (inherited-verified), wire interop is *tested*.
-- **Pure core, thin interpreter.** All protocol decisions live in `Kroopt.Core.step`;
-  the interpreter only executes its actions. A proof/runtime-correspondence discipline
-  keeps the two from drifting apart.
+- **Pure core, thin interpreter.** The architecture requires protocol decisions to live in
+  `Kroopt.Core.step`, with the interpreter executing its actions. Correspondence is tested, not proved for
+  the IO boundary, and RFC 048 tracks the open protected-epoch fallback/construction violation.
 - **No early or unauthenticated plaintext.** Both are proof targets, not conventions.
 - **Deliberately narrow.** Server role, TLS 1.3 only, no HelloRetryRequest, no 0-RTT /
-  tickets / KeyUpdate / mTLS. The current crypto profile is a constrained, honest
-  subset — `TLS_CHACHA20_POLY1305_SHA256`, X25519, Ed25519, SHA-256 — drawn from a
-  fail-closed OS CSPRNG. Out-of-profile configurations are rejected at validation,
-  never silently downgraded.
-- **Secrets are handles.** Long-lived key material lives behind opaque, non-printable,
-  non-serializable handles in zeroizable C-owned memory.
+  tickets / KeyUpdate / mTLS. The real provider advertises AES-128-GCM, AES-256-GCM,
+  ChaCha20-Poly1305, X25519, P-256, and Ed25519; all three suites and both groups have constrained live
+  interop evidence. Provider/certificate capability mismatches fail validation, but endpoint cipher
+  allow-list authorization remains open B1 and must not be inferred from provider validation.
+- **Secret residency is staged.** The server private key is held behind an opaque native handle and has
+  tested C-owned zeroization. Connection traffic secrets currently pass through Lean-GC-managed
+  `ByteArray`s and receive best-effort logical invalidation only; native traffic-secret residency remains
+  the stable/v1 gate in RFC 040.
 
 ## Status
 
-Under active development toward a real TLS 1.3 server interop milestone. The verified
-core, parser, record layer, key schedule, real HACL\* provider, and a live
-step-driven handshake to `connected` (with a real transcript, an in-core protected
-client Finished, and handshake-message reassembly across records) are in place; every
-server-flight message (ServerHello, EncryptedExtensions, Certificate, CertificateVerify,
-Finished) is now emitted as a typed core action — no production path recognizes a handshake
-message by a first byte, and the transcript is committed over the serialized handshake-message
-bytes — with production-interpreter byte-accuracy and external-client interop in progress. The ClientHello parser negotiates the signature scheme from the client's offer (selecting Ed25519 only when offered), which makes the constrained profile's interop limit explicit: a client that does not offer Ed25519 is rejected rather than served a certificate it cannot verify. Suite and group selection are bound the same way — kroopt negotiates ChaCha20-Poly1305 and X25519 from the client's offers and never a suite the provider cannot perform. The current milestone and
-the running tally of machine-checked theorems are tracked in
-[CHANGELOG.md](CHANGELOG.md) and the [ROADMAP](ROADMAP.md).
+kroopt is a proof-backed **pre-production** constrained TLS 1.3 server implementation. The core, parser,
+record layer, key schedule, HACL\* provider, typed server flight, production interpreter, real socket path,
+and constrained OpenSSL/Python/curl interop exist. Those capabilities do not close the architecture-review
+findings: endpoint cipher policy, strict ClientHello framing, live deadline enforcement, unforgeable
+validated construction, total record-phase rejection, certificate-chain representation, canonical gate
+portability, and traffic-secret residency remain scheduled work.
+
+For current capability, evidence classification, blockers, and the next milestone, use the
+[current security state](docs/src/verification/current-security-state.md). The [CHANGELOG](CHANGELOG.md)
+is release history; the [ROADMAP](ROADMAP.md) is sequencing, not evidence that a milestone has passed.
 
 ## Documentation
 
@@ -93,7 +104,8 @@ Full documentation lives in [`docs/src`](docs/src) (an [mdBook](https://rust-lan
   provenance: [Crypto provider and FFI contract](docs/src/crypto/crypto-ffi-contract.md),
   [Vendored crypto: provenance and licensing](docs/src/crypto/third-party.md).
 - **Verification** — [Theorem inventory](docs/src/verification/theorem-inventory.md)
-  and the [Proof assumptions register](docs/src/verification/proof-assumptions.md).
+  and the [Proof assumptions register](docs/src/verification/proof-assumptions.md). Begin with the
+  [current security state](docs/src/verification/current-security-state.md) for the version-current posture.
 
 The development plan is the [RFC set](rfcs/README.md), managed under the
 [RFC lifecycle policy](rfcs/done/000-rfc-lifecycle-policy.md), and the

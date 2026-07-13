@@ -41,6 +41,7 @@
 # Operations
 
 - [Operator event and metric reference](operations/event-and-metric-reference.md)
+- [Canonical release-gate environment](operations/release-gate-environment.md)
 
 # Verification
 

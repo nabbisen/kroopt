@@ -272,3 +272,11 @@ lean_exe «kroopt-realch-interop» where
 lean_exe «kroopt-capabilities-test» where
   root := `Tests.Capabilities
   moreLinkArgs := #["-Wl,--gc-sections"]
+
+/-- Pure, exhaustive translation-contract reference for jemmet's iotakt adapter. This target deliberately
+has no iotakt dependency; RFC 051 registers it in the canonical gate and RFC 052 later consumes it as part
+of real three-project acceptance. -/
+@[default_target]
+lean_exe «kroopt-iotaktbinding-test» where
+  root := `Tests.IotaktBinding
+  moreLinkArgs := #["-Wl,--gc-sections"]

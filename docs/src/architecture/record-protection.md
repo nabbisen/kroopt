@@ -1,5 +1,9 @@
 # Real TLS 1.3 record protection
 
+> **Milestone-history note.** This page explains the record-protection implementation as it landed. For the
+> version-current capability, open architecture-review blockers, and readiness posture, see
+> [current security state](../verification/current-security-state.md); that page wins on conflict.
+
 `Kroopt/Conn/Record13.lean` is the record-protection framing the AEAD primitives sit
 under. It turns a plaintext message plus its content type into a real `TLSCiphertext`
 record on the wire, and back, using ChaCha20-Poly1305 (RFC 8446 §5.2):

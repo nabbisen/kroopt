@@ -52,8 +52,8 @@ Work:
 - RFC 051: declare supported compiler/tool versions and Python dependencies; repair the GCC 16
   sanitizer-harness build; register release-critical checks (`check-no-placeholder` and the iotakt binding
   reference) in the canonical gate; retain the clean AR0 ledger and transition RFC 051 to Implemented.
-- Preserve the tracked review result as the baseline: no handoff or release document may claim 37/37 unless that
-  exact command output is observed for the candidate revision.
+- Preserve the tracked review result as the baseline: no handoff or release document may claim all registered
+  gates passed unless that exact profile output is observed for the candidate revision.
 
 Exit gate:
 
@@ -165,6 +165,12 @@ earlier RFC lifecycle transition; recurring release validation is a milestone ga
 ---
 
 ## 1. Roadmap intent
+
+> **Historical planning record.** Sections 1 onward preserve the original wave/milestone narrative and
+> release history. They are not the current readiness schedule and may use status language that was accurate
+> only for an earlier revision. For current sequencing and release decisions, use §0; for current capability
+> and security posture, use the
+> [current security state](docs/src/verification/current-security-state.md).
 
 This ROADMAP decomposes kroopt into implementable RFC themes. The purpose is not merely to list features; it defines a safe development order for a Lean 4 TLS secure-channel library whose core value depends on proof/runtime correspondence.
 

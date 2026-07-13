@@ -7,6 +7,11 @@ handled. The operational detail — review checkpoints, release blockers, and th
 workflow — lives in [`docs/src/security-review-checklist.md`](docs/src/security-review-checklist.md)
 (RFC 028).
 
+**Current support posture:** kroopt is proof-backed but pre-production. Independent review of `0.124.1`
+set production/stable adoption to **NO-GO** while the AR0–AR3 remediation program is open; stable/v1 also
+requires AR4 native traffic-secret residency. The version-current capability, evidence, and blocker list is
+[`docs/src/verification/current-security-state.md`](docs/src/verification/current-security-state.md).
+
 ## What kroopt proves, assumes, and excludes
 
 kroopt never markets an assumed or out-of-scope property as proven. Reports are evaluated
@@ -32,10 +37,10 @@ against the honest trust boundary:
 
 ## Supported versions
 
-kroopt is pre-1.0 and has not yet cut a stable release; the public API is explicitly not frozen
-(RFC 027). Security fixes land on `main` and in the **latest `0.x` release**, which
-is the only supported line. A supported-version table will be published when a `1.0` stable line
-exists. Older `0.x` snapshots are not maintained — update to the latest release.
+kroopt is pre-1.0 and has not cut a stable release; the public API is explicitly not frozen
+(RFC 027). Security fixes land on `main` and, when a pre-production release is cut, in the latest `0.x`
+line only. “Supported” here means eligible for security fixes and evaluation; it is not a production-
+readiness claim. Older `0.x` snapshots are not maintained — update to the latest release.
 
 | Version | Supported |
 |---------|-----------|

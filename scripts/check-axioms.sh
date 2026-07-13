@@ -10,7 +10,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-AUDIT=$(mktemp /tmp/kroopt-axiom-audit-XXXX.lean)
+TMP_ROOT="${TMPDIR:-$PWD/.git-exclude/tmp}"
+mkdir -p "$TMP_ROOT"
+AUDIT=$(mktemp "$TMP_ROOT/kroopt-axiom-audit-XXXXXX.lean")
 trap 'rm -f "$AUDIT"' EXIT
 
 {

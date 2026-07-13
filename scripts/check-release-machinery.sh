@@ -14,34 +14,40 @@ set -eu
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 FAILS=0
-pass() { echo "  ok   - $1"; }
-bad()  { echo "  FAIL - $1"; FAILS=$((FAILS+1)); }
-# expect a command to exit nonzero
-expect_fail() { if "$@" >/tmp/rm.out 2>&1; then return 1; else return 0; fi; }
-expect_ok()   { if "$@" >/tmp/rm.out 2>&1; then return 0; else return 1; fi; }
-
-echo "[1] gate pass-detection requires exit code 0"
-if expect_ok bash scripts/gate.sh --selftest-passdetect; then pass "selftest passed"; else bad "selftest failed"; fi
-
-echo "[2] gen-sidecar --profile real-release ledger validation"
-TMP="$(mktemp -d)"
-
-# gen-sidecar reads gate-out/GATE-RUN.md from the repo root. From a clean tarball extraction that file
-# is absent (gate-out/ is gitignored + tarball-excluded), so the positive-control path would fail for an
-# unrelated reason. Provide a throwaway one only if absent, and clean it (and gate-out/, if we made it).
+TMP_ROOT="${TMPDIR:-$ROOT/.git-exclude/tmp}"
+mkdir -p "$TMP_ROOT"
+TMP="$(mktemp -d "$TMP_ROOT/release-machinery.XXXXXX")"
+LOG="$TMP/command.log"
 MADE_GATERUN=0; MADE_GATEOUT=0
-if [ ! -f gate-out/GATE-RUN.md ]; then
-  [ -d gate-out ] || { mkdir -p gate-out; MADE_GATEOUT=1; }
-  printf '# placeholder GATE-RUN.md for release-machinery self-test\n' > gate-out/GATE-RUN.md
-  MADE_GATERUN=1
-fi
 cleanup() {
   rm -rf "$TMP"
   [ "$MADE_GATERUN" = "1" ] && rm -f gate-out/GATE-RUN.md
   [ "$MADE_GATEOUT" = "1" ] && rmdir gate-out 2>/dev/null || true
 }
 trap cleanup EXIT
+pass() { echo "  ok   - $1"; }
+bad()  { echo "  FAIL - $1"; FAILS=$((FAILS+1)); }
+# expect a command to exit nonzero
+expect_fail() { if "$@" >"$LOG" 2>&1; then return 1; else return 0; fi; }
+expect_ok()   { if "$@" >"$LOG" 2>&1; then return 0; else return 1; fi; }
 
+echo "[1] gate pass-detection requires exit code 0"
+if expect_ok bash scripts/gate.sh --selftest-passdetect; then pass "selftest passed"; else bad "selftest failed"; fi
+
+echo "[2] missing dependency and registry-drift self-tests"
+if expect_ok bash scripts/check-gate-environment.sh --selftest; then pass "missing dependencies fail"; else bad "environment selftest failed"; fi
+if expect_ok bash scripts/check-gate-registry.sh --selftest; then pass "missing gate ids and stale registry fail"; else bad "registry selftest failed"; fi
+
+echo "[3] gen-sidecar --profile real-release ledger validation"
+
+# gen-sidecar reads gate-out/GATE-RUN.md from the repo root. From a clean tarball extraction that file
+# is absent (gate-out/ is gitignored + tarball-excluded), so the positive-control path would fail for an
+# unrelated reason. Provide a throwaway one only if absent, and clean it (and gate-out/, if we made it).
+if [ ! -f gate-out/GATE-RUN.md ]; then
+  [ -d gate-out ] || { mkdir -p gate-out; MADE_GATEOUT=1; }
+  printf '# placeholder GATE-RUN.md for release-machinery self-test\n' > gate-out/GATE-RUN.md
+  MADE_GATERUN=1
+fi
 V="9.9.9"
 : > "$TMP/kroopt-$V.tar.gz"   # dummy tarball so the existence check passes; we fail earlier on ledger
 
@@ -51,11 +57,12 @@ import sys, os, json
 root, tmp = sys.argv[1], sys.argv[2]
 reg = json.load(open(os.path.join(root,"scripts","gate-registry.json")))
 ids = reg["profiles"]["full-release"]["required_gate_ids"]
+registry_id = reg["gate_registry"]
 def gate(i): return {"id":i,"name":i,"command":i,"status":"pass","exit_code":0,"duration_ms":1,
                      "timestamp_utc":"2026-01-01T00:00:00Z","criticality":"required",
                      "stdout_log":"logs/x","stdout_sha256":"0"*64,"stderr_log":"logs/y","stderr_sha256":"0"*64}
 def led(**kw):
-    d={"gate_registry":"kroopt-gate/v1","release_profile":"full-release","required_gates_passed":True,
+    d={"gate_registry":registry_id,"release_profile":"full-release","required_gates_passed":True,
        "registry_consistent":True,"git_commit":"a"*40,"git_ref":"refs/tags/9.9.9","git_dirty":False,
        "generation_context":"git","github_run_id":"1","runner_os":"Linux","runner_arch":"x86_64",
        "gate_count":len(ids),"gate_policy":{},"gates":[gate(i) for i in ids]}
@@ -79,7 +86,7 @@ if expect_fail run_gen "$TMP/led-missing-san.json"; then pass "rejects ledger mi
 if expect_fail run_gen "$TMP/led-badreg.json";      then pass "rejects mismatched gate_registry"; else bad "accepted mismatched gate_registry"; fi
 if expect_fail run_gen "$TMP/led-notpass.json";     then pass "rejects ledger with a non-pass gate"; else bad "accepted ledger with a non-pass gate"; fi
 
-echo "[3] check-provenance rejects contradictory profile metadata (no --require-release)"
+echo "[4] check-provenance rejects contradictory profile metadata (no --require-release)"
 # craft a local-dry-run sidecar that lies about must_not_publish; must fail at profile-consistency
 : > "$TMP/kroopt-$V.tar.gz"
 python3 - "$TMP" "$V" <<'PY'
@@ -91,7 +98,7 @@ sc = {"manifest_schema":1,"version":v,"release_profile":"local-dry-run",
 json.dump(sc, open(os.path.join(tmp,"kroopt-%s.release-verification.json"%v),"w"))
 PY
 if expect_fail env OUT_DIR="$TMP" bash scripts/check-provenance.sh "$V"; then
-  grep -q "must_not_publish" /tmp/rm.out && pass "rejects local-dry-run with must_not_publish=false" || bad "failed but not on profile-consistency"
+  grep -q "must_not_publish" "$LOG" && pass "rejects local-dry-run with must_not_publish=false" || bad "failed but not on profile-consistency"
 else
   bad "accepted contradictory profile metadata"
 fi

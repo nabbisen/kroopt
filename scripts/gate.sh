@@ -22,12 +22,14 @@ set -u
 
 PROFILE="full-release"
 SELFTEST=0
+LIST_GATES=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --profile) PROFILE="${2:-}"; shift 2 ;;
     --profile=*) PROFILE="${1#*=}"; shift ;;
     --selftest-passdetect) SELFTEST=1; shift ;;
-    -h|--help) echo "usage: gate.sh [--profile full-release|pr] [--selftest-passdetect]"; exit 0 ;;
+    --list-gate-ids) LIST_GATES=1; shift ;;
+    -h|--help) echo "usage: gate.sh [--profile full-release|pr] [--selftest-passdetect|--list-gate-ids]"; exit 0 ;;
     *) echo "gate.sh: unknown arg '$1'" >&2; exit 2 ;;
   esac
 done
@@ -35,7 +37,10 @@ case "$PROFILE" in full-release|pr) ;; *) echo "gate.sh: unknown profile '$PROFI
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
-GATE_REGISTRY="kroopt-gate/v1"
+TMPDIR="${TMPDIR:-$ROOT/.git-exclude/tmp}"
+mkdir -p "$TMPDIR"
+export TMPDIR
+GATE_REGISTRY="kroopt-gate/v3"
 
 # --- pass detection: exit code is REQUIRED; success markers are additional, never sufficient ----
 passed() { # kind exit_code logfile
@@ -72,35 +77,50 @@ if [ "$SELFTEST" = "1" ]; then
   exit 1
 fi
 
-OUT="$ROOT/gate-out"
-LOGS="$OUT/logs"
-rm -rf "$OUT"; mkdir -p "$LOGS"
-RESULTS="$OUT/results.tsv"
-: > "$RESULTS"
-
 # --- gate table: "id<TAB>kind<TAB>name<TAB>command" -------------------------------------
 # kind drives pass detection (exit code alone is insufficient: test suites can exit 0 while
 # reporting failures, so suites also scan for FAILED/FAIL).
 SUITES="capabilities close config conn correspondence crypto e2e flight hacl handshake \
 hardening https keyschedule model nativesecret nonce parse provision realprovider record \
-record13 replay scheduledriver socket socketdriver trace wire"
+record13 replay scheduledriver socket socketdriver trace wire iotaktbinding"
 
-GATELIST="$OUT/gates.txt"; : > "$GATELIST"
-emit() { printf '%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" >> "$GATELIST"; }
+write_gate_table() {
+  GATELIST="$1"; : > "$GATELIST"
+  emit() { printf '%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" >> "$GATELIST"; }
+  emit environment ok "supported gate environment" "bash scripts/check-gate-environment.sh --profile $PROFILE"
+  emit registry ok "gate registry consistency" "bash scripts/check-gate-registry.sh"
+  emit build build "lake build" "lake build"
+  for s in $SUITES; do emit "suite:$s" suite "$s test suite" "lake exe kroopt-$s-test"; done
+  emit axioms   ok    "axiom audit"                 "bash scripts/check-axioms.sh"
+  emit deps     ok    "dependency purity"           "bash scripts/check-deps.sh"
+  emit hygiene  ok    "hygiene"                      "bash scripts/check-hygiene.sh"
+  emit no-placeholder ok "no placeholder/first-byte dispatch" "bash scripts/check-no-placeholder.sh"
+  emit docs     ok    "documentation and RFC consistency" "bash scripts/check-docs.sh"
+  emit provenance ok  "HACL* vendored-byte provenance" "bash scripts/check-hacl-provenance.sh"
+  emit fuzz     fuzz  "parser fuzz (20000)"          "lake exe kroopt-parse-fuzz 20000"
+  if [ "$PROFILE" = "full-release" ]; then
+    emit sanitizers     san     "ASan/UBSan sanitizer harness"            "bash scripts/sanitizer-check.sh"
+    emit interop:tls    interop "live TLS 1.3 interop (OpenSSL/Python/curl)" "bash scripts/tls-interop.sh"
+    emit interop:ed25519 interop "Ed25519 CertificateVerify interop (HACL* vs OpenSSL)" "bash scripts/ed25519-interop.sh"
+    emit interop:record interop "record-layer interop (Record13 vs Python cryptography)" "bash scripts/record-interop.sh"
+  fi
+}
 
-emit build build "lake build" "lake build"
-for s in $SUITES; do emit "suite:$s" suite "$s test suite" "lake exe kroopt-$s-test"; done
-emit axioms   ok    "axiom audit"                 "bash scripts/check-axioms.sh"
-emit deps     ok    "dependency purity"           "bash scripts/check-deps.sh"
-emit hygiene  ok    "hygiene"                      "bash scripts/check-hygiene.sh"
-emit provenance ok  "HACL* vendored-byte provenance" "bash scripts/check-hacl-provenance.sh"
-emit fuzz     fuzz  "parser fuzz (20000)"          "lake exe kroopt-parse-fuzz 20000"
-if [ "$PROFILE" = "full-release" ]; then
-  emit sanitizers     san     "ASan/UBSan sanitizer harness"            "bash scripts/sanitizer-check.sh"
-  emit interop:tls    interop "live TLS 1.3 interop (OpenSSL/Python/curl)" "bash scripts/tls-interop.sh"
-  emit interop:ed25519 interop "Ed25519 CertificateVerify interop (HACL* vs OpenSSL)" "bash scripts/ed25519-interop.sh"
-  emit interop:record interop "record-layer interop (Record13 vs Python cryptography)" "bash scripts/record-interop.sh"
+if [ "$LIST_GATES" = 1 ]; then
+  list_file="$(mktemp "$TMPDIR/gate-list.XXXXXX")"
+  trap 'rm -f "$list_file"' EXIT
+  write_gate_table "$list_file"
+  cut -f1 "$list_file"
+  exit 0
 fi
+
+OUT="$ROOT/gate-out"
+LOGS="$OUT/logs"
+rm -rf "$OUT"; mkdir -p "$LOGS"
+RESULTS="$OUT/results.tsv"
+: > "$RESULTS"
+GATELIST="$OUT/gates.txt"
+write_gate_table "$GATELIST"
 
 # --- pass detection: see exit-code-required passed() defined near the top --------------
 
@@ -177,8 +197,11 @@ with open(results) as f:
             "stderr_log": elog, "stderr_sha256": esha,
         })
 
-policy_scripts = ["scripts/gate.sh","scripts/check-axioms.sh","scripts/check-deps.sh",
-                  "scripts/check-hygiene.sh","scripts/check-hacl-provenance.sh","scripts/check-release-machinery.sh",
+policy_scripts = ["scripts/gate.sh","scripts/gate-registry.json","requirements-gate.txt",
+                  "scripts/check-gate-environment.sh","scripts/check-gate-registry.sh",
+                  "scripts/check-docs.sh",
+                  "scripts/check-axioms.sh","scripts/check-deps.sh","scripts/check-hygiene.sh",
+                  "scripts/check-no-placeholder.sh","scripts/check-hacl-provenance.sh","scripts/check-release-machinery.sh",
                   "scripts/sanitizer-check.sh","scripts/tls-interop.sh",
                   "scripts/ed25519-interop.sh","scripts/record-interop.sh"]
 gate_policy = {os.path.basename(s).replace("-","_").replace(".sh","")+"_sha256": sh(os.path.join(root,s))

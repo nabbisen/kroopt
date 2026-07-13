@@ -1,9 +1,11 @@
 {
-  "gate_registry": "kroopt-gate/v1",
+  "gate_registry": "kroopt-gate/v3",
   "note": "Single source of truth for the canonical gate set per profile. Consumed by gate.sh (emits + self-checks), gen-sidecar.sh (--profile real-release), and check-provenance.sh (--require-release). The release-machinery regression test (scripts/check-release-machinery.sh) and the gate pass-detection self-test (gate.sh --selftest-passdetect) run as standalone/CI steps, not as in-loop gates. Changing the gate set is a versioned change (bump the registry).",
   "profiles": {
     "full-release": {
       "required_gate_ids": [
+        "environment",
+        "registry",
         "build",
         "suite:capabilities",
         "suite:close",
@@ -32,9 +34,12 @@
         "suite:socketdriver",
         "suite:trace",
         "suite:wire",
+        "suite:iotaktbinding",
         "axioms",
         "deps",
         "hygiene",
+        "no-placeholder",
+        "docs",
         "provenance",
         "fuzz",
         "sanitizers",
@@ -45,6 +50,8 @@
     },
     "pr": {
       "required_gate_ids": [
+        "environment",
+        "registry",
         "build",
         "suite:capabilities",
         "suite:close",
@@ -73,9 +80,12 @@
         "suite:socketdriver",
         "suite:trace",
         "suite:wire",
+        "suite:iotaktbinding",
         "axioms",
         "deps",
         "hygiene",
+        "no-placeholder",
+        "docs",
         "provenance",
         "fuzz"
       ]

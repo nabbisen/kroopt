@@ -5,6 +5,20 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+### AR0 — project truth reconciliation
+
+- Qualify kroopt as a proof-backed pre-production implementation with production/stable adoption NO-GO
+  while the architecture-review remediation milestones remain open.
+- Make the current-security page the version-current capability, blocker, evidence, and next-milestone
+  authority; align README, SECURITY, trust matrix, RELEASES, ROADMAP, RFC index, and handoff policy.
+- Correct the duplicated historical `0.123.1` section without changing its release facts.
+- Add the versioned `kroopt-gate/v3` registry: explicit supported-environment and documentation gates,
+  canonical no-placeholder and iotakt-binding entries, exact registry-order checking, and negative controls
+  for nonzero exits, missing dependencies, missing gate ids, and stale registry versions.
+- Repair GCC 16 sanitizer compilation by explicitly declaring the pinned Lean runtime-module ABI; make gate
+  temporary files honor a writable `TMPDIR`; declare Python `cryptography` and mdBook prerequisites; add
+  GCC 12/16 sanitizer CI lanes. The full profile now contains 42 registered gates and PR contains 38.
+
 ## [0.124.1] — sidecar `git_ref` captures the tag on a tagged release — 2026-06-30
 
 Cosmetic provenance fix. No library / proof / runtime change (theorem count unchanged, 109; gate 37/37).
@@ -43,25 +57,6 @@ Honesty-hygiene + structure increment ahead of kroopt's first real tagged releas
   `deriveHashesFromSuites`); comprehensive negotiation + negative tests (`runE2EP256` reaches `connected`, plus
   rejection / unknown-group / duplicate / malformed-point); and corrected docs. The stale "Open" status was the
   only remaining inconsistency; the body is retained as the historical problem statement.
-
-## [0.123.1] — IotaktTransport ownership reconcile (no kroopt iotakt edge) — 2026-06-30
-
-Honesty/consistency fix surfaced by jemmet's RFC 015 fixture reply: kroopt's tree framed a future
-kroopt-owned `Kroopt/Conn/IotaktTransport.lean`, which contradicts kroopt's own provenance graph (HACL\*-only
-release sidecar; RFC 030 "no iotakt edge"). The real adapter is jemmet's. No library/proof change (109
-theorems; gate 37/37).
-
-- **`Tests/IotaktBinding.lean`** reframed from "kroopt's future `IotaktTransport`" to a **tested translation
-  reference** the jemmet adapter implements against: the real adapter is `Jemmet/Conn/IotaktTransport.lean`
-  (kroopt's `Transport` over `IotaktRuntime.*`); the jemmet→iotakt edge lives on jemmet's node; kroopt declares
-  no iotakt edge. The file depends only on `Kroopt.Conn.Transport` and invokes no real iotakt IO, so kroopt's
-  build and proofs carry no iotakt dependency.
-- **`handoff/HANDOFF-iotakt-consumer-review.md`, `handoff/iotakt-review-orders.md`**: dated reconcile banner —
-  the §O11 binding spec is the contract jemmet's adapter implements; historical text left intact.
-- **`rfcs/README.md`**: clarified the two live-index phrasings that implied a kroopt iotakt edge.
-
-Consistent with the settled cross-project split: kroopt brings `TlsConn`/`Transport` + TLS crypto + the
-TLS-negative assertions; jemmet brings `IotaktTransport` + `Conn` + handler.
 
 ## [0.123.1] — IotaktTransport ownership reconcile (no kroopt iotakt edge) — 2026-06-30
 

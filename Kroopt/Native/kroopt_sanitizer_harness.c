@@ -30,6 +30,11 @@
 #include "Hacl_HMAC.h"
 #include "Hacl_Ed25519.h"
 
+/* Lean-generated C modules declare this pinned-toolchain runtime entry point before calling it.
+ * This standalone C harness follows that generated ABI explicitly instead of relying on the implicit
+ * function declaration that GCC 16 rejects. The symbol is supplied by libleanshared.so. */
+void lean_initialize_runtime_module(void);
+
 /* The shim entry points (compiled into this harness from kroopt_ffi.c). */
 lean_object *kroopt_ffi_sha256(b_lean_obj_arg);
 lean_object *kroopt_ffi_x25519_public(b_lean_obj_arg);

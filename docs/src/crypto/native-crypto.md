@@ -104,4 +104,4 @@ offline and reproducibly.
 - `lake build` (all default targets) now compiles the vendored C, so CI for the
   full target set requires gcc. This is expected for the native milestone.
 - The vendored tree is ~1.2 MB of generated C and headers under
-  `Kroopt/Native/hacl/`; see [`NOTICE`](../../NOTICE) for license attribution.
+  `Kroopt/Native/hacl/`; see [`NOTICE`](../../../NOTICE) for license attribution.

@@ -6,6 +6,11 @@ proved-shared-core + tested IO lift** (architect review 2026-06-30).
 **Authority.** The RFC owns *what/why*; this handoff owns *how to implement and verify*. If this handoff and
 the RFC ever disagree, fix the RFC first, then this handoff (RFC 000 policy).
 
+**Current project disposition.** Pre-production; production/stable adoption remains **NO-GO** under the
+AR0–AR4 remediation schedule. This design handoff contains no implementation or canonical-gate pass claim.
+Its slice statuses remain Pending until candidate-specific evidence is recorded using the handoff template's
+`Done` / `Pending` / `N/A` discipline.
+
 This document covers the 14 internal-design sections the review requires **before implementation starts**. It
 is written so Slice 1 is mechanical and Slices 2–3 are planned.
 

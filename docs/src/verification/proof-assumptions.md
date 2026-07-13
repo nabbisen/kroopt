@@ -1,5 +1,9 @@
 # Proof assumptions register
 
+> **Scope note.** This register describes proof assumptions and historical proof increments, not whole-system
+> production readiness. For the version-current capability, evidence classification, and open blockers, see
+> [current security state](current-security-state.md); that page wins on conflict.
+
 This register lists every assumption the kroopt verified core's proofs depend on
 beyond Lean's trusted kernel (RFC 022 §4). The goal is that the trusted base is
 small, explicit, and auditable.

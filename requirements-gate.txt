@@ -1,0 +1,4 @@
+# Python dependencies for the canonical full-release gate.
+# Keep this range aligned with docs/src/operations/release-gate-environment.md and
+# scripts/check-gate-environment.sh. Python 3.14 support requires the current cryptography line.
+cryptography>=46.0.0,<48

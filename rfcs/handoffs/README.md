@@ -5,6 +5,10 @@ Companion execution documents for RFCs and cross-project integration records. Pe
 handoff inherits its status from the related RFC; review/correspondence records carry their own
 resolved/open marker in their header.
 
+Every new implementation or release handoff must use [`TEMPLATE.md`](TEMPLATE.md). In particular, each
+acceptance item is `Done`, `Pending`, or `N/A` with candidate-specific evidence; a gate pass must identify
+the exact revision and retained ledger. Handoff prose cannot promote project readiness by itself.
+
 Organized by **owner**:
 
 - **[`self/`](self/)** — kroopt-internal handoffs: RFC implementation companions and kroopt's own review
@@ -13,6 +17,8 @@ Organized by **owner**:
   for transport).
 
 ## Contents
+
+- [`TEMPLATE.md`](TEMPLATE.md) — required evidence/status structure for new handoffs.
 
 ### `self/`
 | Item | For | Status |

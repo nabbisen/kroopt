@@ -5,13 +5,18 @@ status, the concrete evidence, who owns it, what gap remains, and the release at
 close. It complements the [current security state](current-security-state.md) (which is the capability
 inventory) and supersedes the scattered restatements in other pages where they differ.
 
+> **Current disposition:** pre-production; production/stable adoption is **NO-GO** while the B1–B8
+> remediation program remains open. A row marked `PROVEN`, `TESTED`, or `met` describes that bounded claim,
+> not whole-system production readiness. See [current security state](current-security-state.md).
+
 **Status vocabulary.** `PROVEN` = machine-checked over `Kroopt.Core.step`; `TESTED` = covered by CI
 suites / KAT / fuzz / live interop; `ASSUMED` = inherited from a trusted external component (HACL\*,
 OS); `BEST-EFFORT` = attempted but not guaranteed; `NOT CLAIMED` = explicitly out of scope.
 
-**Proof hygiene baseline.** The axiom gate (`scripts/check-axioms.sh`) reports: *109 public theorems
-audited, no `sorryAx`, axioms within `{propext, Quot.sound, Classical.choice}`.* All `PROVEN` rows are
-within that audited set.
+**Proof hygiene baseline.** The released `0.124.1` evidence reports 109 public theorems audited, no
+`sorryAx`, and axioms within `{propext, Quot.sound, Classical.choice}`. A current candidate inherits no
+automatic pass: `scripts/check-axioms.sh` and the canonical gate must be observed again for that exact
+revision. All `PROVEN` rows describe theorem scope over the pure core, not unchecked interpreter behavior.
 
 ## Core protocol safety — PROVEN over `step`
 
@@ -32,11 +37,16 @@ within that audited set.
 | Claim | Status | Evidence | Owner | Remaining gap | Release gate |
 |---|---|---|---|---|---|
 | Config capability validation total/deterministic | PROVEN (total fn) + TESTED | `validateServerConfigCapabilities`; `kroopt-capabilities-test`, `kroopt-config-test` | kroopt | — | met |
+| Endpoint cipher allow-list authorizes selection | **OPEN / NOT CLAIMED** | architecture review B1 | kroopt | parser currently selects before endpoint/SNI policy authorization | RFC 045 / AR1 |
+| Strict complete ClientHello framing | **OPEN / PARTIAL** | bounds proofs + architecture review B2 | kroopt | exact nested lengths/end-of-input and malformed-SNI distinction | RFC 046 / AR1 |
 | Named-group authorization (x25519-first, allow-list) | TESTED (+ structural) | `kroopt-handshake-test`; live P-256 + rejection interop | kroopt | — | met |
 | `supported_groups`/`key_share` consistency (incl. strict absent-SG reject) | TESTED | parse-time consistency check (RFC 8446 §4.2.8); `noSgCH` replay + EndToEnd consistency fixtures | kroopt | — | met (HIGH-3) |
 | ALPN offered-and-allowed | TESTED | `kroopt-handshake-test`; live interop | kroopt | — | met |
 | Certificate/key config-lint | TESTED | leaf-key compatibility lint; `kroopt-provision-test` | kroopt | broader operational lint (chain order, SAN/expiry) | v0.4 (MEDIUM-3) |
 | Alert/close terminal discipline | PROVEN | terminal theorems above; `kroopt-close-test` | kroopt core | — | met |
+| Validated construction is unforgeable | **OPEN / NOT CLAIMED** | architecture review B4 | kroopt public API | opaque config/provider/generation-bound runtime token | RFC 048 / AR1 |
+| Record phase/content acceptance is total and fail-closed | **OPEN / PARTIAL** | architecture review B5 | kroopt core | remove silent-ignore/default branches; make graceful EOF reachable | RFC 049 / AR1 |
+| Certificate-chain presentation | **OPEN / PARTIAL** | architecture review B8 | kroopt | represent leaf and intermediates as distinct bounded TLS entries | RFC 050 / AR2 |
 
 ## Secrets and observability
 
@@ -66,7 +76,7 @@ within that audited set.
 | Claim | Status | Evidence (KAT vector / suite) | Owner | Remaining gap | Release gate |
 |---|---|---|---|---|---|
 | **Vendored byte identity = named upstream verified artifact** | **ASSUMED-inherited, byte-identity PROVEN by gate** | `scripts/check-hacl-provenance.sh` (offline, every build) + `verify-hacl-upstream.sh` (online); manifest pins `ocaml-v0.4.5` / sha256 `47bf253f…` / tree `ff82d9a7…`, 166 files, 0 mods | kroopt (vendoring discipline) | — | met |
-| AEAD correctness (AES-128/256-GCM, ChaCha20-Poly1305) | ASSUMED + KAT TESTED | NIST GCM TC4; RFC 8439; `kroopt-hacl-test` | HACL\*/Project Everest | AES-GCM on the wire (interop) | v0.4 |
+| AEAD correctness (AES-128/256-GCM, ChaCha20-Poly1305) | ASSUMED + KAT/interop TESTED | NIST GCM TC4; RFC 8439; `kroopt-hacl-test`; live OpenSSL interop | HACL\*/Project Everest | cryptographic correctness remains inherited/assumed | n/a |
 | HKDF / HMAC correctness | ASSUMED + KAT TESTED | RFC 5869 §A.1; RFC 4231 §4.2; `kroopt-hacl-test` | HACL\* | — | met |
 | ECDHE correctness (X25519, P-256) | ASSUMED + KAT/interop TESTED | RFC 7748 §6.1; NIST CAVP KAS; `kroopt-hacl-test` + interop | HACL\* | — | met |
 | Signature correctness (Ed25519) | ASSUMED + KAT/interop TESTED | RFC 8032 vectors; `kroopt-hacl-test` + cert interop | HACL\* | ECDSA-P256 / RSA-PSS bound but **not advertised** | v0.4+ |
@@ -77,11 +87,12 @@ within that audited set.
 
 | Claim | Status | Evidence | Owner | Remaining gap | Release gate |
 |---|---|---|---|---|---|
-| FFI memory safety | TESTED (ASan/UBSan), not PROVEN | `scripts/sanitizer-check.sh` (system gcc) | kroopt shim | not a proof target | met (pre-stable) |
+| FFI memory safety | TESTED on recorded candidates, not PROVEN | `scripts/sanitizer-check.sh` | kroopt shim | AR0 portability under the supported compiler matrix | RFC 051 / AR0 |
 | Interpreter faithfulness | TESTED, not PROVEN | `kroopt-correspondence-test`; fake interpreter | kroopt | pure↔IO correspondence for a production IO interpreter | v1 |
-| Live constrained interop | TESTED | `scripts/tls-interop.sh` — openssl/python/curl, blocking + reactor | kroopt | AES-GCM on the wire | v0.4 |
+| Live constrained interop | TESTED on recorded candidates | `scripts/tls-interop.sh` — OpenSSL/Python/curl, blocking + reactor; all three advertised suites | kroopt | endpoint cipher authorization (B1), browser-grade breadth, real jemmet+iotakt path | AR1/AR3 |
 | Browser-grade interop | NOT CLAIMED | — | kroopt | full browser matrix | post-v0.4 |
-| Global / listener-level DoS | per-connection bounds PROVEN/TESTED; **listener-wide DELEGATED** | resource-budget bounds + handshake/idle timeouts (kroopt); admission/rate-limit/global budgets (iotakt + jemmet) | kroopt (per-connection) · iotakt + jemmet (global) | explicit threat-model declaration | v0.3 doc (threat-model increment) |
+| Handshake/idle deadline enforcement | **OPEN / MODELED ONLY** | timeout events exist; architecture review B3 | kroopt policy + live adapter clock | canonical live reference-adapter timer generation | RFC 047 / AR2 |
+| Global / listener-level DoS | per-connection byte/count bounds PROVEN/TESTED; **listener-wide DELEGATED** | resource-budget bounds; admission/rate-limit/global budgets belong to iotakt + jemmet | kroopt (per-connection) · iotakt + jemmet (global) | live per-connection deadlines (RFC 047); downstream aggregate policy | AR2/AR3 |
 
 ## What this matrix deliberately does **not** claim
 

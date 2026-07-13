@@ -1,5 +1,9 @@
 # Connection provisioning and Ed25519 vector discipline
 
+> **Milestone-history note.** This page explains provisioning design and may describe earlier capability
+> stages. For the version-current capability, open architecture-review blockers, and readiness posture, see
+> [current security state](../verification/current-security-state.md); that page wins on conflict.
+
 The real provider (`mkRealProvider`) closes over a `RealCryptoConfig` whose
 ephemeral X25519 private key and certificate key pair were, until M19, injected by
 tests. Production wiring needs two things the test path stubbed: a **fresh ephemeral

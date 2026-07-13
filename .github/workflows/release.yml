@@ -39,7 +39,9 @@ jobs:
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
 
       - name: Install gate dependencies (interop/sanitizer harnesses)
-        run: python3 -m pip install --break-system-packages cryptography
+        run: |
+          python3 -m pip install --break-system-packages -r requirements-gate.txt
+          cargo install mdbook --version 0.5.4 --locked
 
       - name: Resolve version + label-drift guard
         id: ver

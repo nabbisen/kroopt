@@ -1,7 +1,7 @@
 # RFC 030 — Production Readiness and Release Runbook
 
 **Project.** kroopt  
-**Status.** Implemented (Stage A 0.119.0; Stage B 0.121.0–0.121.1; Stage C 0.122.0; ratified after review 0.122.1). The release-runbook machinery is in-repo and exercised end-to-end up to self-verification. **Deferred (operational/non-blocking):** the GitHub publish step (`gh release create`) is first exercised by the next real `X.Y.Z` tag (operational validation, not a design gap); splitting dry-run vs publish into separate jobs so only publish holds `contents: write` is a future workflow hardening.  
+**Status.** Implemented (Stage A 0.119.0; Stage B 0.121.0–0.121.1; Stage C 0.122.0; ratified after review 0.122.1). The release-runbook machinery is in-repo; self-verification landed before ratification and the GitHub publish step was first exercised by release `0.124.0`. Splitting dry-run vs publish into separate jobs so only publish holds `contents: write` remains future workflow hardening.
 **Type.** Implementation RFC  
 **Target milestone.** v0.4 and every release after  
 **Depends on.** RFC 020, RFC 022, RFC 026, RFC 028, RFC 029  

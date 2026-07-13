@@ -23,7 +23,8 @@ jobs:
 
       - name: Install gate dependencies (interop/sanitizer harnesses)
         run: |
-          python3 -m pip install --break-system-packages cryptography
+          python3 -m pip install --break-system-packages -r requirements-gate.txt
+          cargo install mdbook --version 0.5.4 --locked
           # gcc/clang (ASan/UBSan), openssl, and curl are present on ubuntu-latest runners.
 
       - name: Run canonical gate (scripts/gate.sh, full-release profile)
@@ -41,3 +42,31 @@ jobs:
           name: gate-out-${{ github.run_id }}-${{ github.run_attempt }}
           path: gate-out/
           retention-days: 90
+
+  gcc-portability:
+    name: sanitizer / GCC ${{ matrix.gcc }}
+    runs-on: ubuntu-latest
+    container: gcc:${{ matrix.gcc }}
+    strategy:
+      fail-fast: false
+      matrix:
+        gcc: ['12.5.0', '16.1.0']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Lean bootstrap dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates curl git python3
+
+      - name: Install pinned Lean toolchain
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
+            | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Validate baseline environment and sanitizer harness
+        run: |
+          lean --version
+          gcc --version | head -1
+          bash scripts/sanitizer-check.sh

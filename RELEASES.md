@@ -62,11 +62,14 @@ sha256sum dist/kroopt-X.Y.Z.tar.gz   # must equal source_archive.sha256 in the s
 
 ## Operational status
 
-The release workflow is authored and dry-run verified (the non-tag `workflow_dispatch` path and the local
-script chain are exercised). The **publish step (`gh release create`) is first exercised by the next real
-`X.Y.Z` tag.** Any environment-specific GitHub publishing issue found there is handled as a release-workflow
-follow-up, not as a provenance-design gap — the gate, packaging, sidecar generation, and self-verification
-that produce the evidence are all already exercised.
+The repository records `0.124.0` as the first real published-release workflow exercise and `0.124.1` as its
+follow-up provenance fix. Earlier tags are development/history tags; this page does not retroactively assert
+that they carried the three release assets. For a particular release, the immutable assets attached to that
+tag are the publication evidence—neither a local tag nor a CHANGELOG gate count substitutes for them.
+
+The current `main` planning package is newer than `0.124.1` and remains pre-production. Its AR0 canonical
+gate must be observed and retained for the exact candidate revision before any new release or handoff reports
+a pass.
 
 ## Versioning
 

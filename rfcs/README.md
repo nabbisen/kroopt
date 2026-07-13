@@ -95,8 +95,9 @@ milestone where the work substantively landed (see CHANGELOG/ROADMAP for detail)
 
 | ID | Title | Shipped in |
 |----|-------|------------|
-| 030 | [Production Readiness and Release Runbook](done/030-production-readiness-and-release-runbook.md) | Implemented (Stage A 0.119.0; Stage B 0.121.0–0.121.1; Stage C 0.122.0; ratified 0.122.1) — canonical `gate.sh` + ledger; reproducible `package-release.sh`; `gen-sidecar.sh` (henret `manifest_schema 1`, HACL\* vendored-source dep); `check-provenance.sh` self-verifier; `release.yml` tag-publish + dry-run; `RELEASES.md` immutability. Publish step first exercised on the next real tag |
+| 030 | [Production Readiness and Release Runbook](done/030-production-readiness-and-release-runbook.md) | Implemented (Stage A 0.119.0; Stage B 0.121.0–0.121.1; Stage C 0.122.0; ratified 0.122.1) — canonical `gate.sh` + ledger; reproducible packaging/sidecar/self-verification; immutable tag publishing first exercised by `0.124.0` |
 | 043 | [HACL*/EverCrypt Vendoring and Provenance Discipline](done/043-hacl-evercrypt-vendoring-and-provenance.md) | Implemented (0.120.0–0.120.2) — byte-level anchor of the vendored tree to the named upstream `ocaml-v0.4.5` artifact (166 files, 0 mods); per-file manifest outside the hash-covered tree; offline `check-hacl-provenance.sh` gate (tree==manifest) in `gate.sh` + online `verify-hacl-upstream.sh` (manifest==upstream); trust-matrix restored to anchored-inherited. First upstream bump exercises §10, not a done-gate |
+| 042 | [Resource-limit Enforcement and Configurability](done/042-resource-limit-enforcement.md) | Implemented (0.115–0.116.0-dev) — validated limits, core charge sites, bounded egress, and closeout cleanup |
 | 041 | [Fatal-alert wire transmission](done/041-fatal-alert-wire-transmission.md) | Implemented (0.111–0.114.0-dev) — core `writeAlert` action + `AlertDescription.toByte` round-trip proof; plaintext (initial, live-observed) + sealed (handshake/application) fatal alerts; dual `alertsClassified`/`alertsSent`; record-path `recordFailAlert` wired (0.113); doc/comment closeout (0.114) |
 | 000 | [RFC lifecycle policy](done/000-rfc-lifecycle-policy.md) | Implemented |
 | 039 | [Named-Group Policy and Selection Enforcement](done/039-named-group-policy-and-enforcement.md) | Implemented (0.81.0-dev) |
@@ -132,7 +133,11 @@ _Note: RFC 016 is a standing scope-control policy (deferral decision in effect a
 enforced by tests); the deferred TLS features themselves land later via descendant
 RFCs, as RFC 016 requires._
 
-## Current state — constrained-profile edge band (post-0.48.0-dev)
+## Historical snapshot — constrained-profile edge band (0.48.0-dev–0.65.0-dev)
+
+This section is retained as milestone history and is not the current RFC or readiness state. Use the
+[architecture-review remediation schedule](#proposed--architecture-review-remediation-schedule), ROADMAP
+§0, and the [current security state](../docs/src/verification/current-security-state.md) for current truth.
 
 After the M37 native-hardening band (0.48.0-dev), work proceeded under RFC 010 (now Implemented at
 0.91.0-dev) and the
@@ -147,7 +152,7 @@ against live clients (OpenSSL/curl). Landed and live-validated through **0.65.0-
   plus config-validation rejection of malformed ALPN identifiers and ambiguous SNI routes;
 - HTTP/1.1 keep-alive over the TLS data path (SocketReactor stand-in; the real iotakt adapter is jemmet's node, no kroopt iotakt edge).
 
-No RFC moved to `done/` in this band: each candidate has a logged deferral by its own acceptance —
+At the time of this historical snapshot, no RFC moved to `done/` in this band: each candidate had a logged deferral by its own acceptance —
 RFC 010 (standup over jemmet's real iotakt adapter), RFC 031 (async-crypto runtime ledger), RFC 037 (C zeroizing arena).
 The AES-GCM / SHA-384 crypto breadth (RFC 035) and browser interop (RFC 026) remain blocked on the
 available HACL\* source and the test host respectively, and gate a non-dev v0.4.0.

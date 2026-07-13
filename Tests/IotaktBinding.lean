@@ -258,4 +258,4 @@ Driver loop, for the real binding (review §O11 skeleton). Wired when iotakt v0.
       | closeTransport action    => EventLoop.closeConnection loop key; drop conns[key]
 -/
 
-def main (args : List String) : IO Unit := Tests.IotaktBinding.main
+def main (_args : List String) : IO Unit := Tests.IotaktBinding.main
