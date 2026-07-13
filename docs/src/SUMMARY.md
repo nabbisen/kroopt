@@ -44,6 +44,7 @@
 
 # Verification
 
+- [Architecture-review baseline — 0.124.1](verification/architecture-review-0.124.1.md)
 - [Current security state](verification/current-security-state.md)
 - [Trust matrix](verification/trust-matrix.md)
 - [Theorem inventory](verification/theorem-inventory.md)

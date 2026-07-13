@@ -9,10 +9,14 @@ inside each file mirrors its folder.
 - `archive/` — withdrawn or superseded, with a one-line reason.
 
 The implementation RFCs (001–030) were audited against their own acceptance
-criteria at **0.24.0-dev**; those whose criteria are fully met were migrated to
-`done/`. The ten that remain in `proposed/` each have a specific named
-deliverable still open (listed below), concentrated in the v0.3 real-interop and
-v0.4 hardening / release-governance bands.
+criteria at **0.24.0-dev**; those whose criteria were then considered met were
+migrated to `done/`. The independent architecture review of `0.124.1`
+(`b4fcedf166c4b77256d46fd6f509c73ead2a3ad0`, 2026-07-13) supersedes the
+handoff's production-ready posture: production/stable adoption is **NO-GO** while
+the AR0–AR3 remediation program in [`ROADMAP.md`](../ROADMAP.md#0-architecture-review-remediation-program-2026-07-13)
+is open; stable/v1 additionally requires AR4 / RFC 040. Existing `done/` RFCs
+remain durable design history, but a new follow-up RFC may reopen an uncovered
+acceptance gap without rewriting that history.
 
 RFCs **031–037** were added after the 0.35.0-dev architecture review and amended after
 the review of the RFCs themselves. They form the pre-interop correspondence-and-hardening
@@ -46,9 +50,30 @@ HTTPS E2E + interop breadth (RFC 015/026) the headline track; 031, 032, 033, 034
 
 Read order: ROADMAP first, then RFCs 001–007 (pure verified core), 008–009
 (crypto integration), 010–015 (runtime integration and acceptance), 016 (scope
-control), then 017–030 (cross-cutting security, lifecycle, and release governance).
+control), then 017–030 (cross-cutting security, lifecycle, and release governance),
+031–043 (correspondence/native/interop hardening history), and finally 044–054
+(the current architecture-review remediation and deferred-evolution schedule).
 
-## Proposed — open deliverable remaining
+## Proposed — architecture-review remediation schedule
+
+These RFCs turn every blocking/non-blocking architecture-review theme into a
+durable work item. Milestone order and release decision gates are in ROADMAP §0.
+
+| ID | Title | Milestone / purpose |
+|----|-------|---------------------|
+| 044 | [Async Crypto Offload and Result Correlation](proposed/044-async-crypto-offload-and-result-correlation.md) | Deferred until after AR4; preserves RFC 040's sync-first boundary |
+| 045 | [Endpoint Negotiation Policy Authorization](proposed/045-endpoint-negotiation-policy-authorization.md) | AR1 — B1 endpoint cipher policy |
+| 046 | [Strict ClientHello and Extension Framing](proposed/046-strict-clienthello-and-extension-framing.md) | AR1 — B2 strict parsing/fuzzing |
+| 047 | [Monotonic Deadlines and Timeout Enforcement](proposed/047-monotonic-deadlines-and-timeout-enforcement.md) | AR2 — B3 handshake/idle/close deadlines |
+| 048 | [Validated Construction and Protected-Epoch Fail-Closed Behavior](proposed/048-validated-construction-and-protected-epoch-fail-closed.md) | AR1 — B4 construction and protected-flight safety |
+| 049 | [Record-Phase Acceptance and Clean-Close Semantics](proposed/049-record-phase-acceptance-and-clean-close.md) | AR1 — B5 plus public graceful EOF |
+| 050 | [Bounded Certificate-Chain Presentation](proposed/050-bounded-certificate-chain-presentation.md) | AR2 — B8 real certificate lists |
+| 051 | [Release-Gate Portability and Canonical Evidence](proposed/051-release-gate-portability-and-canonical-evidence.md) | AR0 — B7 portability/registry; AR2/AR3 consume the implemented gate |
+| 052 | [jemmet+iotakt Production-Path Acceptance](proposed/052-jemmet-iotakt-production-path-acceptance.md) | AR3 — real downstream evidence; coordinates RFC 015/026 |
+| 053 | [Project Truth and Security-Claim Reconciliation](proposed/053-project-truth-and-security-claim-reconciliation.md) | AR0 — B6 public-claim correction and doc/RFC drift |
+| 054 | [Maintainability Split and History Archival](proposed/054-maintainability-split-and-history-archival.md) | AR-M — module/history concentration before stable |
+
+## Proposed — pre-existing open deliverables
 
 | ID | Title | Pending before `done/` |
 |----|-------|------------------------|

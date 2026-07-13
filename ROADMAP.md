@@ -9,6 +9,161 @@
 
 ---
 
+## 0. Architecture-review remediation program (2026-07-13)
+
+This section is the current advancement schedule after the independent architecture review of release
+`0.124.1` (`b4fcedf166c4b77256d46fd6f509c73ead2a3ad0`). It supersedes older milestone-status prose in this
+file where the two disagree. The canonical requirements and external design still win on scope; the RFC
+files win on design decisions; [`rfcs/README.md`](rfcs/README.md) wins on lifecycle state.
+The tracked [architecture-review baseline](docs/src/verification/architecture-review-0.124.1.md) records the
+review disposition and finding inventory; ignored `.git-exclude/` copies are working artifacts only.
+
+**Current disposition:** pre-1.0 engineering may continue, but production/stable adoption is **NO-GO**.
+No release may claim production readiness until AR0–AR3 are complete and the canonical release gate is
+observed green on a clean supported environment. Stable/v1 additionally requires AR4.
+
+### 0.1 Finding-to-RFC map
+
+| Review item | Theme | Durable work item | Blocking gate |
+|---|---|---|---|
+| B1 | Endpoint cipher policy is not authoritative | RFC 045 — negotiation-policy authorization | AR1 |
+| B2 | ClientHello framing is bounded but not strict | RFC 046 — strict ClientHello and extension framing | AR1 |
+| B3 | Handshake/idle timeouts are not generated end-to-end | RFC 047 — deadlines and timeout enforcement | AR2 |
+| B4 | Protected-flight plaintext fallback; construction bypasses validation | RFC 048 — validated construction and protected-epoch fail-closed behavior | AR1 |
+| B5 | Record phase/content combinations are silently ignored | RFC 049 — record acceptance matrix and clean-close semantics | AR1 |
+| B6 | Traffic secrets remain in Lean storage; public claims overstate posture | RFC 053 (immediate claim correction) + existing RFC 040 (native residency) | AR0 / AR4 |
+| B7 | Full-release gate failed 35/37 in the reviewed environment | RFC 051 — release-gate portability and canonical evidence | AR0, re-run at AR2/AR3 |
+| B8 | Certificate chain is structurally one TLS CertificateEntry | RFC 050 — bounded multi-certificate chain presentation | AR2 |
+| NB: graceful EOF | Public `TlsConn.recv.eof` is unreachable/ambiguous | RFC 049 | AR1 |
+| NB: downstream evidence | iotakt translation and jemmet E2E are not canonical evidence | RFC 052 — downstream integration acceptance | AR3 |
+| NB: claim/RFC drift | README, security state, releases, RFC index, changelog drift | RFC 053 — truth and claim reconciliation | AR0 |
+| NB: maintenance concentration | Oversized proof/core/history files | RFC 054 — maintainability split and history archival | parallel, before stable |
+| Deferred design | Async sealing must not leak into RFC 040 | RFC 044 — async crypto/offload scope (deferred) | post-AR4 only |
+
+### 0.2 Ordered milestones
+
+#### AR0 — Truthful baseline and reproducible gate
+
+**Purpose:** make project claims and release evidence honest before protocol work continues.
+
+Work:
+
+- RFC 053: qualify the project as pre-production; reconcile README/security/release/RFC/changelog state.
+- RFC 051: declare supported compiler/tool versions and Python dependencies; repair the GCC 16
+  sanitizer-harness build; register release-critical checks (`check-no-placeholder` and the iotakt binding
+  reference) in the canonical gate; retain the clean AR0 ledger and transition RFC 051 to Implemented.
+- Preserve the tracked review result as the baseline: no handoff or release document may claim 37/37 unless that
+  exact command output is observed for the candidate revision.
+
+Exit gate:
+
+- public claims distinguish implemented, tested, assumed, deferred, and stable-only properties;
+- one clean supported environment runs the canonical full-release profile successfully;
+- gate setup is reproducible from documented dependencies.
+
+#### AR1 — Fail-closed protocol correctness
+
+**Purpose:** close the protocol paths that currently select unauthorized policy or accept malformed/
+out-of-phase inputs.
+
+Order:
+
+1. RFC 046 — strict ClientHello/extension framing and fuzz seeds;
+2. RFC 045 — core-authorized suite selection after SNI resolution;
+3. RFC 048 — validated connection construction and no protected-epoch plaintext fallback;
+4. RFC 049 — explicit phase/content acceptance table and reachable graceful EOF.
+
+Exit gate:
+
+- every affected negative case produces a deterministic typed failure/alert and no plaintext;
+- suite selection is proved to be client-offered, endpoint-allowed, and provider-supported;
+- protected epochs cannot emit plaintext records through any public constructor path;
+- the proof inventory, trust matrix, and deterministic/fuzz suites are updated together.
+
+#### AR2 — Operational and certificate completeness
+
+**Purpose:** satisfy the remaining library-level requirements needed before downstream acceptance.
+
+Order:
+
+1. RFC 047 — validated handshake/idle durations, monotonic deadline ownership, and canonical live
+   reference-adapter timeout-event generation;
+2. RFC 050 — bounded ordered certificate-chain entries and external chain interop;
+3. Consume the implemented RFC 051 gate — run the expanded registry on the supported release matrix and
+   retain a new AR2 candidate ledger without reopening RFC 051.
+
+Exit gate:
+
+- slow ClientHello and idle connections terminate within configured limits;
+- leaf plus intermediate certificates are represented and transmitted as distinct TLS entries;
+- the expanded canonical full-release gate is green on a clean supported environment.
+
+#### AR3 — Real downstream integration acceptance
+
+**Purpose:** replace stand-in evidence with the actual ownership graph: kroopt provides `TlsConn`/
+`Transport`, jemmet owns the iotakt adapter and HTTP handler.
+
+Work:
+
+- RFC 052, coordinating existing RFC 015 and RFC 026;
+- consume the iotakt contract translation reference registered by RFC 051;
+- run real jemmet + iotakt + kroopt HTTPS E2E, including negative TLS inputs, backpressure, timeout, ALPN,
+  graceful close, and certificate-chain cases;
+- publish a versioned, provenance-linked handoff with observed commands and artifacts.
+
+Exit gate:
+
+- the real downstream path is green with zero iotakt source changes and no kroopt dependency edge on iotakt;
+- AR0–AR2 remain green on the same release candidate;
+- production-readiness may be reassessed, but the decision record must explicitly retain the residual
+  best-effort traffic-secret posture until AR4. AR3 completion is neither automatic production approval nor
+  canonical secret-residency compliance; stable/v1 remains blocked on AR4.
+
+#### AR4 — Stable/v1 secret residency
+
+**Purpose:** meet the stable secret-memory requirement without weakening proof/runtime correspondence.
+
+Work:
+
+- existing RFC 040 Slices 1–3: handle-consuming native AEAD/HKDF/key derivation, IO production interpreter,
+  lifecycle cleanup, differential/correspondence evidence, sanitizer and wipe instrumentation;
+- remove production byte-array fallback paths for long-lived private and traffic secrets;
+- promote trust-matrix wording only after the RFC 040 promotion gate passes.
+
+Exit gate:
+
+- every connection-lifetime traffic-secret class is native-owned end-to-end and zeroized on every terminal
+  path;
+- the IO production interpreter is shown to make no protocol decisions beyond the proved shared core;
+- stable/v1 security claims are reviewed and approved against current evidence.
+
+#### AR-M — Parallel maintainability and deferred evolution
+
+- RFC 054 may proceed in small behavior-preserving slices, preferably before modifying any oversized module
+  for AR1–AR4. Each split must preserve theorem names or provide a mechanical migration map.
+- RFC 044 is deliberately deferred until after AR4 and only starts when asynchronous crypto is actually
+  required. It may not be used to broaden RFC 040 silently.
+- Existing RFC 025/027/029 work (performance, API stability, examples) resumes after AR3 unless needed to
+  support a preceding acceptance gate.
+
+### 0.3 Release decision gates
+
+| Decision | Minimum evidence |
+|---|---|
+| Continue pre-1.0 development | AR0 schedule recorded; production/stable claims withdrawn or qualified |
+| Cut another pre-production release | Candidate-specific canonical gate green; docs/trust matrix current |
+| Reassess production readiness | AR0–AR3 complete; all B1–B8 evidence present |
+| Declare stable/v1 | AR0–AR4 complete; RFC 040 promotion gate and stable security review pass |
+| Start async crypto/offload | Stable core/native residency complete; RFC 044 accepted explicitly |
+
+No milestone is complete from prose alone. Completion requires implementation, proof/test evidence as
+applicable, updated documentation and trust classification, and observed gate output. Each RFC transitions
+when its own acceptance criteria are complete, in that RFC's reviewable closeout change. Later milestones may
+consume an implemented mechanism and require fresh candidate evidence without reopening or delaying the
+earlier RFC lifecycle transition; recurring release validation is a milestone gate, not an unbounded RFC.
+
+---
+
 ## 1. Roadmap intent
 
 This ROADMAP decomposes kroopt into implementable RFC themes. The purpose is not merely to list features; it defines a safe development order for a Lean 4 TLS secure-channel library whose core value depends on proof/runtime correspondence.
