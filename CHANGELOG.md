@@ -18,6 +18,9 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 - Repair GCC 16 sanitizer compilation by explicitly declaring the pinned Lean runtime-module ABI; make gate
   temporary files honor a writable `TMPDIR`; declare Python `cryptography` and mdBook prerequisites; add
   GCC 12/16 sanitizer CI lanes. The full profile now contains 42 registered gates and PR contains 38.
+- Close RFC 051 and RFC 053 after clean commit `2984db0` passed the canonical `full-release` profile 42/42
+  locally and in CI run `79277038502`, with GCC 12.5.0 and GCC 16.1.0 sanitizer lanes green; advance the
+  remediation program to AR1 while retaining the NO-GO production/stable disposition.
 
 ## [0.124.1] — sidecar `git_ref` captures the tag on a tagged release — 2026-06-30
 

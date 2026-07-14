@@ -67,9 +67,11 @@ follow-up provenance fix. Earlier tags are development/history tags; this page d
 that they carried the three release assets. For a particular release, the immutable assets attached to that
 tag are the publication evidence—neither a local tag nor a CHANGELOG gate count substitutes for them.
 
-The current `main` planning package is newer than `0.124.1` and remains pre-production. Its AR0 canonical
-gate must be observed and retained for the exact candidate revision before any new release or handoff reports
-a pass.
+The current `main` line is newer than `0.124.1` and remains pre-production. AR0's clean implementation commit
+`2984db0cc93b341fd0bf4b038d34fde68425ba82` passed the canonical `full-release` profile 42/42 locally and
+in CI run `79277038502`; GCC 12.5.0 and GCC 16.1.0 sanitizer lanes also passed. That observation does not
+attest a later release candidate: each release or handoff reporting a pass needs a fresh exact-revision
+ledger.
 
 ## Versioning
 

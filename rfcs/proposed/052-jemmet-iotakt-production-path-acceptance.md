@@ -4,7 +4,7 @@
 **Status.** Proposed  
 **Type.** Blocking downstream integration/acceptance theme  
 **Target milestone.** AR3  
-**Requires completion of.** AR1, AR2, [RFC 010](../done/010-tlsconn-api-nonblocking-interpreter.md), [RFC 047](047-monotonic-deadlines-and-timeout-enforcement.md), [RFC 050](050-bounded-certificate-chain-presentation.md), [RFC 051](051-release-gate-portability-and-canonical-evidence.md)  
+**Requires completion of.** AR1, AR2, [RFC 010](../done/010-tlsconn-api-nonblocking-interpreter.md), [RFC 047](047-monotonic-deadlines-and-timeout-enforcement.md), [RFC 050](050-bounded-certificate-chain-presentation.md), [RFC 051](../done/051-release-gate-portability-and-canonical-evidence.md)
 **Coordinates with.** [RFC 015](015-jemmet-integration-and-e2e-acceptance.md), [RFC 026](026-compatibility-interop-and-negative-matrix.md)  
 **Touches.** kroopt binding reference/gates; jemmet-owned iotakt adapter and HTTPS fixture; handoffs  
 
@@ -23,13 +23,13 @@ iotakt. Acceptance is a cross-project version-pinned run, not an in-repository f
 This RFC coordinates and sharpens existing [RFC 015](015-jemmet-integration-and-e2e-acceptance.md) and
 [RFC 026](026-compatibility-interop-and-negative-matrix.md); it does not supersede their design scope.
 The iotakt binding gate entry is owned and registered by
-[RFC 051](051-release-gate-portability-and-canonical-evidence.md); this RFC consumes that entry and owns the
+[RFC 051](../done/051-release-gate-portability-and-canonical-evidence.md); this RFC consumes that entry and owns the
 real downstream conformance/E2E evidence.
 
 ## Work breakdown
 
 1. Consume the canonical kroopt iotakt translation-reference entry registered by
-   [RFC 051](051-release-gate-portability-and-canonical-evidence.md) and verify its
+   [RFC 051](../done/051-release-gate-portability-and-canonical-evidence.md) and verify its
    frozen contract version in the cross-project run.
 2. Freeze versioned signatures for fd generation, readiness hints, partial writes, EOF, interest, and close.
 3. Implement/verify the adapter in jemmet with zero iotakt source changes.

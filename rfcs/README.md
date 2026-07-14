@@ -68,9 +68,7 @@ durable work item. Milestone order and release decision gates are in ROADMAP §0
 | 048 | [Validated Construction and Protected-Epoch Fail-Closed Behavior](proposed/048-validated-construction-and-protected-epoch-fail-closed.md) | AR1 — B4 construction and protected-flight safety |
 | 049 | [Record-Phase Acceptance and Clean-Close Semantics](proposed/049-record-phase-acceptance-and-clean-close.md) | AR1 — B5 plus public graceful EOF |
 | 050 | [Bounded Certificate-Chain Presentation](proposed/050-bounded-certificate-chain-presentation.md) | AR2 — B8 real certificate lists |
-| 051 | [Release-Gate Portability and Canonical Evidence](proposed/051-release-gate-portability-and-canonical-evidence.md) | AR0 — B7 portability/registry; AR2/AR3 consume the implemented gate |
 | 052 | [jemmet+iotakt Production-Path Acceptance](proposed/052-jemmet-iotakt-production-path-acceptance.md) | AR3 — real downstream evidence; coordinates RFC 015/026 |
-| 053 | [Project Truth and Security-Claim Reconciliation](proposed/053-project-truth-and-security-claim-reconciliation.md) | AR0 — B6 public-claim correction and doc/RFC drift |
 | 054 | [Maintainability Split and History Archival](proposed/054-maintainability-split-and-history-archival.md) | AR-M — module/history concentration before stable |
 
 ## Proposed — pre-existing open deliverables
@@ -90,11 +88,14 @@ durable work item. Milestone order and release decision gates are in ROADMAP §0
 
 ## Done
 
-All acceptance criteria met; migrated to `done/` at 0.24.0-dev. "Shipped in" is the
-milestone where the work substantively landed (see CHANGELOG/ROADMAP for detail).
+RFCs listed here have met their acceptance criteria and migrated to `done/`. The original implementation-RFC
+audit migrated its completed set at 0.24.0-dev; later RFCs moved as their own evidence gates closed. "Shipped
+in" identifies where each item substantively landed (see CHANGELOG/ROADMAP for detail).
 
 | ID | Title | Shipped in |
 |----|-------|------------|
+| 053 | [Project Truth and Security-Claim Reconciliation](done/053-project-truth-and-security-claim-reconciliation.md) | Implemented (AR0, unreleased; `2984db0`) — public/security/release/RFC claims reconciled; pre-production and traffic-secret limitations made explicit |
+| 051 | [Release-Gate Portability and Canonical Evidence](done/051-release-gate-portability-and-canonical-evidence.md) | Implemented (AR0, unreleased; `2984db0`) — clean full-release gate 42/42 plus GCC 12.5/16.1 sanitizer lanes in CI run `79277038502` |
 | 030 | [Production Readiness and Release Runbook](done/030-production-readiness-and-release-runbook.md) | Implemented (Stage A 0.119.0; Stage B 0.121.0–0.121.1; Stage C 0.122.0; ratified 0.122.1) — canonical `gate.sh` + ledger; reproducible packaging/sidecar/self-verification; immutable tag publishing first exercised by `0.124.0` |
 | 043 | [HACL*/EverCrypt Vendoring and Provenance Discipline](done/043-hacl-evercrypt-vendoring-and-provenance.md) | Implemented (0.120.0–0.120.2) — byte-level anchor of the vendored tree to the named upstream `ocaml-v0.4.5` artifact (166 files, 0 mods); per-file manifest outside the hash-covered tree; offline `check-hacl-provenance.sh` gate (tree==manifest) in `gate.sh` + online `verify-hacl-upstream.sh` (manifest==upstream); trust-matrix restored to anchored-inherited. First upstream bump exercises §10, not a done-gate |
 | 042 | [Resource-limit Enforcement and Configurability](done/042-resource-limit-enforcement.md) | Implemented (0.115–0.116.0-dev) — validated limits, core charge sites, bounded egress, and closeout cleanup |

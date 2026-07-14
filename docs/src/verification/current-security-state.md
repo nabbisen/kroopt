@@ -4,9 +4,10 @@ This page is the **single source of truth** for kroopt's *current* capability an
 any other page disagrees, **this page wins** — older pages may describe earlier milestones and are being
 brought into line or marked historical. If you are deciding what to trust about kroopt, start here.
 
-Evidence baseline: released `0.124.1`, followed by the accepted AR0–AR4 planning package on `main`
-(2026-07-13). No AR remediation implementation is claimed by this page until its RFC and candidate-specific
-gate evidence land.
+Evidence baseline: released `0.124.1`, followed by the AR0–AR4 planning package and AR0 implementation on
+`main`. AR0 closed on 2026-07-14 JST: clean commit
+`2984db0cc93b341fd0bf4b038d34fde68425ba82` passed the canonical `full-release` profile 42/42 locally and
+in CI run `79277038502`; its GCC 12.5.0 and GCC 16.1.0 sanitizer lanes also passed.
 
 ## Readiness disposition
 
@@ -15,9 +16,9 @@ gate evidence land.
 | Development and evaluation | permitted on the pre-1.0 line |
 | Production adoption | **NO-GO** until AR0–AR3 and their evidence gates complete |
 | Stable/v1 | **NO-GO** until AR0–AR4, including RFC 040 native traffic-secret residency |
-| Canonical gate | the reviewed `0.124.1` environment failed 35/37; RFC 051 owns the AR0 portability repair and a fresh clean candidate ledger |
+| Canonical gate | RFC 051 / AR0 implemented the portable v3 registry; clean `2984db0` passed 42/42 locally and in CI. Every later candidate still requires its own exact-revision ledger |
 
-## Open architecture-review blockers
+## Architecture-review finding status
 
 | Finding | Current gap | Scheduled closure |
 |---|---|---|
@@ -26,12 +27,12 @@ gate evidence land.
 | B3 | live drivers do not generate the modeled handshake/idle deadline events | RFC 047 / AR2 |
 | B4 | validated config/provider construction is bypassable and protected flight can fall back to plaintext | RFC 048 / AR1 |
 | B5 | invalid record phase/content combinations can be silently ignored | RFC 049 / AR1 |
-| B6 | connection traffic secrets remain in Lean `ByteArray` storage | truthful wording in RFC 053 / AR0; native residency in RFC 040 / AR4 |
-| B7 | the canonical full-release gate was not portable in the reviewed environment | RFC 051 / AR0 |
+| B6 | connection traffic secrets remain in Lean `ByteArray` storage | claim correction completed in RFC 053 / AR0; native residency remains RFC 040 / AR4 |
+| B7 | ~~the canonical full-release gate was not portable in the reviewed environment~~ | **Closed by RFC 051 / AR0**; clean v3 gate and GCC 12.5/16.1 lanes passed on `2984db0` |
 | B8 | a configured certificate chain is represented as one TLS `CertificateEntry` | RFC 050 / AR2 |
 
-**Next milestone:** AR0 — finish RFC 053 claim reconciliation and RFC 051 gate portability/registry work,
-then retain a clean candidate-specific full-release ledger. None of B1–B8 is closed merely by scheduling it.
+**Next milestone:** AR1 — fail-closed protocol correctness through RFC 046, RFC 045, RFC 048, then RFC 049.
+B1, B2, B4, and B5 remain open; AR0's truthful B6 wording does not complete AR4 native residency.
 
 ## Profile in one line
 

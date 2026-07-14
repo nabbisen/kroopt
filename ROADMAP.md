@@ -42,7 +42,7 @@ observed green on a clean supported environment. Stable/v1 additionally requires
 
 ### 0.2 Ordered milestones
 
-#### AR0 — Truthful baseline and reproducible gate
+#### AR0 — Truthful baseline and reproducible gate — **complete (2026-07-14)**
 
 **Purpose:** make project claims and release evidence honest before protocol work continues.
 
@@ -60,6 +60,11 @@ Exit gate:
 - public claims distinguish implemented, tested, assumed, deferred, and stable-only properties;
 - one clean supported environment runs the canonical full-release profile successfully;
 - gate setup is reproducible from documented dependencies.
+
+Closeout evidence: RFC 051 and RFC 053 are Implemented. Clean commit
+`2984db0cc93b341fd0bf4b038d34fde68425ba82` passed the canonical `full-release` profile 42/42 locally and
+in CI; CI run `79277038502` also passed sanitizer lanes under GCC 12.5.0 and GCC 16.1.0. AR1 is the next
+blocking milestone. B1–B5 and B8 remain open; B6's native traffic-secret residency remains AR4 / RFC 040.
 
 #### AR1 — Fail-closed protocol correctness
 

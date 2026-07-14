@@ -1,11 +1,11 @@
 # RFC 051 — Release-Gate Portability and Canonical Evidence
 
 **Project.** kroopt  
-**Status.** Proposed  
+**Status.** Implemented (AR0, unreleased; `2984db0`, CI run `79277038502`)  
 **Type.** Blocking release/operations fix  
 **Target milestone.** AR0  
-**Requires completion of.** [RFC 022](../done/022-proof-gates-ci-and-lean-hygiene.md) (proof gates), [RFC 030](../done/030-production-readiness-and-release-runbook.md) (release runbook), [RFC 043](../done/043-hacl-evercrypt-vendoring-and-provenance.md) (provenance)  
-**Consumed by.** AR2/AR3 candidate validation and [RFC 052](052-jemmet-iotakt-production-path-acceptance.md)  
+**Requires completion of.** [RFC 022](022-proof-gates-ci-and-lean-hygiene.md) (proof gates), [RFC 030](030-production-readiness-and-release-runbook.md) (release runbook), [RFC 043](043-hacl-evercrypt-vendoring-and-provenance.md) (provenance)  
+**Consumed by.** AR2/AR3 candidate validation and [RFC 052](../proposed/052-jemmet-iotakt-production-path-acceptance.md)  
 **Touches.** native harness, CI matrix, gate registry, dependency setup, release evidence  
 
 ## Review finding
@@ -24,7 +24,7 @@ This RFC owns the AR0 portability repairs, registry mechanism, no-placeholder en
 contract entry. It transitions to Implemented when those mechanisms and the AR0 clean-environment ledger meet
 the acceptance criteria below. AR2 and AR3 consume the implemented gate and retain new candidate ledgers as
 milestone/release evidence; those recurring runs do not keep or reopen this RFC.
-[RFC 052](052-jemmet-iotakt-production-path-acceptance.md) owns downstream E2E
+[RFC 052](../proposed/052-jemmet-iotakt-production-path-acceptance.md) owns downstream E2E
 but only consumes the binding entry registered here.
 
 ## Work breakdown
@@ -52,3 +52,18 @@ but only consumes the binding entry registered here.
 
 This RFC does not itself fix protocol behavior. Online HACL upstream re-verification remains an explicit
 on-demand trust-tier operation, not a network-dependent every-PR gate.
+
+## Implementation evidence
+
+AR0 implementation commit `2984db0cc93b341fd0bf4b038d34fde68425ba82` produced a clean local
+`kroopt-gate/v3` ledger with all 42 `full-release` gates passing on 2026-07-14 JST. GitHub Actions run
+[`79277038502`](https://github.com/nabbisen/kroopt/actions/runs/79277038502) checked out that exact commit and
+observed:
+
+- the canonical `full-release` profile passing 42/42;
+- release-machinery pass-detection, dependency, registry-drift, ledger, and provenance negative controls
+  passing;
+- the sanitizer harness compiling and passing cleanly under GCC 12.5.0 and GCC 16.1.0 with Lean 4.15.0.
+
+AR2 and AR3 must retain fresh candidate ledgers when they consume this gate; those runs do not reopen this
+RFC.

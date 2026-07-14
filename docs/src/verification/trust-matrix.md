@@ -87,7 +87,7 @@ revision. All `PROVEN` rows describe theorem scope over the pure core, not unche
 
 | Claim | Status | Evidence | Owner | Remaining gap | Release gate |
 |---|---|---|---|---|---|
-| FFI memory safety | TESTED on recorded candidates, not PROVEN | `scripts/sanitizer-check.sh` | kroopt shim | AR0 portability under the supported compiler matrix | RFC 051 / AR0 |
+| FFI memory safety | TESTED on recorded candidates, not PROVEN | `scripts/sanitizer-check.sh`; CI run `79277038502` on GCC 12.5.0/16.1.0 | kroopt shim | Repeat for each candidate; proof remains out of scope | RFC 051 implemented; recurring release gate |
 | Interpreter faithfulness | TESTED, not PROVEN | `kroopt-correspondence-test`; fake interpreter | kroopt | pure↔IO correspondence for a production IO interpreter | v1 |
 | Live constrained interop | TESTED on recorded candidates | `scripts/tls-interop.sh` — OpenSSL/Python/curl, blocking + reactor; all three advertised suites | kroopt | endpoint cipher authorization (B1), browser-grade breadth, real jemmet+iotakt path | AR1/AR3 |
 | Browser-grade interop | NOT CLAIMED | — | kroopt | full browser matrix | post-v0.4 |
