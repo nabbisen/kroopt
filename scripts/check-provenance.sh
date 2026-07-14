@@ -34,7 +34,7 @@ SIDECAR="${OUT_DIR:-$ROOT/dist}/kroopt-$VERSION.release-verification.json"
 TARBALL="${OUT_DIR:-$ROOT/dist}/kroopt-$VERSION.tar.gz"
 
 exec python3 - "$ROOT" "$VERSION" "$REQUIRE_RELEASE" "$SIDECAR" "$TARBALL" <<'PY'
-import sys, os, json, hashlib
+import sys, os, json, hashlib, re
 root, version, require_release, sidecar_path, tarball = sys.argv[1], sys.argv[2], sys.argv[3]=="1", sys.argv[4], sys.argv[5]
 def fail(m): print("FAIL: " + m); sys.exit(1)
 def sha(p):
@@ -48,9 +48,23 @@ def hex64(s): return isinstance(s,str) and len(s)==64 and all(c in HEX for c in 
 if not os.path.isfile(sidecar_path): fail("sidecar missing: %s" % sidecar_path)
 if not os.path.isfile(tarball): fail("tarball missing: %s" % tarball)
 raw = open(sidecar_path, encoding="utf-8").read()
-for bad in ("STUB","PLACEHOLDER","NOT-COMPUTED","NOT_COMPUTED","TODO","FIXME"):
-    if bad in raw.upper(): fail("stub/placeholder sentinel in sidecar: %s" % bad)
 s = json.loads(raw)
+
+# Reject sentinel values in attestation/provenance data, but do not scan the free-form gate metadata:
+# the canonical gate id `no-placeholder` is legitimate and must not make every generated sidecar invalid.
+# Gate log hashes are verified independently below.
+BAD_SENTINELS = {"STUB", "PLACEHOLDER", "NOT-COMPUTED", "NOT_COMPUTED", "TODO", "FIXME"}
+def reject_sentinels(v, path=()):
+    if path and path[0] == "gates": return
+    if isinstance(v, dict):
+        for k, x in v.items(): reject_sentinels(x, path + (str(k),))
+    elif isinstance(v, list):
+        for i, x in enumerate(v): reject_sentinels(x, path + (str(i),))
+    elif isinstance(v, str):
+        words = set(filter(None, re.split(r"[^A-Z0-9_-]+", v.upper())))
+        hit = BAD_SENTINELS.intersection(words)
+        if hit: fail("stub/placeholder sentinel in sidecar field %s: %s" % (".".join(path), sorted(hit)[0]))
+reject_sentinels(s)
 
 # 1) schema + version
 if s.get("manifest_schema") != 1: fail("manifest_schema != 1")
@@ -107,15 +121,25 @@ gp = s.get("gate_policy", {})
 name2script = {
     "gate_sha256":"scripts/gate.sh","check_axioms_sha256":"scripts/check-axioms.sh",
     "check_deps_sha256":"scripts/check-deps.sh","check_hygiene_sha256":"scripts/check-hygiene.sh",
+    "gate_registry.json_sha256":"scripts/gate-registry.json",
+    "requirements_gate.txt_sha256":"requirements-gate.txt",
+    "check_gate_environment_sha256":"scripts/check-gate-environment.sh",
+    "check_gate_registry_sha256":"scripts/check-gate-registry.sh",
+    "check_docs_sha256":"scripts/check-docs.sh",
+    "check_no_placeholder_sha256":"scripts/check-no-placeholder.sh",
     "check_hacl_provenance_sha256":"scripts/check-hacl-provenance.sh",
+    "check_release_machinery_sha256":"scripts/check-release-machinery.sh",
     "sanitizer_check_sha256":"scripts/sanitizer-check.sh","tls_interop_sha256":"scripts/tls-interop.sh",
     "ed25519_interop_sha256":"scripts/ed25519-interop.sh","record_interop_sha256":"scripts/record-interop.sh",
 }
+if set(gp) != set(name2script):
+    fail("gate_policy key set mismatch: missing=%s extra=%s" %
+         (sorted(set(name2script)-set(gp)), sorted(set(gp)-set(name2script))))
 for k,v in gp.items():
     sp = name2script.get(k)
-    if sp and os.path.isfile(os.path.join(root,sp)):
-        if not hex64(v) or v != sha(os.path.join(root,sp)):
-            fail("gate_policy hash mismatch for %s" % k)
+    if not os.path.isfile(os.path.join(root,sp)): fail("gate_policy source missing for %s: %s" % (k,sp))
+    if not hex64(v) or v != sha(os.path.join(root,sp)):
+        fail("gate_policy hash mismatch for %s" % k)
 
 # 6) HACL dependency must match the manifest (which the gate already validated)
 man = json.load(open(os.path.join(root,"Kroopt","Native","hacl-provenance","HACL-PROVENANCE.json"), encoding="utf-8"))

@@ -4,6 +4,7 @@
 **Subject.** RFC 055 / AR-I TLS accounting, sizing, and progress contract  
 **Candidate revision.** `cfda89310c040ef893e67c0c46e2889c140326eb`
 **Target release.** `0.126.0`  
+**Release-candidate revision.** Pending owner commit
 **Readiness scope.** Additive jemmet integration contract; no production/stable promotion  
 **Overall status.** Implementation and clean CI Done; published release provenance Pending
 
@@ -180,6 +181,8 @@ listener-wide admission policy, or production/stable readiness claim.
 - Contract and evidence: RFC 055, this jemmet response, `ROADMAP.md`, `CHANGELOG.md`, `RELEASES.md`, the RFC
   index, and current-security documentation.
 - Architecture guidance: the TLS accounting/sizing page plus interpreter and resource-budget updates.
+- Release preparation: `scripts/check-provenance.sh` and `scripts/check-release-machinery.sh` correct and
+  regression-test sidecar validation for the registered `no-placeholder` gate.
 
 ### Design decisions and assumptions
 
@@ -193,11 +196,18 @@ Local development evidence observed `lake build`, 41/41 connection checks, 30/30
 mdBook, and a dirty-tree 42/42 full-release gate. Clean CI run `29298648079` then observed 42/42 at `cfda893`
 plus passing GCC 12.5.0 and GCC 16.1.0 ASan/UBSan jobs.
 
+Release preparation additionally observed the five release-machinery regression groups pass, the canonical
+release-preparation tree pass 42/42, and the generated `0.126.0` local-dry-run sidecar pass internal provenance
+verification after the `no-placeholder` validation correction.
+
 ### Generated artifacts
 
-CI retained gate artifact `8297742336`, with GitHub-reported artifact ZIP SHA-256
-`ae8938e7654df165f6b1b2d366329994c86657a59d860436e9dc5c8e9e1c377b`. No source archive, release
-sidecar, or published GATE-RUN asset exists yet; those are created only by the tagged release workflow.
+Implementation CI retained gate artifact `8297742336`, with GitHub-reported artifact ZIP SHA-256
+`ae8938e7654df165f6b1b2d366329994c86657a59d860436e9dc5c8e9e1c377b`. No published source archive,
+release sidecar, or GATE-RUN asset exists yet; those are created only by the tagged release workflow.
+A local-dry-run tarball and sidecar were generated under ignored `.git-exclude/tmp/release-candidate-0.126.0/`
+and verified internally. Their dirty-tree hash/size are development diagnostics, not release evidence and
+must not be given to jemmet as a pin.
 
 ### Known limitations
 
@@ -207,5 +217,5 @@ NO-GO.
 
 ### Recommended next step
 
-Commit this documentation-only closeout, then prepare the separate `0.126.0` release commit, run its candidate
-checks, push it, and tag only after its CI succeeds.
+Commit the separate `0.126.0` release-preparation change, push it, and verify its exact-revision CI. Create the
+`0.126.0` tag only after that CI succeeds; then verify and transcribe the immutable published artifact hashes.

@@ -5,6 +5,8 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.126.0] — TLS accounting, sizing, and progress contract — 2026-07-15
+
 ### AR-I — jemmet TLS accounting integration contract
 
 - Add structured and scalar retained inbound ownership accessors, suite-aware protected-record sizing and
@@ -17,6 +19,13 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 - Close RFC 055 and AR-I after clean commit `cfda893` passed the canonical `full-release` profile 42/42 in
   CI run `29298648079`, with dedicated GCC 12.5.0 and GCC 16.1.0 ASan/UBSan lanes green. The target release
   remains `0.126.0`; release archive and sidecar evidence are not claimed before publication.
+
+### Release verification
+
+- Make sidecar sentinel validation distinguish real placeholder values from the legitimate
+  `no-placeholder` gate identifier, and verify every declared gate-policy file hash rather than silently
+  skipping newly registered policy inputs. Add regression controls for both the legitimate identifier and an
+  actual sentinel value.
 
 ## [0.125.0] — AR0 truthful baseline and reproducible release gate — 2026-07-14
 

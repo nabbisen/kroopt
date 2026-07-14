@@ -87,13 +87,15 @@ if expect_fail run_gen "$TMP/led-badreg.json";      then pass "rejects mismatche
 if expect_fail run_gen "$TMP/led-notpass.json";     then pass "rejects ledger with a non-pass gate"; else bad "accepted ledger with a non-pass gate"; fi
 
 echo "[4] check-provenance rejects contradictory profile metadata (no --require-release)"
-# craft a local-dry-run sidecar that lies about must_not_publish; must fail at profile-consistency
+# Craft a local-dry-run sidecar that lies about must_not_publish; it includes the legitimate
+# `no-placeholder` gate spelling and must still reach/fail at profile consistency.
 : > "$TMP/kroopt-$V.tar.gz"
 python3 - "$TMP" "$V" <<'PY'
 import sys, os, json
 tmp, v = sys.argv[1], sys.argv[2]
 sc = {"manifest_schema":1,"version":v,"release_profile":"local-dry-run",
       "must_not_publish":False,"attestation_status":"local-dry-run-not-an-attestation",
+      "note":"the no-placeholder gate is required",
       "source_archive":{"name":"kroopt-%s.tar.gz"%v,"sha256":"0"*64,"size_bytes":0}}
 json.dump(sc, open(os.path.join(tmp,"kroopt-%s.release-verification.json"%v),"w"))
 PY
@@ -101,6 +103,22 @@ if expect_fail env OUT_DIR="$TMP" bash scripts/check-provenance.sh "$V"; then
   grep -q "must_not_publish" "$LOG" && pass "rejects local-dry-run with must_not_publish=false" || bad "failed but not on profile-consistency"
 else
   bad "accepted contradictory profile metadata"
+fi
+
+echo "[5] check-provenance rejects a real sentinel value without rejecting gate names"
+python3 - "$TMP" "$V" <<'PY'
+import sys, os, json
+tmp, v = sys.argv[1], sys.argv[2]
+sc = {"manifest_schema":1,"version":v,"release_profile":"local-dry-run",
+      "must_not_publish":True,"attestation_status":"local-dry-run-not-an-attestation",
+      "provenance_note":"PLACEHOLDER",
+      "source_archive":{"name":"kroopt-%s.tar.gz"%v,"sha256":"0"*64,"size_bytes":0}}
+json.dump(sc, open(os.path.join(tmp,"kroopt-%s.release-verification.json"%v),"w"))
+PY
+if expect_fail env OUT_DIR="$TMP" bash scripts/check-provenance.sh "$V"; then
+  grep -q "stub/placeholder sentinel" "$LOG" && pass "rejects an exact sentinel value" || bad "failed but not on sentinel validation"
+else
+  bad "accepted a sentinel provenance value"
 fi
 
 echo ""
