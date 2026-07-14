@@ -70,7 +70,6 @@ durable work item. Milestone order and release decision gates are in ROADMAP §0
 | 050 | [Bounded Certificate-Chain Presentation](proposed/050-bounded-certificate-chain-presentation.md) | AR2 — B8 real certificate lists |
 | 052 | [jemmet+iotakt Production-Path Acceptance](proposed/052-jemmet-iotakt-production-path-acceptance.md) | AR3 — real downstream evidence; coordinates RFC 015/026 |
 | 054 | [Maintainability Split and History Archival](proposed/054-maintainability-split-and-history-archival.md) | AR-M — module/history concentration before stable |
-| 055 | [TLS Accounting, Sizing, and Progress Contract](proposed/055-tls-accounting-sizing-and-progress-contract.md) | AR-I — jemmet M3 ingress/egress accounting and readiness contract before AR1 |
 
 ## Proposed — pre-existing open deliverables
 
@@ -95,6 +94,7 @@ in" identifies where each item substantively landed (see CHANGELOG/ROADMAP for d
 
 | ID | Title | Shipped in |
 |----|-------|------------|
+| 055 | [TLS Accounting, Sizing, and Progress Contract](done/055-tls-accounting-sizing-and-progress-contract.md) | Implemented (AR-I, unreleased; `cfda893`) — clean CI `full-release` 42/42 plus GCC 12.5/16.1 sanitizer lanes in run `29298648079`; target release `0.126.0` |
 | 053 | [Project Truth and Security-Claim Reconciliation](done/053-project-truth-and-security-claim-reconciliation.md) | Implemented (AR0, unreleased; `2984db0`) — public/security/release/RFC claims reconciled; pre-production and traffic-secret limitations made explicit |
 | 051 | [Release-Gate Portability and Canonical Evidence](done/051-release-gate-portability-and-canonical-evidence.md) | Implemented (AR0, unreleased; `2984db0`) — clean full-release gate 42/42 plus GCC 12.5/16.1 sanitizer lanes in CI run `79277038502` |
 | 030 | [Production Readiness and Release Runbook](done/030-production-readiness-and-release-runbook.md) | Implemented (Stage A 0.119.0; Stage B 0.121.0–0.121.1; Stage C 0.122.0; ratified 0.122.1) — canonical `gate.sh` + ledger; reproducible packaging/sidecar/self-verification; immutable tag publishing first exercised by `0.124.0` |

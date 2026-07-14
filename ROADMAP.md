@@ -63,11 +63,11 @@ Exit gate:
 
 Closeout evidence: RFC 051 and RFC 053 are Implemented. Clean commit
 `2984db0cc93b341fd0bf4b038d34fde68425ba82` passed the canonical `full-release` profile 42/42 locally and
-in CI; CI run `79277038502` also passed sanitizer lanes under GCC 12.5.0 and GCC 16.1.0. The bounded AR-I
-integration contract is next, followed by AR1. B1–B5 and B8 remain open; B6's native traffic-secret
+in CI; CI run `79277038502` also passed sanitizer lanes under GCC 12.5.0 and GCC 16.1.0. AR-I has since
+closed; AR1 is next. B1–B5 and B8 remain open; B6's native traffic-secret
 residency remains AR4 / RFC 040.
 
-#### AR-I — TLS accounting, sizing, and progress contract
+#### AR-I — TLS accounting, sizing, and progress contract — **complete (2026-07-15)**
 
 **Purpose:** unblock jemmet's bounded iotakt adapter without moving TLS protocol logic or transport
 ownership into either project.
@@ -86,6 +86,13 @@ Exit gate:
 - public sizing results cover actual wire output at all supported suite/boundary cases;
 - partial transfer, would-block, close, and teardown tests preserve or explicitly discharge ownership;
 - the canonical gate and jemmet translation reference are green on the same clean candidate.
+
+Closeout evidence: RFC 055 is Implemented. Clean commit
+`cfda89310c040ef893e67c0c46e2889c140326eb` passed the canonical `full-release` profile 42/42 in GitHub
+Actions run `29298648079`; the same run's dedicated GCC 12.5.0 and GCC 16.1.0 ASan/UBSan lanes passed.
+The gate artifact was retained as artifact `8297742336` (GitHub-reported ZIP SHA-256
+`ae8938e7654df165f6b1b2d366329994c86657a59d860436e9dc5c8e9e1c377b`). Release-specific source,
+sidecar, and GATE-RUN hashes remain pending for `0.126.0`. AR1 is the next blocking milestone.
 
 #### AR1 — Fail-closed protocol correctness
 

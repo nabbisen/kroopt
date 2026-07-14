@@ -2,10 +2,10 @@
 
 **Date.** 2026-07-14  
 **Subject.** RFC 055 / AR-I TLS accounting, sizing, and progress contract  
-**Candidate revision.** Pending  
+**Candidate revision.** `cfda89310c040ef893e67c0c46e2889c140326eb`
 **Target release.** `0.126.0`  
 **Readiness scope.** Additive jemmet integration contract; no production/stable promotion  
-**Overall status.** Pending release evidence
+**Overall status.** Implementation and clean CI Done; published release provenance Pending
 
 ## 1. Accepted inbound ownership definition
 
@@ -101,9 +101,16 @@ interpreter, and release gates remain applicable; RFC 055 adds no new canonical 
 
 ## 7. Target release and verification evidence
 
-Target release is `0.126.0`. Exact commit, source archive SHA-256 and byte count, sidecar SHA-256, GATE-RUN
-SHA-256, and clean exact-revision CI evidence are Pending. Jemmet must not pin the working tree or treat this
-handoff as released until this section is updated from the published release artifacts.
+Target release is `0.126.0`. The implemented candidate is exact commit
+`cfda89310c040ef893e67c0c46e2889c140326eb`. GitHub Actions run
+[`29298648079`](https://github.com/nabbisen/kroopt/actions/runs/29298648079) checked out that commit and passed
+the canonical `full-release` profile 42/42, release-machinery regression tests, and dedicated GCC 12.5.0 and
+GCC 16.1.0 ASan/UBSan jobs. The retained gate artifact is `8297742336`; GitHub reported artifact ZIP
+SHA-256 `ae8938e7654df165f6b1b2d366329994c86657a59d860436e9dc5c8e9e1c377b`.
+
+The published source archive SHA-256/byte count, release sidecar SHA-256, and published GATE-RUN SHA-256 are
+Pending until the tagged release workflow creates immutable assets. Jemmet must not treat this handoff as a
+released pin until those fields replace this paragraph's Pending state.
 
 Migration from `0.124.1` is additive at the source API level. The one intentional behavior correction is that
 connected zero-length `send` no longer queues an empty record or returns backpressure. These observational and
@@ -124,12 +131,13 @@ sizing APIs do not alter proved core protocol decisions or promote kroopt's trus
 
 | Item | Status | Candidate-specific evidence | Remaining work |
 |---|---|---|---|
-| Public API and behavior | Done | `Kroopt/Core/Config.lean`, `Kroopt/Conn/TlsConn.lean`; `lake build` observed green on dirty tree | Review and commit |
-| Focused connection tests | Done | `lake exe kroopt-conn-test`: 41/41 passed on dirty tree | Clean exact-revision evidence pending |
-| Iotakt translation tests | Done | `lake exe kroopt-iotaktbinding-test`: 30/30 passed on dirty tree | Clean exact-revision evidence pending |
-| Documentation | Done | architecture/accounting, interpreter, resource-budget, roadmap, changelog pages; `mdbook build docs` passed | Clean exact-revision evidence pending |
-| Canonical full-release gate | Pending | Dirty development tree passed 42/42; `gate-out/gate-ledger.json` and `gate-out/GATE-RUN.md`, timestamp `2026-07-14T01:22:38Z` | Rerun on clean exact revision and in CI |
-| Published `0.126.0` provenance | Pending | No release artifacts yet | Commit, CI, release, and transcribe exact evidence |
+| Public API and behavior | Done | Exact implementation commit `cfda89310c040ef893e67c0c46e2889c140326eb`; clean CI build/gate passed | None for implementation |
+| Focused connection tests | Done | `suite:conn` passed inside the exact-revision canonical gate; local development run observed 41/41 | None for implementation |
+| Iotakt translation tests | Done | `suite:iotaktbinding` passed inside the exact-revision canonical gate; local development run observed 30/30 | None for implementation |
+| Documentation | Done | `docs`, `hygiene`, and `no-placeholder` passed in the exact-revision canonical gate | None for implementation |
+| Canonical full-release gate | Done | CI run `29298648079`: clean `cfda893`, 42/42; artifact `8297742336` | Fresh tagged-release ledger still required for publication |
+| GCC sanitizer matrix | Done | Lean 4.15.0 with GCC 12.5.0 and GCC 16.1.0: both dedicated ASan/UBSan harness jobs passed | None for implementation |
+| Published `0.126.0` provenance | Pending | No tagged release artifacts yet | Prepare/tag release and transcribe archive, sidecar, and GATE-RUN hashes |
 
 ## Commands observed
 
@@ -140,6 +148,9 @@ sizing APIs do not alter proved core protocol decisions or promote kroopt's trus
 | `lake exe kroopt-iotaktbinding-test` | Passed 30/30, dirty working tree | Current development thread |
 | `mdbook build docs` | Passed, dirty working tree | Current development thread; generated output removed |
 | `PATH="$PWD/.git-exclude/venv-gate/bin:$PATH" bash scripts/gate.sh --profile full-release` | Passed 42/42, dirty working tree | `gate-out/gate-ledger.json`, `gate-out/GATE-RUN.md` |
+| CI `bash scripts/gate.sh --profile full-release` | Passed 42/42 on clean `cfda893` | Run `29298648079`, artifact `8297742336` |
+| CI `bash scripts/sanitizer-check.sh` (GCC 12.5.0) | Passed under ASan/UBSan on clean `cfda893` | Run `29298648079` sanitizer job log |
+| CI `bash scripts/sanitizer-check.sh` (GCC 16.1.0) | Passed under ASan/UBSan on clean `cfda893` | Run `29298648079` sanitizer job log |
 
 ## Risks and follow-up
 
@@ -147,3 +158,54 @@ sizing APIs do not alter proved core protocol decisions or promote kroopt's trus
 - RFC 050 must update the flight-bound derivation and covering test when it introduces certificate
   fragmentation.
 - RFC 047 owns future read/timer/immediate-work classification; it must preserve the aggregate write invariant.
+
+## Release-preparation handoff
+
+### Summary
+
+RFC 055 and AR-I are implementation-complete on exact commit `cfda89310c040ef893e67c0c46e2889c140326eb`.
+Clean CI and both sanitizer lanes passed. The response is ready for release preparation but is not yet a
+published jemmet pin.
+
+### Scope followed
+
+The work stayed within additive TLS accounting/sizing observability, one zero-length-send correction, tested
+transport ownership semantics, and documentation. It added no iotakt dependency, TLS protocol decision,
+listener-wide admission policy, or production/stable readiness claim.
+
+### Files changed
+
+- Public implementation and tests: `Kroopt/Core/Config.lean`, `Kroopt/Conn/TlsConn.lean`,
+  `Tests/Conn.lean`, and `Tests/IotaktBinding.lean` in the implementation commit.
+- Contract and evidence: RFC 055, this jemmet response, `ROADMAP.md`, `CHANGELOG.md`, `RELEASES.md`, the RFC
+  index, and current-security documentation.
+- Architecture guidance: the TLS accounting/sizing page plus interpreter and resource-budget updates.
+
+### Design decisions and assumptions
+
+Inbound values are conservative live logical byte charges; consumer staging is excluded. Protected sizing is
+suite-explicit. Terminal output has a separate 24-byte reserve. Native write readiness follows aggregate
+owned ciphertext, with jemmet staging drained before `TlsConn.flush`. The planned version is `0.126.0`.
+
+### Tests and gates run
+
+Local development evidence observed `lake build`, 41/41 connection checks, 30/30 iotakt-boundary checks,
+mdBook, and a dirty-tree 42/42 full-release gate. Clean CI run `29298648079` then observed 42/42 at `cfda893`
+plus passing GCC 12.5.0 and GCC 16.1.0 ASan/UBSan jobs.
+
+### Generated artifacts
+
+CI retained gate artifact `8297742336`, with GitHub-reported artifact ZIP SHA-256
+`ae8938e7654df165f6b1b2d366329994c86657a59d860436e9dc5c8e9e1c377b`. No source archive, release
+sidecar, or published GATE-RUN asset exists yet; those are created only by the tagged release workflow.
+
+### Known limitations
+
+The handoff is not a released pin until immutable `0.126.0` artifact hashes are transcribed. RFC 048, RFC 050,
+and RFC 047 retain the compatibility obligations stated above. Project production/stable disposition remains
+NO-GO.
+
+### Recommended next step
+
+Commit this documentation-only closeout, then prepare the separate `0.126.0` release commit, run its candidate
+checks, push it, and tag only after its CI succeeds.

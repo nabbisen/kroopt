@@ -4,10 +4,12 @@ This page is the **single source of truth** for kroopt's *current* capability an
 any other page disagrees, **this page wins** — older pages may describe earlier milestones and are being
 brought into line or marked historical. If you are deciding what to trust about kroopt, start here.
 
-Evidence baseline: released `0.124.1`, followed by the AR0–AR4 planning package and AR0 implementation on
-`main`. AR0 closed on 2026-07-14 JST: clean commit
+Evidence baseline: released `0.125.0`, followed by the AR-I integration-enabler implementation on `main`.
+AR0 closed on 2026-07-14 JST: clean commit
 `2984db0cc93b341fd0bf4b038d34fde68425ba82` passed the canonical `full-release` profile 42/42 locally and
-in CI run `79277038502`; its GCC 12.5.0 and GCC 16.1.0 sanitizer lanes also passed.
+in CI run `79277038502`; its GCC 12.5.0 and GCC 16.1.0 sanitizer lanes also passed. AR-I closed on
+2026-07-15 JST: clean commit `cfda89310c040ef893e67c0c46e2889c140326eb` passed 42/42 in CI run
+`29298648079`, including dedicated GCC 12.5/16.1 sanitizer lanes.
 
 ## Readiness disposition
 
@@ -16,7 +18,7 @@ in CI run `79277038502`; its GCC 12.5.0 and GCC 16.1.0 sanitizer lanes also pass
 | Development and evaluation | permitted on the pre-1.0 line |
 | Production adoption | **NO-GO** until AR0–AR3 and their evidence gates complete |
 | Stable/v1 | **NO-GO** until AR0–AR4, including RFC 040 native traffic-secret residency |
-| Canonical gate | RFC 051 / AR0 implemented the portable v3 registry; clean `2984db0` passed 42/42 locally and in CI. Every later candidate still requires its own exact-revision ledger |
+| Canonical gate | RFC 051 / AR0 implemented the portable v3 registry; clean AR-I commit `cfda893` passed 42/42 in CI with GCC 12.5/16.1 sanitizer lanes. Every later candidate still requires its own exact-revision ledger |
 
 ## Architecture-review finding status
 
@@ -31,9 +33,9 @@ in CI run `79277038502`; its GCC 12.5.0 and GCC 16.1.0 sanitizer lanes also pass
 | B7 | ~~the canonical full-release gate was not portable in the reviewed environment~~ | **Closed by RFC 051 / AR0**; clean v3 gate and GCC 12.5/16.1 lanes passed on `2984db0` |
 | B8 | a configured certificate chain is represented as one TLS `CertificateEntry` | RFC 050 / AR2 |
 
-**Next milestone:** AR-I — the RFC 055 jemmet integration-enabler contract, followed by AR1 fail-closed
-protocol correctness through RFC 046, RFC 045, RFC 048, then RFC 049. B1, B2, B4, and B5 remain open;
-AR0's truthful B6 wording does not complete AR4 native residency.
+**Next milestone:** AR1 — fail-closed protocol correctness through RFC 046, RFC 045, RFC 048, then RFC 049.
+B1, B2, B4, and B5 remain open; AR-I does not change the production/stable NO-GO disposition, and AR0's
+truthful B6 wording does not complete AR4 native residency.
 
 ## Profile in one line
 

@@ -14,6 +14,9 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
   public suite-aware sizing calculation instead of a duplicated record-overhead literal.
 - Document kroopt/consumer ownership transfer, staged-transport conservation, writable progress, and the
   separate one-record terminal reserve; add deterministic boundary tests for all supported suites.
+- Close RFC 055 and AR-I after clean commit `cfda893` passed the canonical `full-release` profile 42/42 in
+  CI run `29298648079`, with dedicated GCC 12.5.0 and GCC 16.1.0 ASan/UBSan lanes green. The target release
+  remains `0.126.0`; release archive and sidecar evidence are not claimed before publication.
 
 ## [0.125.0] — AR0 truthful baseline and reproducible release gate — 2026-07-14
 

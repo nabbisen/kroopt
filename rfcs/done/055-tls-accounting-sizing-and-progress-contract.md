@@ -1,11 +1,11 @@
 # RFC 055 — TLS Accounting, Sizing, and Progress Contract
 
 **Project.** kroopt  
-**Status.** Proposed  
+**Status.** Implemented (AR-I, unreleased; `cfda893`, CI run `29298648079`)  
 **Type.** Blocking downstream integration/API fix  
 **Target milestone.** AR-I integration enabler, before AR1 protocol changes  
 **Requires completion of.** [RFC 010](../done/010-tlsconn-api-nonblocking-interpreter.md), [RFC 019](../done/019-resource-budgets-backpressure-and-dos-defense.md), [RFC 042](../done/042-resource-limit-enforcement.md)  
-**Coordinates with.** [RFC 047](047-monotonic-deadlines-and-timeout-enforcement.md), [RFC 048](048-validated-construction-and-protected-epoch-fail-closed.md), [RFC 050](050-bounded-certificate-chain-presentation.md), [RFC 052](052-jemmet-iotakt-production-path-acceptance.md)  
+**Coordinates with.** [RFC 047](../proposed/047-monotonic-deadlines-and-timeout-enforcement.md), [RFC 048](../proposed/048-validated-construction-and-protected-epoch-fail-closed.md), [RFC 050](../proposed/050-bounded-certificate-chain-presentation.md), [RFC 052](../proposed/052-jemmet-iotakt-production-path-acceptance.md)  
 **Touches.** `TlsConn` accounting/admission API, validated egress bounds, transport-progress contract, connection/iotakt tests and handoff  
 
 ## Request and finding
@@ -99,3 +99,20 @@ its own staging on close must record that amount as an explicit adapter-owned di
 
 No TLS protocol decision, iotakt dependency, listener-wide admission policy, certificate-chain redesign,
 timeout implementation, async crypto, or production-readiness promotion is part of this RFC.
+
+## Implementation evidence
+
+Implementation commit `cfda89310c040ef893e67c0c46e2889c140326eb` added the accounting, sizing,
+reserve, and progress APIs together with the connection and iotakt-boundary tests. GitHub Actions run
+[`29298648079`](https://github.com/nabbisen/kroopt/actions/runs/29298648079) checked out that exact commit and
+observed:
+
+- the canonical `kroopt-gate/v3` `full-release` profile passing 42/42;
+- the release-machinery pass-detection, dependency, registry-drift, ledger, and provenance negative controls
+  passing;
+- the ASan/UBSan harness compiling and passing under both GCC 12.5.0 and GCC 16.1.0 with Lean 4.15.0.
+
+The CI gate artifact was retained as artifact `8297742336`; GitHub reported its ZIP SHA-256 as
+`ae8938e7654df165f6b1b2d366329994c86657a59d860436e9dc5c8e9e1c377b`. The planned `0.126.0` source
+archive, release sidecar, and published GATE-RUN hashes remain release-time evidence and are intentionally
+not claimed here.

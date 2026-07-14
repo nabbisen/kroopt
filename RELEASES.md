@@ -67,11 +67,11 @@ follow-up provenance fix. Earlier tags are development/history tags; this page d
 that they carried the three release assets. For a particular release, the immutable assets attached to that
 tag are the publication evidence—neither a local tag nor a CHANGELOG gate count substitutes for them.
 
-The current `main` line is newer than `0.124.1` and remains pre-production. AR0's clean implementation commit
-`2984db0cc93b341fd0bf4b038d34fde68425ba82` passed the canonical `full-release` profile 42/42 locally and
-in CI run `79277038502`; GCC 12.5.0 and GCC 16.1.0 sanitizer lanes also passed. That observation does not
-attest a later release candidate: each release or handoff reporting a pass needs a fresh exact-revision
-ledger.
+The current `main` line is newer than released `0.125.0` and remains pre-production. AR-I's clean
+implementation commit `cfda89310c040ef893e67c0c46e2889c140326eb` passed the canonical `full-release`
+profile 42/42 in CI run `29298648079`; dedicated GCC 12.5.0 and GCC 16.1.0 sanitizer lanes also passed.
+That implementation evidence does not attest the planned `0.126.0` release: the tagged release workflow
+must produce its own clean ledger, archive, sidecar, and GATE-RUN asset.
 
 ## Versioning
 
