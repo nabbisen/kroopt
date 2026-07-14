@@ -51,7 +51,7 @@ HTTPS E2E + interop breadth (RFC 015/026) the headline track; 031, 032, 033, 034
 Read order: ROADMAP first, then RFCs 001–007 (pure verified core), 008–009
 (crypto integration), 010–015 (runtime integration and acceptance), 016 (scope
 control), then 017–030 (cross-cutting security, lifecycle, and release governance),
-031–043 (correspondence/native/interop hardening history), and finally 044–054
+031–043 (correspondence/native/interop hardening history), and finally 044–055
 (the current architecture-review remediation and deferred-evolution schedule).
 
 ## Proposed — architecture-review remediation schedule
@@ -70,6 +70,7 @@ durable work item. Milestone order and release decision gates are in ROADMAP §0
 | 050 | [Bounded Certificate-Chain Presentation](proposed/050-bounded-certificate-chain-presentation.md) | AR2 — B8 real certificate lists |
 | 052 | [jemmet+iotakt Production-Path Acceptance](proposed/052-jemmet-iotakt-production-path-acceptance.md) | AR3 — real downstream evidence; coordinates RFC 015/026 |
 | 054 | [Maintainability Split and History Archival](proposed/054-maintainability-split-and-history-archival.md) | AR-M — module/history concentration before stable |
+| 055 | [TLS Accounting, Sizing, and Progress Contract](proposed/055-tls-accounting-sizing-and-progress-contract.md) | AR-I — jemmet M3 ingress/egress accounting and readiness contract before AR1 |
 
 ## Proposed — pre-existing open deliverables
 

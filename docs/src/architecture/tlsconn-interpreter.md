@@ -28,8 +28,12 @@ unchanged, because the running connection's protocol decisions *are* `step`.
 bytes — **not** that ciphertext reached the peer. `wouldBlock` consumes zero, so
 the caller retries the same bytes. Accepted plaintext is encrypted into a bounded
 pending-ciphertext queue and pushed toward the transport by `flush` or by driving
-the connection on a writable event. Partial transport writes remove only the sent
+the connection explicitly with `flush`. A writable event by itself does not flush.
+Partial transport writes remove only the sent
 prefix, preserving byte order; a `wouldBlock` leaves the queue intact.
+Connected zero-length input is a state-preserving `wrote 0`. The suite-aware
+record-sizing functions and ownership-transfer rules are specified in
+[TLS accounting, sizing, and progress](tls-accounting-and-sizing.md).
 
 ## Read and close semantics
 

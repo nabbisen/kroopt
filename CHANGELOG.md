@@ -5,6 +5,16 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+### AR-I — jemmet TLS accounting integration contract
+
+- Add structured and scalar retained inbound ownership accessors, suite-aware protected-record sizing and
+  admission helpers, conservative validated server-flight and terminal-control reserves, and an explicit
+  `needsTransportWrite` query.
+- Make connected zero-length `TlsConn.send` a state-preserving `wrote 0`, and make send admission consume the
+  public suite-aware sizing calculation instead of a duplicated record-overhead literal.
+- Document kroopt/consumer ownership transfer, staged-transport conservation, writable progress, and the
+  separate one-record terminal reserve; add deterministic boundary tests for all supported suites.
+
 ## [0.125.0] — AR0 truthful baseline and reproducible release gate — 2026-07-14
 
 ### AR0 — project truth reconciliation

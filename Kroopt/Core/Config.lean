@@ -1,4 +1,5 @@
 import Kroopt.Core.Cert
+import Kroopt.Core.Record
 
 /-!
 # Kroopt.Core.Config
@@ -135,15 +136,40 @@ instance : Inhabited ResourceLimits := ⟨{}⟩
 
 def ResourceLimits.standard : ResourceLimits := {}
 
-/-- The smallest protected TLS 1.3 application record carries one plaintext byte: a 5-byte record header
-plus the sealed payload (`1` plaintext + `1` inner content-type + `16` AEAD tag). `maxPendingCiphertextBytes`
-must be at least this, or every `send` would permanently back-pressure (RFC 042 A1 config validation). -/
-def minProtectedRecordLen : Nat := 23
+/-- Authentication-tag bytes emitted by the currently supported TLS 1.3 AEAD suites. The suite argument is
+deliberate even though all current values are 16: record-admission callers cannot silently inherit a future
+suite with different expansion (RFC 055). -/
+def CipherSuite.aeadTagBytes : CipherSuite → Nat
+  | .aes128GcmSha256 => 16
+  | .aes256GcmSha384 => 16
+  | .chacha20Poly1305Sha256 => 16
 
-/-- Deterministic sealed length of a TLS 1.3 application record carrying `n` plaintext bytes with no
-padding: `5` header + `n` + `1` inner content-type + `16` AEAD tag (RFC 8446 §5.2). Used by the egress
-backstop to fit a prefix under the outbound-ciphertext cap (RFC 042 A1). -/
-def ciphertextRecordLen (n : Nat) : Nat := n + 22
+/-- Wire expansion for one nonempty, unpadded protected application record: five-byte TLS record header,
+one inner content-type byte, and the selected suite's authentication tag. -/
+def protectedRecordOverhead (suite : CipherSuite) : Nat := 5 + 1 + suite.aeadTagBytes
+
+/-- Suite-aware wire bytes for one application plaintext prefix. Zero input is the public no-record/no-op
+case and therefore costs zero; values beyond the TLS 2^14 fragment ceiling are not one-record inputs. -/
+def protectedRecordBytesForPlaintext (suite : CipherSuite) (plaintextBytes : Nat) : Option Nat :=
+  if plaintextBytes = 0 then some 0
+  else if plaintextBytes ≤ maxPlaintextFragment then some (plaintextBytes + protectedRecordOverhead suite)
+  else none
+
+/-- Largest nonempty plaintext prefix whose single protected record fits `ciphertextBudget`. Returns zero
+when no nonempty record fits. This is the one admission calculation consumed by `TlsConn.send`. -/
+def maxPlaintextForProtectedBudget (suite : CipherSuite) (ciphertextBudget : Nat) : Nat :=
+  let overhead := protectedRecordOverhead suite
+  if ciphertextBudget ≤ overhead then 0
+  else min maxPlaintextFragment (ciphertextBudget - overhead)
+
+/-- The smallest protected TLS 1.3 application record carries one plaintext byte. Every currently supported
+suite has the same 16-byte tag, so the validated global minimum is 23 bytes. -/
+def minProtectedRecordLen : Nat :=
+  1 + protectedRecordOverhead .aes128GcmSha256
+
+/-- Compatibility spelling retained for existing callers: all currently supported suites have identical
+expansion. New admission code should use `protectedRecordBytesForPlaintext` with its selected suite. -/
+def ciphertextRecordLen (n : Nat) : Nat := n + protectedRecordOverhead .aes128GcmSha256
 
 /-- The raw, pre-validation configuration. -/
 structure ServerConfig where
@@ -163,6 +189,21 @@ structure ValidatedServerConfig where
   alpnMode        : AlpnSelectionMode
   limits          : ResourceLimits
   deriving Inhabited
+
+/-- Maximum one-record terminal-control wire reserve for any supported suite: two alert payload bytes,
+one inner content-type byte, a 16-byte tag, and the five-byte record header. The plaintext fatal-alert form
+is only seven bytes, so this protected value dominates. -/
+def ValidatedServerConfig.maxTerminalControlCiphertextBytes (_cfg : ValidatedServerConfig) : Nat :=
+  max (protectedRecordBytesForPlaintext .aes128GcmSha256 2).get!
+      (max (protectedRecordBytesForPlaintext .aes256GcmSha384 2).get!
+           (protectedRecordBytesForPlaintext .chacha20Poly1305Sha256 2).get!)
+
+/-- Conservative current server-flight wire reserve. One maximum plaintext record covers ServerHello; four
+maximum protected records cover EncryptedExtensions, Certificate, CertificateVerify, and Finished. It is
+safe for every successfully framed current configuration. RFC 050 must revise the derivation when certificate
+fragmentation can add records. -/
+def ValidatedServerConfig.maxServerFlightCiphertextBytes (_cfg : ValidatedServerConfig) : Nat :=
+  (5 + maxPlaintextFragment) + 4 * (5 + maxCiphertextFragment)
 
 /-- A placeholder validated config whose single default endpoint advertises the baseline server-auth
 signature schemes kroopt's bundled providers support. Used as the default when no config is supplied

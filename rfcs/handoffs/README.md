@@ -15,6 +15,7 @@ Organized by **owner**:
   documents.
 - **[`iotakt/`](iotakt/)** — cross-project records with the iotakt sibling project (kroopt consumes iotakt
   for transport).
+- **[`jemmet/`](jemmet/)** — cross-project API and release correspondence with kroopt's TLS consumer.
 
 ## Contents
 
@@ -31,3 +32,8 @@ Organized by **owner**:
 |------|-----|--------|
 | [`HANDOFF-iotakt-consumer-review.md`](iotakt/HANDOFF-iotakt-consumer-review.md) | kroopt's use of iotakt as a non-blocking I/O consumer | accepted (see §O11); reconciled 2026-06-30 (adapter is jemmet's) |
 | [`iotakt-review-orders.md`](iotakt/iotakt-review-orders.md) | order statements / acceptance criteria for the consumer-contract review | companion to the above |
+
+### `jemmet/`
+| Item | For | Status |
+|------|-----|--------|
+| [`kroopt-to-jemmet-m3-tls-accounting-response.md`](jemmet/kroopt-to-jemmet-m3-tls-accounting-response.md) | RFC 055 / jemmet M3 accounting and sizing request | Pending `0.126.0` release evidence |

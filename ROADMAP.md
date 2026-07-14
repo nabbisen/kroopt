@@ -63,8 +63,29 @@ Exit gate:
 
 Closeout evidence: RFC 051 and RFC 053 are Implemented. Clean commit
 `2984db0cc93b341fd0bf4b038d34fde68425ba82` passed the canonical `full-release` profile 42/42 locally and
-in CI; CI run `79277038502` also passed sanitizer lanes under GCC 12.5.0 and GCC 16.1.0. AR1 is the next
-blocking milestone. B1–B5 and B8 remain open; B6's native traffic-secret residency remains AR4 / RFC 040.
+in CI; CI run `79277038502` also passed sanitizer lanes under GCC 12.5.0 and GCC 16.1.0. The bounded AR-I
+integration contract is next, followed by AR1. B1–B5 and B8 remain open; B6's native traffic-secret
+residency remains AR4 / RFC 040.
+
+#### AR-I — TLS accounting, sizing, and progress contract
+
+**Purpose:** unblock jemmet's bounded iotakt adapter without moving TLS protocol logic or transport
+ownership into either project.
+
+Work:
+
+- RFC 055: expose conservative retained-inbound accounting, suite-aware application-record admission,
+  server-flight and terminal-control reserves, and the writable/conservation contract;
+- keep consumer-owned staging out of kroopt's inbound accessor and require jemmet to add it exactly once;
+- preserve `needsWrite == aggregate owned ciphertext > 0`; writable readiness drains jemmet staging and then
+  calls `TlsConn.flush` rather than projecting interpreter-private flags;
+- publish a versioned handoff with exact release evidence for jemmet to pin.
+
+Exit gate:
+
+- public sizing results cover actual wire output at all supported suite/boundary cases;
+- partial transfer, would-block, close, and teardown tests preserve or explicitly discharge ownership;
+- the canonical gate and jemmet translation reference are green on the same clean candidate.
 
 #### AR1 — Fail-closed protocol correctness
 

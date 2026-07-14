@@ -27,7 +27,8 @@ namespace Kroopt.Conn
 open Kroopt (TlsError)
 open Kroopt.Core (State InputEvent HandshakeInfo CipherSuite ConfigGeneration
   HashAlgorithm ConnId CloseMode ValidatedServerConfig AlpnProtocol CertificateChainHandle
-  minProtectedRecordLen maxPlaintextFragment)
+  maxPlaintextFragment
+  protectedRecordBytesForPlaintext maxPlaintextForProtectedBudget)
 open Kroopt.Crypto (CryptoProvider)
 
 inductive TlsReadResult where
@@ -57,6 +58,23 @@ inductive TlsCloseResult where
   | closed
   | error (e : TlsError)
   deriving Inhabited
+
+/-- Conservative logical byte charge for inbound-origin data retained by kroopt across public calls
+(RFC 055). Fields sum live `ByteArray.size` values, not allocated capacity and not lifetime traffic.
+Duplicated retained representations are charged separately on purpose. -/
+structure InboundOwnership where
+  recordReassembly        : Nat
+  handshakeReassembly     : Nat
+  authenticatedPlaintext  : Nat
+  retainedHandshake       : Nat
+  deriving Repr, Inhabited
+
+namespace InboundOwnership
+
+def total (o : InboundOwnership) : Nat :=
+  o.recordReassembly + o.handshakeReassembly + o.authenticatedPlaintext + o.retainedHandshake
+
+end InboundOwnership
 
 /-- The connection handle (RFC 010 §9), generic over the transport `τ`. Protocol
 truth is `core`; the interpreter bookkeeping is `rt`; the transport `tr` and
@@ -150,14 +168,19 @@ def send {τ : Type} [Transport τ] (c : TlsConn τ) (plaintext : ByteArray) : T
     | some e => (c, .error e)
     | none   => (c, .closed)
   else
+  let suite := c.core.negotiated.selectedSuite.getD .aes128GcmSha256
   let cap := c.core.serverConfig.limits.maxPendingCiphertextBytes
   let remaining := cap - c.rt.outbound.size            -- Nat subtraction: 0 once at/over cap
-  if remaining < minProtectedRecordLen then
-    -- Not even a one-byte protected record fits: accept nothing, retry after flush/drain.
-    (c, .wouldBlock)
+  let n := min plaintext.size (maxPlaintextForProtectedBudget suite remaining)
+  if n = 0 then
+    if plaintext.isEmpty && c.core.handshake.isConnected then
+      -- A connected zero-length send is a true no-op: no empty TLS record, no sequence change, no queue.
+      (c, .wrote 0)
+    else
+      -- No nonempty protected record fits, or application sending is not yet available.
+      (c, .wouldBlock)
   else
-    -- Largest prefix whose sealed length `n + 22` fits the remaining headroom: n ≤ remaining - 22.
-    let n := min (min plaintext.size maxPlaintextFragment) (remaining - 22)
+    -- The suite-aware public sizing function above is the single admission calculation (RFC 055).
     let pfx := plaintext.extract 0 n
     let c := { c with rt := { c.rt with acceptedBytes := 0 } }
     let c := drive c (.appSend c.core.connId pfx)
@@ -219,6 +242,34 @@ bound the egress it must account for against a slow-draining peer. It is **only*
 the ciphertext tier: `send` encrypts on accept, so there is no separate
 accepted-but-not-encrypted plaintext backlog to report. -/
 def ownedOutboundBytes {τ : Type} (c : TlsConn τ) : Nat := c.rt.outbound.size
+
+private def optionByteSize (b : Option ByteArray) : Nat := (b.map (·.size)).getD 0
+
+/-- Structured retained inbound charge (RFC 055). `retainedHandshake` includes exact read-direction
+transcript bytes and separately retained client-derived fields/pending Finished bytes; this intentionally
+charges duplicate representations rather than pretending to report allocator capacity. Consumer-owned
+transport staging is excluded. -/
+def inboundOwnership {τ : Type} (c : TlsConn τ) : InboundOwnership :=
+  let readTranscript := c.core.transcript.events.foldl (fun n e =>
+    match e.meta.direction with
+    | .read => n + e.wireBytes.size
+    | .write => n) 0
+  let negotiatedInbound :=
+    optionByteSize c.core.negotiated.selectedSni
+      + optionByteSize c.core.negotiated.clientShare
+      + c.core.negotiated.clientSessionId.size
+      + (c.core.negotiated.selectedAlpn.map (·.bytes.size)).getD 0
+  { recordReassembly := c.core.inboundCiphertext.size
+    handshakeReassembly := c.core.handshakeReasm.size
+    authenticatedPlaintext := optionByteSize c.core.pendingPlainOut + optionByteSize c.rt.plaintextOut
+    retainedHandshake := readTranscript + negotiatedInbound + optionByteSize c.core.pendingClientFinished }
+
+/-- Total conservative retained inbound byte charge. This is current ownership, not a lifetime counter. -/
+def ownedInboundBytes {τ : Type} (c : TlsConn τ) : Nat := c.inboundOwnership.total
+
+/-- Whether kroopt itself currently owns ciphertext that `flush` can transfer to the transport. Jemmet ORs
+this with its own staged-output ownership; `RuntimeState.writeInterest` is not the public contract. -/
+def needsTransportWrite {τ : Type} (c : TlsConn τ) : Bool := !c.rt.outbound.isEmpty
 
 end TlsConn
 

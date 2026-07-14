@@ -76,6 +76,57 @@ def cappedConn (cap preOut : Nat) (sched : List SendOutcome) : TlsConn FakeTrans
     rt := { connectedForSend.rt with outbound := fillBytes preOut }
     tr := { connectedForSend.tr with writeSchedule := sched } }
 
+/-- A connection containing every inbound-origin retention tier covered by RFC 055. -/
+def inboundOwnedConn : TlsConn FakeTransport :=
+  let readWire := fillBytes 6
+  let writeWire := fillBytes 9
+  let transcript :=
+    ((TranscriptState.fresh .sha256).appendFramed .clientHello .read readWire)
+      |>.appendFramed .serverHello .write writeWire
+  { connectedForSend with
+    core := { connectedForSend.core with
+      inboundCiphertext := fillBytes 2
+      handshakeReasm := fillBytes 3
+      pendingPlainOut := some (fillBytes 4)
+      pendingClientFinished := some (fillBytes 5)
+      transcript := transcript
+      negotiated := { connectedForSend.core.negotiated with
+        selectedSni := some (fillBytes 2)
+        clientShare := some (fillBytes 3)
+        clientSessionId := fillBytes 1
+        selectedAlpn := some { bytes := fillBytes 2 } } }
+    rt := { connectedForSend.rt with plaintextOut := some (fillBytes 7) } }
+
+def suites : List CipherSuite :=
+  [.aes128GcmSha256, .aes256GcmSha384, .chacha20Poly1305Sha256]
+
+/-- Deterministic provider with real AEAD expansion for wire-size tests. Other operations retain the
+ordinary fake-provider behavior; ciphertext contents are irrelevant to this accounting test. -/
+def wireSizedProvider : CryptoProvider :=
+  { fakeProvider with submit := fun arena op req =>
+      match req with
+      | .aeadSeal _ _ plaintext =>
+          .ok (arena, .aeadSealed (plaintext ++ fillBytes 16))
+      | _ => fakeProvider.submit arena op req }
+
+def sentCiphertextSize (suite : CipherSuite) (plaintextBytes : Nat) : Option Nat :=
+  let c0 := cappedConn (maxPlaintextFragment + 22) 0 [.wouldBlock]
+  let c0 := { c0 with core := { c0.core with negotiated :=
+    { c0.core.negotiated with selectedSuite := some suite } }, prov := wireSizedProvider }
+  let (c1, r) := c0.send (fillBytes plaintextBytes)
+  match r with
+  | .wrote n => if n == plaintextBytes then some c1.ownedOutboundBytes else none
+  | _ => none
+
+def suiteSizingBoundaries (suite : CipherSuite) : Bool :=
+  protectedRecordBytesForPlaintext suite 0 == some 0
+    && protectedRecordBytesForPlaintext suite 1 == some 23
+    && protectedRecordBytesForPlaintext suite maxPlaintextFragment == some (maxPlaintextFragment + 22)
+    && protectedRecordBytesForPlaintext suite (maxPlaintextFragment + 1) == none
+    && maxPlaintextForProtectedBudget suite 22 == 0
+    && maxPlaintextForProtectedBudget suite 23 == 1
+    && maxPlaintextForProtectedBudget suite (maxPlaintextFragment + 22) == maxPlaintextFragment
+
 /-- Seal a handshake-flight message through `sealHandshakeRecord` with `suite` recorded as the
 installed (write, handshake) suite — exercising that the interpreter dispatches the flight seal on
 the installed suite rather than a hardcoded one. -/
@@ -113,6 +164,15 @@ def alertOpenedHs : Option (ByteArray × ContentType) :=
     Record13.openRecord (KeySchedule.trafficKey .chacha20Poly1305Sha256 hsSecretFx)
                         (KeySchedule.trafficIv hsSecretFx) 0 r .chacha20Poly1305Sha256)
 
+def closeNotifySealedHs : Option ByteArray :=
+  match SecretArena.empty.store hsSecretFx with
+  | .error _ => none
+  | .ok (h, a1) =>
+    let a2 := (a1.recordBaseSecret .write .handshake h.id)
+      |>.recordInstalledSuite .write .handshake .chacha20Poly1305Sha256
+    match sealAlertRecord a2 .handshake 0 .closeNotify with
+    | .ok (some r) => some r | _ => none
+
 def checks : List Check :=
   [ -- full handshake through the public API
     { name := "handshake completes through TlsConn"
@@ -127,6 +187,20 @@ def checks : List Check :=
   , { name := "connected send takes ownership of plaintext (wrote n)"
     , ok := (match (connectedForSend.send (bytesOf [1, 2, 3])).2 with
              | .wrote n => n == 3 | _ => false) }
+  , { name := "protected-record sizing covers every suite and boundary"
+    , ok := suites.all suiteSizingBoundaries }
+  , { name := "public sizing equals actual send ciphertext for every suite"
+    , ok := suites.all (fun suite =>
+        sentCiphertextSize suite 1 == protectedRecordBytesForPlaintext suite 1
+          && sentCiphertextSize suite maxPlaintextFragment
+               == protectedRecordBytesForPlaintext suite maxPlaintextFragment) }
+  , { name := "connected zero-length send is a state-preserving wrote 0"
+    , ok := (let c0 := connectedForSend
+             let (c1, r) := c0.send ByteArray.empty
+             (match r with | .wrote n => n == 0 | _ => false)
+               && c1.ownedOutboundBytes == c0.ownedOutboundBytes
+               && c1.rt.acceptedBytes == c0.rt.acceptedBytes
+               && c1.core.writeEpoch.seq.value == c0.core.writeEpoch.seq.value) }
   , { name := "send before connected consumes zero (wouldBlock/closed, never wrote)"
     , ok := (match (freshServer.send (bytesOf [1, 2, 3])).2 with
              | .wrote _ => false | _ => true) }
@@ -150,6 +224,35 @@ def checks : List Check :=
              let empty : TlsConn FakeTransport :=
                { connectedForSend with rt := { connectedForSend.rt with outbound := ByteArray.mk #[] } }
              owned.ownedOutboundBytes == 5 && empty.ownedOutboundBytes == 0) }
+  , { name := "inboundOwnership charges all live tiers and excludes written transcript bytes"
+    , ok := (let o := inboundOwnedConn.inboundOwnership
+             o.recordReassembly == 2
+               && o.handshakeReassembly == 3
+               && o.authenticatedPlaintext == 11
+               && o.retainedHandshake == 19
+               && o.total == 35
+               && inboundOwnedConn.ownedInboundBytes == 35) }
+  , { name := "recv transfers authenticated plaintext ownership to the caller"
+    , ok := (let c0 : TlsConn FakeTransport :=
+               { connectedForSend with rt := { connectedForSend.rt with plaintextOut := some (fillBytes 7) } }
+             let (c1, r) := c0.recv
+             (match r with | .bytes b => b.size == 7 | _ => false)
+               && c0.inboundOwnership.authenticatedPlaintext == 7
+               && c1.inboundOwnership.authenticatedPlaintext == 0) }
+  , { name := "terminal connections report retained inbound ownership truthfully"
+    , ok := (let c : TlsConn FakeTransport :=
+               { inboundOwnedConn with core := { inboundOwnedConn.core with handshake := .failed .internalError } }
+             c.ownedInboundBytes == 35) }
+  , { name := "clean-closed connections report retained inbound ownership truthfully"
+    , ok := (let c : TlsConn FakeTransport :=
+               { inboundOwnedConn with core := { inboundOwnedConn.core with handshake := .closed } }
+             c.ownedInboundBytes == 35) }
+  , { name := "EOF-before-close-notify does not erase retained inbound ownership"
+    , ok := (let c := inboundOwnedConn.progress (.transportEof inboundOwnedConn.core.connId)
+             c.ownedInboundBytes > 0) }
+  , { name := "needsTransportWrite is exactly kroopt-owned ciphertext"
+    , ok := !connectedForSend.needsTransportWrite
+             && (cappedConn 100 5 []).needsTransportWrite }
     -- partial writes preserve ordering (RFC 010 §11)
   , { name := "partial transport writes preserve byte ordering"
     , ok := (let tr : FakeTransport :=
@@ -162,6 +265,14 @@ def checks : List Check :=
              let (rt', tr') := drainOutbound { (default : RuntimeState) with
                                                 outbound := bytesOf [7, 8, 9] } tr
              tr'.outbound.isEmpty && rt'.outbound.toList == [7, 8, 9]) }
+  , { name := "partial transfer conserves aggregate kroopt plus transport ownership"
+    , ok := (let tr : FakeTransport :=
+               { fd := fd0, inbound := [], writeSchedule := [.sent 2, .wouldBlock] }
+             let (rt', tr') := drainOutbound { (default : RuntimeState) with
+                                                outbound := bytesOf [10, 20, 30, 40, 50] } tr
+             rt'.outbound.toList == [30, 40, 50]
+               && tr'.writtenBytes.toList == [10, 20]
+               && rt'.outbound.size + tr'.writtenBytes.size == 5) }
     -- progress budget terminates (RFC 010 §10)
     -- RFC 042 A1 — outbound-ciphertext egress backstop (hard post-accept cap, fit a prefix)
   , { name := "sendAtCiphertextCapWouldBlockZeroConsumed"
@@ -193,6 +304,15 @@ def checks : List Check :=
     , ok := (let c0 := cappedConn 50 50 [.wouldBlock]
              let (c1, _) := c0.close (.fatal .internalError)
              c1.ownedOutboundBytes > 50) }
+  , { name := "terminal-control and server-flight reserves cover current output"
+    , ok := connectedForSend.core.serverConfig.maxTerminalControlCiphertextBytes == 24
+             && (closeNotifySealedHs.map (·.size)).getD 0
+                  <= connectedForSend.core.serverConfig.maxTerminalControlCiphertextBytes
+             && handshaken.tr.writtenBytes.size
+                  <= connectedForSend.core.serverConfig.maxServerFlightCiphertextBytes }
+  , { name := "terminalization does not silently discard kroopt outbound ownership"
+    , ok := (let rt := terminate { (default : RuntimeState) with outbound := fillBytes 5 }
+             rt.terminal && rt.outbound.size == 5) }
   , { name := "sendOnTerminalConnReportsClosedNotCapBackpressure"
     -- RFC 042 impl-review §4: terminal status takes precedence over egress back-pressure.
     , ok := (let term : TlsConn FakeTransport :=

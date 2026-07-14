@@ -31,8 +31,9 @@ in CI run `79277038502`; its GCC 12.5.0 and GCC 16.1.0 sanitizer lanes also pass
 | B7 | ~~the canonical full-release gate was not portable in the reviewed environment~~ | **Closed by RFC 051 / AR0**; clean v3 gate and GCC 12.5/16.1 lanes passed on `2984db0` |
 | B8 | a configured certificate chain is represented as one TLS `CertificateEntry` | RFC 050 / AR2 |
 
-**Next milestone:** AR1 — fail-closed protocol correctness through RFC 046, RFC 045, RFC 048, then RFC 049.
-B1, B2, B4, and B5 remain open; AR0's truthful B6 wording does not complete AR4 native residency.
+**Next milestone:** AR-I — the RFC 055 jemmet integration-enabler contract, followed by AR1 fail-closed
+protocol correctness through RFC 046, RFC 045, RFC 048, then RFC 049. B1, B2, B4, and B5 remain open;
+AR0's truthful B6 wording does not complete AR4 native residency.
 
 ## Profile in one line
 

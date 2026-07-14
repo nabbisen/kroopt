@@ -26,6 +26,12 @@ carry no iotakt dependency. What is NOT here: the live IO driver loop and wire i
 skeleton reproduced at the foot of this file), validated at the three-project standup
 (`scripts/tls-interop.sh` / `https-e2e.sh`). What IS here: the boundary semantics, isolated and tested, so
 jemmet's adapter is a faithful instantiation rather than a fresh derivation.
+
+**RFC 055 accounting/progress rule.** The adapter's owned ciphertext is
+`TlsConn.ownedOutboundBytes + IotaktConn.outbound.size`. Moving a prefix between those tiers preserves the
+sum; only `sendAck` acceptance reduces it. Native write interest remains enabled exactly while that sum is
+nonzero. On writable readiness, drain `IotaktConn.outbound` first and then call `TlsConn.flush`; kroopt's
+internal `RuntimeState.writeInterest` and a bare `transportWritable` event are not readiness contracts.
 -/
 
 namespace Tests.IotaktBinding
@@ -187,6 +193,13 @@ def recvTagOf (t : IotaktConn) : String :=
   | .eof => "eof"
   | .error _ => "error"
 
+/-- RFC 055 common jemmet mapping: native writable interest follows aggregate owned ciphertext. -/
+def aggregateNeedsWrite (krooptOwned stagedOwned : Nat) : Bool :=
+  krooptOwned + stagedOwned > 0
+
+/-- Amount the adapter must record before an abortive teardown releases its staging buffer. -/
+def stagedTeardownDiscard (t : IotaktConn) : Nat := t.outbound.size
+
 def checks : List (String × Bool) :=
   let bs := ByteArray.mk #[1, 2, 3]
   [ -- O5: FdKey translation
@@ -227,7 +240,15 @@ def checks : List (String × Bool) :=
     ("staging send accumulates outbound",
       (Transport.send (stagedConn ByteArray.empty false) (Transport.fd (stagedConn ByteArray.empty false)) bs).2.outbound.size == 3),
     ("staging enableWrite sets interest",
-      (Transport.enableWrite (stagedConn ByteArray.empty false) (Transport.fd (stagedConn ByteArray.empty false))).writeInterest == true) ]
+      (Transport.enableWrite (stagedConn ByteArray.empty false) (Transport.fd (stagedConn ByteArray.empty false))).writeInterest == true),
+    -- RFC 055: common ConnProgress mapping, independent of the internal writeInterest bit
+    ("aggregate needsWrite false only when both ownership tiers are empty", !aggregateNeedsWrite 0 0),
+    ("aggregate needsWrite includes kroopt-owned ciphertext", aggregateNeedsWrite 3 0),
+    ("aggregate needsWrite includes staged ciphertext", aggregateNeedsWrite 0 3),
+    ("abortive teardown exposes the exact adapter-owned discard",
+      let staged := (Transport.send (stagedConn ByteArray.empty false)
+        (Transport.fd (stagedConn ByteArray.empty false)) bs).2
+      stagedTeardownDiscard staged == 3) ]
 
 def main : IO Unit := do
   let failed := checks.filter (fun c => !c.2)
@@ -251,7 +272,8 @@ Driver loop, for the real binding (review §O11 skeleton). Wired when iotakt v0.
       | dataReady key .readable  => (loop, rr) ← EventLoop.recvAck loop key 16384
                                     classifyRead rr → retry (loop recvAck) | stage bytes / mark eof|error
                                     run kroopt progress; drain its writeTransport via sendAck (advance offset)
-      | dataReady key .writable  => drain conns[key].outbound via sendAck; disableWrite when empty
+      | dataReady key .writable  => drain conns[key].outbound via sendAck; call TlsConn.flush to refill staging;
+                                    disableWrite when kroopt-owned + staged ciphertext is zero
       | dataReady key .eof/.hangup => feed transportEof (truncation if pre-close_notify)
       | dataReady key (.error e) => surface via the recvAck error path
       | tick now                 => optional handshake-timeout bookkeeping

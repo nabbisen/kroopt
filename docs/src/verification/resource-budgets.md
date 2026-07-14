@@ -34,7 +34,16 @@ budget charge, and are tested/documented there (RFC 042 C2):
   by the egress tests in `Tests/Conn`, not by a `Core.step` proof. Fatal alert
   records are terminal-control records: they are queued best-effort even when the
   app cap is full (one record, then terminalization), so they bypass the backstop
-  by design.
+  by design. Consumers reserve
+  `ValidatedServerConfig.maxTerminalControlCiphertextBytes` in addition to the
+  application cap and use `maxServerFlightCiphertextBytes` when admitting a TLS
+  slot.
+- **retained inbound ownership** — `TlsConn.inboundOwnership` reports record and
+  handshake reassembly, buffered authenticated plaintext, and retained inbound
+  handshake representations; `ownedInboundBytes` sums them. These are current
+  logical byte charges, not the cumulative `BudgetState.handshakeBytesSeen`
+  counter. Consumer transport staging is excluded. See
+  [TLS accounting, sizing, and progress](../architecture/tls-accounting-and-sizing.md).
 
 A budget or parser failure routes through the same fatal path as any other
 protocol error, which is proved to emit no plaintext.

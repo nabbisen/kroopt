@@ -18,6 +18,7 @@
 - [Records over a real OS socket](architecture/socket-transport.md)
 - [End-to-end handshake (fakes)](architecture/end-to-end.md)
 - [TlsConn API and the interpreter](architecture/tlsconn-interpreter.md)
+- [TLS accounting, sizing, and progress](architecture/tls-accounting-and-sizing.md)
 - [SNI/ALPN config and certificate presentation](architecture/config-cert.md)
 - [Alerts, close_notify, and terminal policy](architecture/alerts-close.md)
 - [No-secrets trace facility](architecture/trace-facility.md)
