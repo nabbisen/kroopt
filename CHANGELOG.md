@@ -5,6 +5,8 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.125.0] — AR0 truthful baseline and reproducible release gate — 2026-07-14
+
 ### AR0 — project truth reconciliation
 
 - Qualify kroopt as a proof-backed pre-production implementation with production/stable adoption NO-GO
@@ -21,6 +23,13 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 - Close RFC 051 and RFC 053 after clean commit `2984db0` passed the canonical `full-release` profile 42/42
   locally and in CI run `79277038502`, with GCC 12.5.0 and GCC 16.1.0 sanitizer lanes green; advance the
   remediation program to AR1 while retaining the NO-GO production/stable disposition.
+
+### Release packaging
+
+- Exclude workspace-only `.agents/`, `.codex/`, and `.git-exclude/` roots from source archives, enforce
+  their absence in the forbidden-path check, and avoid misleading tar broken-pipe noise while inspecting the
+  archive. This keeps local and CI release tarballs reproducible and prevents ignored review/tool artifacts
+  from entering published source assets.
 
 ## [0.124.1] — sidecar `git_ref` captures the tag on a tagged release — 2026-06-30
 

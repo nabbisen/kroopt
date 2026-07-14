@@ -43,17 +43,18 @@ mkdir -p "$OUT"
 TARBALL="$OUT/kroopt-$VERSION.tar.gz"
 
 # Reproducible tar: name-sorted, normalized metadata, deterministic gzip.
-# Exclusions: build (.lake/*.olean), vcs (.git), gate output, release output (dist), scratch.
+# Exclusions: build (.lake/*.olean), vcs (.git), gate/release output, and workspace-only agent/scratch roots.
 LC_ALL=C tar \
   --format=gnu --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner \
   --exclude='./.lake' --exclude='./.git' --exclude='*.olean' \
+  --exclude='./.agents' --exclude='./.codex' --exclude='./.git-exclude' \
   --exclude='./gate-out' --exclude='./dist' --exclude='./probe*' --exclude='./Tests/Probe' \
   -cf - -C "$ROOT" . | gzip -n > "$TARBALL"
 
 SHA=$(sha256sum "$TARBALL" | cut -d' ' -f1)
 SZ=$(wc -c < "$TARBALL")
-FIRST=$(tar tzf "$TARBALL" | head -1)
-FORBIDDEN=$(tar tzf "$TARBALL" | grep -cE '\.lake|\.olean|\.git/|/dist/|gate-out|/probe|Tests/Probe' || true)
+FIRST=$(tar tzf "$TARBALL" | sed -n '1p')
+FORBIDDEN=$(tar tzf "$TARBALL" | grep -cE '\.lake|\.olean|\.git/|/\.(agents|codex|git-exclude)(/|$)|/dist/|gate-out|/probe|Tests/Probe' || true)
 
 echo "tarball:        $TARBALL"
 echo "sha256:         $SHA"
