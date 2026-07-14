@@ -1,11 +1,11 @@
 # kroopt → jemmet: M3 TLS accounting and sizing response
 
-**Date.** 2026-07-14  
-**Subject.** RFC 055 / AR-I TLS accounting, sizing, and progress contract  
+**Date.** 2026-07-14
+**Subject.** RFC 055 / AR-I TLS accounting, sizing, and progress contract
 **Candidate revision.** `cfda89310c040ef893e67c0c46e2889c140326eb`
-**Target release.** `0.126.0`  
+**Target release.** `0.126.0`
 **Release-candidate revision.** Pending owner commit
-**Readiness scope.** Additive jemmet integration contract; no production/stable promotion  
+**Readiness scope.** Additive jemmet integration contract; no production/stable promotion
 **Overall status.** Implementation and clean CI Done; published release provenance Pending
 
 ## 1. Accepted inbound ownership definition

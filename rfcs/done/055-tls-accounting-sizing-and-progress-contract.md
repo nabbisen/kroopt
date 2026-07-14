@@ -1,12 +1,12 @@
 # RFC 055 — TLS Accounting, Sizing, and Progress Contract
 
-**Project.** kroopt  
-**Status.** Implemented (AR-I, unreleased; `cfda893`, CI run `29298648079`)  
-**Type.** Blocking downstream integration/API fix  
-**Target milestone.** AR-I integration enabler, before AR1 protocol changes  
-**Requires completion of.** [RFC 010](../done/010-tlsconn-api-nonblocking-interpreter.md), [RFC 019](../done/019-resource-budgets-backpressure-and-dos-defense.md), [RFC 042](../done/042-resource-limit-enforcement.md)  
-**Coordinates with.** [RFC 047](../proposed/047-monotonic-deadlines-and-timeout-enforcement.md), [RFC 048](../proposed/048-validated-construction-and-protected-epoch-fail-closed.md), [RFC 050](../proposed/050-bounded-certificate-chain-presentation.md), [RFC 052](../proposed/052-jemmet-iotakt-production-path-acceptance.md)  
-**Touches.** `TlsConn` accounting/admission API, validated egress bounds, transport-progress contract, connection/iotakt tests and handoff  
+**Project.** kroopt
+**Status.** Implemented (AR-I, unreleased; `cfda893`, CI run `29298648079`)
+**Type.** Blocking downstream integration/API fix
+**Target milestone.** AR-I integration enabler, before AR1 protocol changes
+**Requires completion of.** [RFC 010](../done/010-tlsconn-api-nonblocking-interpreter.md), [RFC 019](../done/019-resource-budgets-backpressure-and-dos-defense.md), [RFC 042](../done/042-resource-limit-enforcement.md)
+**Coordinates with.** [RFC 047](../proposed/047-monotonic-deadlines-and-timeout-enforcement.md), [RFC 048](../proposed/048-validated-construction-and-protected-epoch-fail-closed.md), [RFC 050](../proposed/050-bounded-certificate-chain-presentation.md), [RFC 052](../proposed/052-jemmet-iotakt-production-path-acceptance.md)
+**Touches.** `TlsConn` accounting/admission API, validated egress bounds, transport-progress contract, connection/iotakt tests and handoff
 
 ## Request and finding
 
