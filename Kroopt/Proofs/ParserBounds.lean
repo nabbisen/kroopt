@@ -79,6 +79,42 @@ theorem takeBytesThen_bounds
     rw [← hr]
     exact takeBytes_mono r k bs r₀ hb
 
+/-- Exact-advance form of `takeBytesThen_bounds`. -/
+theorem takeBytesThen_exact
+    {α : Type} (r : Reader) (k : Nat) (f : ByteArray → α) (a : α) (r' : Reader)
+    (h : (match r.takeBytes k with
+          | .ok (bs, r₀) => .ok (f bs, r₀)
+          | .error e => .error e) = (.ok (a, r') : Except ParseError (α × Reader))) :
+    r'.offset = r.offset + k ∧ r'.input = r.input := by
+  cases hb : r.takeBytes k with
+  | error e => rw [hb] at h; simp at h
+  | ok p =>
+    obtain ⟨bs, r₀⟩ := p
+    rw [hb] at h
+    simp only [Except.ok.injEq, Prod.mk.injEq] at h
+    obtain ⟨_, hr⟩ := h
+    rw [← hr]
+    have hbounds := takeBytes_bounds r k bs r₀ hb
+    exact ⟨hbounds.2.2.2, hbounds.2.2.1⟩
+
+theorem takeU8_exact (r : Reader) (v : UInt8) (r' : Reader)
+    (h : r.takeU8 = .ok (v, r')) :
+    r'.offset = r.offset + 1 ∧ r'.input = r.input := by
+  unfold Reader.takeU8 at h
+  exact takeBytesThen_exact r 1 (fun bs => (Reader.beNat bs).toUInt8) v r' h
+
+theorem takeU16_exact (r : Reader) (v : UInt16) (r' : Reader)
+    (h : r.takeU16 = .ok (v, r')) :
+    r'.offset = r.offset + 2 ∧ r'.input = r.input := by
+  unfold Reader.takeU16 at h
+  exact takeBytesThen_exact r 2 (fun bs => (Reader.beNat bs).toUInt16) v r' h
+
+theorem takeU24_exact (r : Reader) (v : UInt24) (r' : Reader)
+    (h : r.takeU24 = .ok (v, r')) :
+    r'.offset = r.offset + 3 ∧ r'.input = r.input := by
+  unfold Reader.takeU24 at h
+  exact takeBytesThen_exact r 3 (fun bs => (⟨Reader.beNat bs⟩ : UInt24)) v r' h
+
 theorem takeU8_bounds (r : Reader) (v : UInt8) (r' : Reader)
     (h : r.takeU8 = .ok (v, r')) :
     r.offset ≤ r'.offset ∧ r'.input = r.input := by
@@ -139,6 +175,55 @@ theorem takeLen_bounds (r : Reader) (lp : LenPrefix) (len : Nat) (r' : Reader)
       obtain ⟨_, hr⟩ := h
       rw [← hr]; exact takeU24_bounds r v r₀ hu
 
+/-- A successful length-prefix read advances by exactly the prefix's wire
+width and preserves the input buffer. -/
+theorem takeLen_exact (r : Reader) (lp : LenPrefix) (len : Nat) (r' : Reader)
+    (h : r.takeLen lp = .ok (len, r')) :
+    r'.offset = r.offset + lp.byteWidth ∧ r'.input = r.input := by
+  cases lp with
+  | len8 =>
+    unfold Reader.takeLen at h
+    cases hu : r.takeU8 with
+    | error e => rw [hu] at h; simp at h
+    | ok p =>
+      obtain ⟨v, r₀⟩ := p
+      rw [hu] at h
+      simp only [Except.ok.injEq, Prod.mk.injEq] at h
+      obtain ⟨_, hr⟩ := h
+      rw [← hr]
+      simpa [LenPrefix.byteWidth] using takeU8_exact r v r₀ hu
+  | len16 =>
+    unfold Reader.takeLen at h
+    cases hu : r.takeU16 with
+    | error e => rw [hu] at h; simp at h
+    | ok p =>
+      obtain ⟨v, r₀⟩ := p
+      rw [hu] at h
+      simp only [Except.ok.injEq, Prod.mk.injEq] at h
+      obtain ⟨_, hr⟩ := h
+      rw [← hr]
+      simpa [LenPrefix.byteWidth] using takeU16_exact r v r₀ hu
+  | len24 =>
+    unfold Reader.takeLen at h
+    cases hu : r.takeU24 with
+    | error e => rw [hu] at h; simp at h
+    | ok p =>
+      obtain ⟨v, r₀⟩ := p
+      rw [hu] at h
+      simp only [Except.ok.injEq, Prod.mk.injEq] at h
+      obtain ⟨_, hr⟩ := h
+      rw [← hr]
+      simpa [LenPrefix.byteWidth] using takeU24_exact r v r₀ hu
+
+/-- Successful `expectEnd` is exact evidence that the cursor consumed its
+whole isolated input. -/
+theorem expectEnd_success (r : Reader) (h : r.expectEnd = .ok ()) :
+    r.offset = r.input.size := by
+  unfold Reader.expectEnd at h
+  split at h
+  · assumption
+  · simp at h
+
 /-- **Length-prefixed byte vector is bounds-safe.** The headline composition
 result of M1: reading a budgeted, length-prefixed vector advances the cursor
 monotonically, stays within the buffer, and preserves the buffer (RFC 003 §6,
@@ -161,6 +246,62 @@ theorem takeVectorBytes_bounds
       | (have hbb := takeBytes_bounds r1 len bs r' h
          exact ⟨Nat.le_trans hlb.1 hbb.1, hbb.2.1, by rw [hbb.2.2.1, hlb.2]⟩)
       | contradiction
+
+/-- **Exact structured-vector witness theorem (RFC 046 Slice 1).** A successful
+`takeVectorExact` exposes a declared length, the post-prefix reader, the exact
+isolated byte slice, and the fully consumed nested reader. The outer reader
+advances by exactly prefix width plus declared length and preserves the original
+input; the declared length respects the caller's ceiling. -/
+theorem takeVectorExact_witnesses {α : Type}
+    (r : Reader) (lp : LenPrefix) (maxLen : Nat)
+    (parse : Reader → Except ParseError (α × Reader))
+    (value : α) (outer : Reader)
+    (h : r.takeVectorExact lp maxLen parse = .ok (value, outer)) :
+    ∃ (n : Nat) (r1 : Reader) (bytes : ByteArray) (inner : Reader),
+      r.takeLen lp = .ok (n, r1)
+      ∧ r1.takeBytes n = .ok (bytes, outer)
+      ∧ parse (Reader.ofBytes bytes) = .ok (value, inner)
+      ∧ outer.offset = r.offset + lp.byteWidth + n
+      ∧ outer.input = r.input
+      ∧ inner.offset = inner.input.size
+      ∧ n ≤ maxLen := by
+  unfold Reader.takeVectorExact at h
+  cases hv : r.takeVectorBytes lp maxLen with
+  | error e => rw [hv] at h; simp at h
+  | ok p =>
+    obtain ⟨bytes, outer₀⟩ := p
+    rw [hv] at h
+    simp only at h
+    cases hp : parse (Reader.ofBytes bytes) with
+    | error e => rw [hp] at h; simp at h
+    | ok p =>
+      obtain ⟨value₀, inner⟩ := p
+      rw [hp] at h
+      simp only at h
+      cases he : inner.expectEnd with
+      | error e => rw [he] at h; simp at h
+      | ok u =>
+        rw [he] at h
+        simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
+        obtain ⟨hvalue, houter⟩ := h
+        subst value₀
+        subst outer₀
+        have hend := expectEnd_success inner he
+        unfold Reader.takeVectorBytes at hv
+        cases hlen : r.takeLen lp with
+        | error e => simp [hlen] at hv
+        | ok p =>
+          obtain ⟨n, r1⟩ := p
+          simp only [hlen] at hv
+          split at hv
+          · rename_i hn
+            have htake : r1.takeBytes n = .ok (bytes, outer) := hv
+            have hlenExact := takeLen_exact r lp n r1 hlen
+            have htakeBounds := takeBytes_bounds r1 n bytes outer htake
+            refine ⟨n, r1, bytes, inner, rfl, htake, hp, ?_, ?_, hend, hn⟩
+            · rw [htakeBounds.2.2.2, hlenExact.1]
+            · rw [htakeBounds.2.2.1, hlenExact.2]
+          · simp at hv
 
 /-- **Parser bounds safety (umbrella).** For the foundational reads, success
 always yields a cursor that advanced monotonically and remains within the

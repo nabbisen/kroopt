@@ -13,6 +13,14 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
   design accepted for the exact-reader/proof foundation Slice 1 after architecture review. No protocol
   implementation is included.
 
+### RFC 046 Slice 1 — exact reader regions
+
+- Add length-prefix wire widths and a generic `Reader.takeVectorExact` helper that isolates a declared
+  structured vector, requires complete nested consumption, and returns the exactly advanced outer reader.
+- Prove the decoded-length/slice witnesses, complete inner consumption, exact outer advancement, original
+  input preservation, and caller ceiling without new trusted axioms; add focused success/error tests for all
+  prefix widths. No TLS protocol parser has migrated to the helper in this slice.
+
 ## [0.126.0] — TLS accounting, sizing, and progress contract — 2026-07-15
 
 ### AR-I — jemmet TLS accounting integration contract

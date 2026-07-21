@@ -1,7 +1,7 @@
 # RFC 046 — Strict ClientHello and Extension Framing
 
 **Project.** kroopt
-**Status.** Proposed — detailed design accepted; Slice 1 implementation authorized
+**Status.** Proposed — Slice 1 accepted; Slice 2 implementation authorized
 **Type.** Blocking parser/security fix
 **Target milestone.** AR1 first protocol slice; provisional release `0.127.0`
 **Requires completion of.** [RFC 003](../done/003-bounds-safe-parser-and-framer.md) (bounded parser), [RFC 023](../done/023-parser-fuzzing-corpus-and-mutation-policy.md) (fuzzing), [RFC 033](../done/033-real-client-handshake-processing.md) (real-client processing)

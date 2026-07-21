@@ -48,8 +48,9 @@ input-preservation. They live in `Kroopt.Parse.Proofs` (module
 | 7 | `takeBytes_bounds` | The one primitive read advances by exactly `n`, stays in bounds, preserves the buffer. | RFC 003 §9.1, §9.3 | propext | proved |
 | 8 | `takeBytes_mono` | Monotonicity + input-preservation form of the above. | RFC 003 §9.3 | propext | proved |
 | 9 | `takeU8_bounds`, `takeU16_bounds`, `takeU24_bounds`, `takeU32_bounds` | Each fixed-width integer read is bounds-safe (via `takeBytes`). | RFC 003 §9.1 | propext | proved |
-| 10 | `takeLen_bounds` | Length-prefix reads (8/16/24-bit) are bounds-safe. | RFC 003 §9.1 | propext, Quot.sound | proved |
+| 10 | `takeLen_bounds`, `takeLen_exact` | Length-prefix reads (8/16/24-bit) are bounds-safe and advance by exactly their wire prefix width. | RFC 003 §9.1, RFC 046 §3.1 | propext, Quot.sound | proved |
 | 11 | `takeVectorBytes_bounds` | A budgeted, length-prefixed byte vector is bounds-safe — the framer the record/extension parsers build on. | RFC 003 §6, §9.3 | propext, Quot.sound | proved |
+| 11a | `takeVectorExact_witnesses` | Successful structured-vector parsing exposes the declared length and exact isolated bytes, proves full inner consumption, exact outer advancement/input preservation, and the caller ceiling. This is the RFC 046 Slice 1 foundation; it does not yet prove any TLS extension or ClientHello parser strict. | RFC 046 §3.1 | propext, Quot.sound | proved |
 | 12 | `parser_bounds_safe` | Umbrella: a successful foundational read advances monotonically and stays within the buffer. | RFC 003 §9.3, §15 | propext | proved |
 
 All confirmed via `#print axioms` to depend only on `propext` (some also on

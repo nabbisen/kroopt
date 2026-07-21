@@ -82,6 +82,41 @@ def checks : List Check :=
     , ok := (match (Reader.ofBytes (bytes [0x00, 0x02, 0x11, 0x22, 0x33])).takeVectorBytes .len16 64 with
              | .ok (payload, r') => payload.size == 2 && r'.offset == 4
              | .error _          => false) }
+  -- LenPrefix.byteWidth / takeVectorExact
+  , { name := "LenPrefix.byteWidth reports each wire prefix width"
+    , ok := LenPrefix.byteWidth .len8 == 1
+            && LenPrefix.byteWidth .len16 == 2
+            && LenPrefix.byteWidth .len24 == 3 }
+  , { name := "takeVectorExact returns a value and advances the outer reader exactly"
+    , ok := (match (Reader.ofBytes (bytes [0x02, 0x11, 0x22, 0x99])).takeVectorExact .len8 8
+                    (fun inner => inner.takeU16) with
+             | .ok (v, outer) => v == 0x1122 && outer.offset == 3
+                                  && outer.remaining == 1
+             | .error _ => false) }
+  , { name := "takeVectorExact supports len16 and len24 prefixes"
+    , ok := (match (Reader.ofBytes (bytes [0x00, 0x01, 0xAA, 0x99])).takeVectorExact .len16 8
+                    (fun inner => inner.takeU8) with
+             | .ok (v, outer) => v == 0xAA && outer.offset == 3 && outer.remaining == 1
+             | .error _ => false)
+            && (match (Reader.ofBytes (bytes [0x00, 0x00, 0x01, 0xBB, 0x99])).takeVectorExact .len24 8
+                        (fun inner => inner.takeU8) with
+                | .ok (v, outer) => v == 0xBB && outer.offset == 4 && outer.remaining == 1
+                | .error _ => false) }
+  , { name := "takeVectorExact rejects nested trailing bytes"
+    , ok := (match (Reader.ofBytes (bytes [0x03, 0x11, 0x22, 0x33])).takeVectorExact .len8 8
+                    (fun inner => inner.takeU16) with
+             | .error .trailingBytes => true
+             | _ => false) }
+  , { name := "takeVectorExact rejects a nested parser over-read"
+    , ok := (match (Reader.ofBytes (bytes [0x01, 0x11, 0x99])).takeVectorExact .len8 8
+                    (fun inner => inner.takeU16) with
+             | .error .unexpectedEof => true
+             | _ => false) }
+  , { name := "takeVectorExact preserves vector maximum enforcement"
+    , ok := (match (Reader.ofBytes (bytes [0x02, 0x11, 0x22])).takeVectorExact .len8 1
+                    (fun inner => inner.takeU16) with
+             | .error (.lengthExceedsMax 2 1) => true
+             | _ => false) }
   -- expectEnd
   , { name := "expectEnd succeeds when fully consumed"
     , ok := (match (Reader.ofBytes (bytes [0x01])).takeU8 with

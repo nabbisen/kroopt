@@ -43,6 +43,12 @@ inductive LenPrefix where
   | len24
   deriving Repr, DecidableEq, Inhabited
 
+/-- Number of wire bytes occupied by a TLS vector length prefix. -/
+def LenPrefix.byteWidth : LenPrefix → Nat
+  | .len8  => 1
+  | .len16 => 2
+  | .len24 => 3
+
 /-- Internal, typed parse errors (RFC 003 §4). Richer than the public
 `Kroopt.ParseError`: it keeps positions/sizes for deterministic alert mapping
 and metrics, but never raw attacker bytes (RFC 003 §10, RFC 010 §13.3). The
@@ -163,6 +169,27 @@ def takeVectorBytes (r : Reader) (lp : LenPrefix) (maxLen : Nat) :
         r1.takeBytes len
       else
         .error (.lengthExceedsMax len maxLen)
+
+/-- Parse a structured length-prefixed vector in an isolated reader and require
+the nested parser to consume the declared region exactly. On success, return the
+parsed value together with the outer reader positioned immediately after the
+declared bytes. The nested parser cannot consume bytes from the outer structure.
+
+`maxLen` is the caller-owned vector ceiling. This helper adds exact framing to
+the existing bounds-safe `takeVectorBytes`; it does not define connection-level
+resource admission (RFC 046 Slice 1). -/
+def takeVectorExact (r : Reader) {α : Type} (lp : LenPrefix) (maxLen : Nat)
+    (parse : Reader → Except ParseError (α × Reader)) :
+    Except ParseError (α × Reader) :=
+  match r.takeVectorBytes lp maxLen with
+  | .error e => .error e
+  | .ok (bytes, outer) =>
+      match parse (Reader.ofBytes bytes) with
+      | .error e => .error e
+      | .ok (value, inner) =>
+          match inner.expectEnd with
+          | .error e => .error e
+          | .ok _ => .ok (value, outer)
 
 /-- Parse up to `maxItems` items with `item`, stopping at end of input
 (RFC 003 §9.1 / §10 — *no unbounded recursion over attacker-controlled lists*).
