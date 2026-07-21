@@ -21,6 +21,16 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
   input preservation, and caller ceiling without new trusted axioms; add focused success/error tests for all
   prefix widths. No TLS protocol parser has migrated to the helper in this slice.
 
+### RFC 046 Slice 2 — strict nested ClientHello lists
+
+- Migrate `supported_versions`, `supported_groups`, `signature_algorithms`, `key_share`, and ALPN nested
+  lists to exact declared-region parsing with typed errors instead of lossy empty/absent fallback.
+- Preserve well-framed unknown/GREASE values for later semantic selection; reject empty/odd/residual vectors,
+  empty key exchanges for every group id, key-share count exhaustion, and malformed recognized shares.
+- Prove the concrete UInt16/key-share/ALPN callbacks preserve their isolated reader input and add focused
+  structural, semantic, GREASE, and full-ClientHello-path regressions. Top-level ClientHello framing,
+  SNI/config routing, and live transcript binding remain unchanged for Slice 3.
+
 ## [0.126.0] — TLS accounting, sizing, and progress contract — 2026-07-15
 
 ### AR-I — jemmet TLS accounting integration contract

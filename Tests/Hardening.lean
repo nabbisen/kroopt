@@ -36,6 +36,18 @@ def extSigAlgsRsa : List UInt8 := [0, 0x0d, 0, 4, 0, 2, 0x08, 0x04]  -- rsa_pss_
 def extSupVer13 : List UInt8 := [0, 43, 0, 3, 2, 0x03, 0x04]   -- offers TLS 1.3
 def extGroups : List UInt8 := [0, 10, 0, 4, 0, 2, 0x00, 0x1d]   -- supported_groups: x25519 (RFC 8446 §4.2.7)
 def extSupVer12 : List UInt8 := [0, 43, 0, 3, 2, 0x03, 0x03]   -- offers only TLS 1.2
+def extSupVerGrease13 : List UInt8 := [0, 43, 0, 5, 4, 0x0A, 0x0A, 0x03, 0x04]
+def extGroupsGreaseX25519 : List UInt8 := [0, 10, 0, 6, 0, 4, 0x0A, 0x0A, 0, 0x1D]
+def extSigAlgsGreaseEd25519 : List UInt8 := [0, 0x0D, 0, 6, 0, 4, 0x0A, 0x0A, 0x08, 0x07]
+def greaseKeyShareEntry : List UInt8 := [0x0A, 0x0A, 0, 1, 0xAA]
+def extKeyShareGreaseX25519 : List UInt8 :=
+  [0, 51, 0, 43, 0, 41] ++ greaseKeyShareEntry ++ keyShareEntry
+
+def extSupVerTrailing : List UInt8 := [0, 43, 0, 4, 2, 0x03, 0x04, 0x99]
+def extGroupsOdd : List UInt8 := [0, 10, 0, 5, 0, 3, 0, 0x1D, 0]
+def extSigAlgsEmpty : List UInt8 := [0, 0x0D, 0, 2, 0, 0]
+def extKeyShareEmptyUnknown : List UInt8 := [0, 51, 0, 6, 0, 4, 0x0A, 0x0A, 0, 0]
+def extAlpnTrailing : List UInt8 := [0, 16, 0, 6, 0, 3, 2, 0x68, 0x32, 0x99]
 def chWithSuites (suiteBytes exts : List UInt8) : ByteArray :=
   let body := [0x03, 0x03] ++ (List.replicate 32 0xAA) ++ [0] ++
               (u16be suiteBytes.length ++ suiteBytes) ++ [1, 0] ++ (u16be exts.length ++ exts)
@@ -90,6 +102,20 @@ def checks : List Check :=
     -- deferred-feature scope control (RFC 016)
   , { name := "ClientHello offering TLS 1.3 with X25519 parses"
     , ok := parseOk (extSupVer13 ++ extGroups ++ extKeyShare ++ extSigAlgs) }
+  , { name := "well-framed GREASE beside every usable nested offer parses"
+    , ok := parseOk (extSupVerGrease13 ++ extGroupsGreaseX25519 ++
+              extKeyShareGreaseX25519 ++ extSigAlgsGreaseEd25519) }
+  , { name := "malformed supported_versions residue is rejected by the ClientHello path"
+    , ok := !parseOk (extSupVerTrailing ++ extGroups ++ extKeyShare ++ extSigAlgs) }
+  , { name := "odd supported_groups is rejected by the ClientHello path"
+    , ok := !parseOk (extSupVer13 ++ extGroupsOdd ++ extKeyShare ++ extSigAlgs) }
+  , { name := "empty present signature_algorithms is rejected by the ClientHello path"
+    , ok := !parseOk (extSupVer13 ++ extGroups ++ extKeyShare ++ extSigAlgsEmpty) }
+  , { name := "empty unknown key_exchange is rejected by the ClientHello path"
+    , ok := !parseOk (extSupVer13 ++ extGroupsGreaseX25519 ++
+              extKeyShareEmptyUnknown ++ extSigAlgs) }
+  , { name := "ALPN residue is rejected by the ClientHello path"
+    , ok := !parseOk (extSupVer13 ++ extGroups ++ extKeyShare ++ extSigAlgs ++ extAlpnTrailing) }
   , { name := "ClientHello with no supported_versions is refused (no TLS 1.2 downgrade)"
     , ok := !parseOk extKeyShare }
   , { name := "ClientHello offering only TLS 1.2 is refused"

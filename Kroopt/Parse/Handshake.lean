@@ -39,12 +39,38 @@ def suiteOfU16 : UInt16 → Option CipherSuite
   -- and AES-256-GCM-SHA384 (the SHA-384 key schedule + transcript landed; the interpreter seal
   -- path is suite-aware as of 0.68.0-dev, the schedule hash-parameterized as of 0.71.0-dev).
 
-/-- Parse a length-prefixed list of `UInt16` values from a byte slice, reusing
-the bounds-safe fuel combinator. -/
+/-- Legacy unprefixed conversion retained only for the top-level cipher-suite
+slice until RFC 046 Slice 3 migrates the complete ClientHello body. Authorized
+Slice 2 extension paths use `parseNonemptyU16Vector` and never collapse errors
+to `[]`. -/
 def u16sOfBytes (b : ByteArray) : List UInt16 :=
   match (Reader.ofBytes b).takeCountedItems b.size (fun r => r.takeU16) with
   | .ok (xs, _) => xs
   | .error _    => []
+
+/-- Parse UInt16 items to the end of an isolated reader. Fuel is the remaining
+byte count, so the walk is bounded without imposing a new TLS policy ceiling. -/
+def parseU16Items (r : Reader) : Except ParseError (List UInt16 × Reader) :=
+  r.takeCountedItems r.remaining (fun rr => rr.takeU16)
+
+/-- Parse one complete, non-empty, length-prefixed UInt16 vector from extension
+data. Exact framing rejects an odd inner length, an over/under-declared vector,
+or trailing bytes after the declared vector. Unknown values remain in the list. -/
+def parseNonemptyU16Vector (data : ByteArray) (lp : LenPrefix) :
+    Except ParseError (List UInt16) := do
+  let (items, outer) ← (Reader.ofBytes data).takeVectorExact lp maxVectorLen parseU16Items
+  outer.expectEnd
+  if items.isEmpty then throw .valueOutOfRange
+  pure items
+
+def parseSupportedVersions (data : ByteArray) : Except ParseError (List UInt16) :=
+  parseNonemptyU16Vector data .len8
+
+def parseSupportedGroups (data : ByteArray) : Except ParseError (List UInt16) :=
+  parseNonemptyU16Vector data .len16
+
+def parseSignatureAlgorithms (data : ByteArray) : Except ParseError (List UInt16) :=
+  parseNonemptyU16Vector data .len16
 
 /-- A parsed extension: its type and exact data bytes. -/
 abbrev RawExtension := UInt16 × ByteArray
@@ -66,7 +92,9 @@ def parseKeyShareEntry (r : Reader) : Except ParseError ((UInt16 × ByteArray) �
   | .ok (group, r1) =>
       match r1.takeVectorBytes .len16 maxVectorLen with
       | .error e => .error e
-      | .ok (ke, r2) => .ok ((group, ke), r2)
+      | .ok (ke, r2) =>
+          if ke.isEmpty then .error .valueOutOfRange
+          else .ok ((group, ke), r2)
 
 /-- Does the extension list contain a duplicate type? -/
 def hasDuplicateExt (exts : List RawExtension) : Bool :=
@@ -92,45 +120,34 @@ def parseSni (ext : ByteArray) : Option ByteArray :=
     if hlen == 0 ∨ 5 + hlen > ext.size then none
     else some (ext.extract 5 (5 + hlen))
 
-/-- Walk the protocol-name entries of a raw `application_layer_protocol_negotiation` extension body
-(RFC 7301), **strictly**: each entry is `name_len(1) ‖ name` with a non-empty `name`, and the walk
-must frame exactly to the end of the body. Returns the names (in offer order) or `none` if any entry
-is malformed (empty name, or a length that overruns the body) or the body does not frame exactly.
-`fuel` (the buffer size) bounds the walk over attacker-controlled input; structurally recursive on it. -/
-def parseAlpnStrictAux : ByteArray → Nat → Nat → List ByteArray → Option (List ByteArray)
-  | ext, pos, 0,      acc => if pos == ext.size then some acc.reverse else none
-  | ext, pos, fuel+1, acc =>
-    if pos == ext.size then some acc.reverse
-    else
-      let nlen := (ext.get! pos).toNat
-      if nlen == 0 ∨ pos + 1 + nlen > ext.size then none
-      else parseAlpnStrictAux ext (pos + 1 + nlen) fuel (ext.extract (pos + 1) (pos + 1 + nlen) :: acc)
+/-- Parse one non-empty ALPN ProtocolName (`uint8` opaque vector). -/
+def parseAlpnProtocol (r : Reader) : Except ParseError (ByteArray × Reader) := do
+  match r.takeVectorBytes .len8 255 with
+  | .error e => .error e
+  | .ok (name, outer) =>
+      if name.isEmpty then .error .valueOutOfRange
+      else .ok (name, outer)
 
-/-- Strict ALPN extension-body parse (RFC 7301 §3.1). The body is a 2-byte `ProtocolNameList`
-length framing a **non-empty** sequence of non-empty protocol names. Returns the offered names
-(non-empty, in offer order) on a well-formed body, or `none` if the body is malformed — an empty
-list, an empty name, or a list length that does not frame the remaining bytes exactly. The caller
-turns `none` into a parse error (`valueOutOfRange` ⇒ `illegal_parameter`, consistent with the parser's
-other malformed-structure rejections); an absent extension is handled separately and is
-**not** malformed. -/
-def parseAlpnStrict (ext : ByteArray) : Option (List ByteArray) :=
-  if ext.size < 2 then none
-  else
-    let listLen := (ext.get! 0).toNat * 256 + (ext.get! 1).toNat
-    if listLen != ext.size - 2 then none
-    else match parseAlpnStrictAux ext 2 ext.size [] with
-      | some names => if names.isEmpty then none else some names
-      | none        => none
+/-- Parse ALPN names to the end of an isolated ProtocolNameList reader. -/
+def parseAlpnItems (r : Reader) : Except ParseError (List ByteArray × Reader) :=
+  r.takeCountedItems r.remaining parseAlpnProtocol
+
+/-- Strict ALPN extension-body parse (RFC 7301 §3.1). The extension contains one
+exact `uint16` ProtocolNameList, with a non-empty list of non-empty names and no
+residue inside or after the declared vector. -/
+def parseAlpnStrict (ext : ByteArray) : Except ParseError (List ByteArray) := do
+  let (names, outer) ←
+    (Reader.ofBytes ext).takeVectorExact .len16 maxVectorLen parseAlpnItems
+  outer.expectEnd
+  if names.isEmpty then throw .valueOutOfRange
+  pure names
 
 /-- `supported_versions` (type 43) must offer TLS 1.3 (0x0304). The extension
 data is a u8-length-prefixed list of u16 versions. -/
-def offersTls13 (exts : List RawExtension) : Bool :=
+def offersTls13 (exts : List RawExtension) : Except ParseError Bool :=
   match findExt exts 43 with
-  | none => false
-  | some d =>
-      -- drop the 1-byte list length, then scan u16 versions
-      let body := d.extract 1 d.size
-      (u16sOfBytes body).contains 0x0304
+  | none => .ok false
+  | some d => (parseSupportedVersions d).map (·.contains 0x0304)
 
 /-- Does any `key_share` group id appear more than once? RFC 8446 §4.2.8 forbids a client
 from sending two `KeyShareEntry`s for the same group; such a ClientHello is malformed and the
@@ -140,12 +157,24 @@ def hasDupGroupIds (entries : List (UInt16 × ByteArray)) : Bool :=
   let ids := entries.map (·.fst)
   ids.any (fun x => (ids.filter (· == x)).length > 1)
 
-/-- The group ids in the client's `supported_groups` extension (0x000a), if present. The
-extension data is a u16-length-prefixed list of u16 `NamedGroup` codes, so drop the 2-byte
-list length and read the codes. `none` distinguishes an absent extension (no constraint) from
-a present-but-empty list (`some []`, which constrains away every `key_share`). -/
-def supportedGroupIds (exts : List RawExtension) : Option (List UInt16) :=
-  (findExt exts 0x000a).map (fun d => u16sOfBytes (d.extract 2 d.size))
+/-- The exactly framed group ids in `supported_groups`, preserving unknown/GREASE
+codes. `none` means the extension is absent; malformed or empty presence is an error. -/
+def supportedGroupIds (exts : List RawExtension) :
+    Except ParseError (Option (List UInt16)) :=
+  match findExt exts 0x000a with
+  | none => .ok none
+  | some d => (parseSupportedGroups d).map some
+
+/-- Parse the complete non-empty key-share entry vector. Every entry consumes a
+non-empty key_exchange; unknown/GREASE group ids remain available for duplicate
+and supported_groups consistency checks. -/
+def parseKeyShareEntries (data : ByteArray) :
+    Except ParseError (List (UInt16 × ByteArray)) := do
+  let (entries, outer) ← (Reader.ofBytes data).takeVectorExact .len16 maxVectorLen
+    (fun inner => inner.takeCountedItems maxKeyShares parseKeyShareEntry)
+  outer.expectEnd
+  if entries.isEmpty then throw .valueOutOfRange
+  pure entries
 
 /-- The client's recognized ECDHE `key_share` offers, **in client order**, surfaced for the
 core to choose among (RFC 039 §4.3 — selection is the core's job, not the parser's). kroopt
@@ -163,37 +192,27 @@ closed rather than treating the `key_share` as authoritative. A group listed in
 `supported_groups` with no `key_share` is simply not selectable (no HRR); that surfaces as a
 clean selection failure downstream, not here.
 
-Yields `none` — a malformed ClientHello — when the extension is absent, structurally broken,
-carries a duplicate group id, contradicts `supported_groups`, or offers no recognized group
-(no acceptable `key_share` and, with no HRR, nothing to negotiate); otherwise a non-empty list. -/
-def findOfferedKeyShares (exts : List RawExtension) : Option (List (NamedGroup × ByteArray)) :=
-  match findExt exts 51 with
-  | none => none
-  | some d =>
-      match (Reader.ofBytes d).takeVectorBytes .len16 maxVectorLen with
-      | .error _ => none
-      | .ok (entriesBytes, _) =>
-          match (Reader.ofBytes entriesBytes).takeCountedItems maxKeyShares parseKeyShareEntry with
-          | .error _ => none
-          | .ok (entries, _) =>
-              let supportedGroupsViolation : Bool :=
-                match supportedGroupIds exts with
-                | none    => true  -- strict (review HIGH-3): a key_share with supported_groups
-                                   -- absent is rejected, not treated as authoritative (RFC 8446
-                                   -- §4.2.8: a KeyShareEntry must correspond to a supported_groups
-                                   -- entry). Constrained no-HRR profile: fail closed.
-                | some sg => entries.any (fun e => !(sg.contains e.fst))
-              if hasDupGroupIds entries then none
-              else if supportedGroupsViolation then none
-              else
-                let recognized : List (NamedGroup × ByteArray) :=
-                  entries.filterMap (fun e =>
-                    if e.fst == 0x001d then
-                      (if e.snd.size == 32 then some (.x25519, e.snd) else none)
-                    else if e.fst == 0x0017 then
-                      (if e.snd.size == 65 ∧ e.snd.get! 0 == 0x04 then some (.secp256r1, e.snd) else none)
-                    else none)
-                if recognized.isEmpty then none else some recognized
+Fails with a typed parse error when the extension is absent or malformed, carries
+a duplicate/empty/invalid recognized share, contradicts `supported_groups`, or
+offers no recognized group; otherwise returns a non-empty recognized list. -/
+def findOfferedKeyShares (exts : List RawExtension) :
+    Except ParseError (List (NamedGroup × ByteArray)) := do
+  let some data := findExt exts 51 | throw .valueOutOfRange
+  let entries ← parseKeyShareEntries data
+  let some groups ← supportedGroupIds exts | throw .valueOutOfRange
+  if hasDupGroupIds entries then throw .valueOutOfRange
+  if entries.any (fun e => !(groups.contains e.fst)) then throw .valueOutOfRange
+  let malformedRecognized := entries.any (fun e =>
+    if e.fst == 0x001d then e.snd.size != 32
+    else if e.fst == 0x0017 then !(e.snd.size == 65 && e.snd.get! 0 == 0x04)
+    else false)
+  if malformedRecognized then throw .valueOutOfRange
+  let recognized : List (NamedGroup × ByteArray) := entries.filterMap (fun e =>
+    if e.fst == 0x001d then some (.x25519, e.snd)
+    else if e.fst == 0x0017 then some (.secp256r1, e.snd)
+    else none)
+  if recognized.isEmpty then throw .valueOutOfRange
+  pure recognized
 
 /-- Pick the first offered cipher suite kroopt supports. -/
 def selectSuite (offered : List UInt16) : Option CipherSuite :=
@@ -214,14 +233,12 @@ def sigSchemeOfU16 : UInt16 → Option SignatureScheme
 def recognizedSigSchemes (offered : List UInt16) : List SignatureScheme :=
   offered.filterMap sigSchemeOfU16
 
-/-- The client's offered `signature_algorithms` (extension 0x000d): the extension
-data is a u16-length-prefixed list of u16 scheme codes, so drop the 2-byte list
-length and read the codes. Absent extension ⇒ empty list (a server that
-authenticates with a certificate then has no acceptable scheme and aborts). -/
-def clientSigSchemeCodes (exts : List RawExtension) : List UInt16 :=
+/-- The client's exactly framed `signature_algorithms` codes. Absence is an
+empty semantic offer; malformed or empty presence remains a parse error. -/
+def clientSigSchemeCodes (exts : List RawExtension) : Except ParseError (List UInt16) :=
   match findExt exts 0x000d with
-  | none   => []
-  | some d => u16sOfBytes (d.extract 2 d.size)
+  | none   => .ok []
+  | some d => parseSignatureAlgorithms d
 
 /-- Parse and validate a ClientHello handshake message (RFC 006 §5). Returns the
 validated parameters bound to the exact consumed bytes. -/
@@ -249,19 +266,18 @@ def parseClientHello (input : ByteArray) : Except ParseError (Kroopt.Core.WireBo
              | .error e => throw e
              | .ok (exts, _) => pure exts
   if hasDuplicateExt exts then throw .valueOutOfRange
-  if !offersTls13 exts then throw .valueOutOfRange
-  let some offeredShares := findOfferedKeyShares exts | throw .valueOutOfRange
+  if !(← offersTls13 exts) then throw .valueOutOfRange
+  let offeredShares ← findOfferedKeyShares exts
   let some suite := selectSuite (u16sOfBytes suitesBytes) | throw .valueOutOfRange
-  let offeredSchemes := recognizedSigSchemes (clientSigSchemeCodes exts)
+  let offeredSchemes := recognizedSigSchemes (← clientSigSchemeCodes exts)
   if offeredSchemes.isEmpty then throw .valueOutOfRange
   -- ALPN (RFC 7301): absent ⇒ `none` (proceed); present ⇒ strict-parse, rejecting an empty list or
   -- empty protocol name as malformed. Uses the parser's `valueOutOfRange` (⇒ `illegal_parameter`),
   -- consistent with how the parser rejects other malformed-structure inputs (duplicate extensions, bad
   -- compression, bad key_share), rather than silently treating a malformed extension as absent.
-  let alpnField ← match (findExt exts 16).map parseAlpnStrict with
-    | none           => pure (none : Option (List ByteArray))
-    | some none      => throw .valueOutOfRange
-    | some (some os) => pure (some os)
+  let alpnField ← match findExt exts 16 with
+    | none   => pure (none : Option (List ByteArray))
+    | some d => pure (some (← parseAlpnStrict d))
   let vch : ValidClientHello :=
     { selectedSuite := suite
       offeredShares := offeredShares

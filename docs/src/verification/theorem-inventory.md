@@ -51,6 +51,7 @@ input-preservation. They live in `Kroopt.Parse.Proofs` (module
 | 10 | `takeLen_bounds`, `takeLen_exact` | Length-prefix reads (8/16/24-bit) are bounds-safe and advance by exactly their wire prefix width. | RFC 003 §9.1, RFC 046 §3.1 | propext, Quot.sound | proved |
 | 11 | `takeVectorBytes_bounds` | A budgeted, length-prefixed byte vector is bounds-safe — the framer the record/extension parsers build on. | RFC 003 §6, §9.3 | propext, Quot.sound | proved |
 | 11a | `takeVectorExact_witnesses` | Successful structured-vector parsing exposes the declared length and exact isolated bytes, proves full inner consumption, exact outer advancement/input preservation, and the caller ceiling. This is the RFC 046 Slice 1 foundation; it does not yet prove any TLS extension or ClientHello parser strict. | RFC 046 §3.1 | propext, Quot.sound | proved |
+| 11b | `parseU16Items_input`, `parseKeyShareItems_input`, `parseAlpnItems_input` | The concrete RFC 046 Slice 2 callbacks preserve their isolated reader input; this supplies the composition fact the generic callback type cannot enforce. | RFC 046 §6, §9 | propext, Quot.sound | proved |
 | 12 | `parser_bounds_safe` | Umbrella: a successful foundational read advances monotonically and stays within the buffer. | RFC 003 §9.3, §15 | propext | proved |
 
 All confirmed via `#print axioms` to depend only on `propext` (some also on

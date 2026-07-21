@@ -20,6 +20,21 @@ structure Check where
   ok : Bool
 
 def bytes (l : List UInt8) : ByteArray := ByteArray.mk l.toArray
+def u16be (n : Nat) : List UInt8 := [(n / 256).toUInt8, (n % 256).toUInt8]
+
+def failsWith {α : Type} (res : Except ParseError α) (expected : ParseError) : Bool :=
+  match res with
+  | .error e => e == expected
+  | .ok _ => false
+
+def succeedsWith {α : Type} [BEq α] (res : Except ParseError α) (expected : α) : Bool :=
+  match res with
+  | .ok value => value == expected
+  | .error _ => false
+
+def greaseShare : List UInt8 := [0x0A, 0x0A, 0, 1, 0xAA]
+def x25519Share : List UInt8 := [0, 0x1D, 0, 32] ++ List.replicate 32 0x07
+def keyShareData (entries : List UInt8) : ByteArray := bytes (u16be entries.length ++ entries)
 
 /-- Helper: does a parse step succeed with a reader advanced to `expectedOffset`? -/
 def okAt {α : Type} (res : Except ParseError (α × Reader)) (expectedOffset : Nat) : Bool :=
@@ -133,6 +148,58 @@ def checks : List Check :=
              | .error _     => false) }
   , { name := "takeCountedItems with too little fuel fails (budgetExceeded)"
     , ok := isError ((Reader.ofBytes (bytes [1,2,3,4,5])).takeCountedItems 2 (fun r => r.takeU8)) }
+  -- RFC 046 Slice 2: exact UInt16 extension vectors
+  , { name := "supported_versions exact parser retains GREASE beside TLS 1.3"
+    , ok := succeedsWith (parseSupportedVersions (bytes [4, 0x0A, 0x0A, 0x03, 0x04]))
+              [0x0A0A, 0x0304] }
+  , { name := "supported_versions GREASE-only is structurally valid but not TLS 1.3"
+    , ok := succeedsWith (parseSupportedVersions (bytes [2, 0x0A, 0x0A])) [0x0A0A]
+            && succeedsWith (offersTls13 [(43, bytes [2, 0x0A, 0x0A])]) false }
+  , { name := "supported_versions rejects odd and trailing bytes deterministically"
+    , ok := failsWith (parseSupportedVersions (bytes [3, 0x03, 0x04, 0x03])) .unexpectedEof
+            && failsWith (parseSupportedVersions (bytes [4, 0x03, 0x04])) .unexpectedEof
+            && failsWith (parseSupportedVersions (bytes [2, 0x03, 0x04, 0x99])) .trailingBytes }
+  , { name := "supported_versions rejects an empty present vector"
+    , ok := failsWith (parseSupportedVersions (bytes [0])) .valueOutOfRange }
+  , { name := "supported_groups exact parser retains GREASE and known groups"
+    , ok := succeedsWith (parseSupportedGroups (bytes [0, 4, 0x0A, 0x0A, 0, 0x1D]))
+              [0x0A0A, 0x001D] }
+  , { name := "supported_groups rejects odd framing and outer residue"
+    , ok := failsWith (parseSupportedGroups (bytes [0, 3, 0, 0x1D, 0])) .unexpectedEof
+            && failsWith (parseSupportedGroups (bytes [0, 4, 0, 0x1D])) .unexpectedEof
+            && failsWith (parseSupportedGroups (bytes [0, 2, 0, 0x1D, 0x99])) .trailingBytes }
+  , { name := "signature_algorithms retains unknown codes and rejects empty/odd vectors"
+    , ok := succeedsWith (parseSignatureAlgorithms (bytes [0, 4, 0x0A, 0x0A, 0x08, 0x07]))
+              [0x0A0A, 0x0807]
+            && succeedsWith (parseSignatureAlgorithms (bytes [0, 2, 0x0A, 0x0A])) [0x0A0A]
+            && (recognizedSigSchemes [0x0A0A]).isEmpty
+            && failsWith (parseSignatureAlgorithms (bytes [0, 0])) .valueOutOfRange
+            && failsWith (parseSignatureAlgorithms (bytes [0, 1, 0x08])) .unexpectedEof
+            && failsWith (parseSignatureAlgorithms (bytes [0, 4, 0x08, 0x07])) .unexpectedEof }
+  -- RFC 046 Slice 2: exact key_share lists
+  , { name := "key_share exact parser retains well-framed GREASE beside x25519"
+    , ok := (match parseKeyShareEntries (keyShareData (greaseShare ++ x25519Share)) with
+             | .ok entries => entries.length == 2
+                              && entries.map (·.fst) == [0x0A0A, 0x001D]
+             | .error _ => false) }
+  , { name := "key_share rejects zero-length key_exchange for an unknown group"
+    , ok := failsWith (parseKeyShareEntries (bytes [0, 4, 0x0A, 0x0A, 0, 0]))
+              .valueOutOfRange }
+  , { name := "key_share rejects vector residue and too many entries"
+    , ok := failsWith (parseKeyShareEntries (bytes ([0, 5] ++ greaseShare ++ [0x99]))) .trailingBytes
+            && failsWith (parseKeyShareEntries (bytes ([0, 6] ++ greaseShare))) .unexpectedEof
+            && (let entries := (List.replicate (maxKeyShares + 1) greaseShare).flatten
+                failsWith (parseKeyShareEntries (keyShareData entries)) .budgetExceeded) }
+  , { name := "key_share GREASE beside supported x25519 survives framing and selects x25519"
+    , ok := (let groups : RawExtension := (10, bytes [0, 4, 0x0A, 0x0A, 0, 0x1D])
+             let shares : RawExtension := (51, keyShareData (greaseShare ++ x25519Share))
+             match findOfferedKeyShares [groups, shares] with
+             | .ok [(.x25519, share)] => share.size == 32
+             | _ => false) }
+  , { name := "key_share GREASE-only is structurally valid then fails semantic overlap"
+    , ok := (let groups : RawExtension := (10, bytes [0, 2, 0x0A, 0x0A])
+             let shares : RawExtension := (51, keyShareData greaseShare)
+             failsWith (findOfferedKeyShares [groups, shares]) .valueOutOfRange) }
   , { name := "parseSni extracts the bare hostname from a server_name extension (RFC 6066)"
     , ok := (parseSni (ByteArray.mk #[0,13,0,0,10] ++ (String.toUTF8 "ecdsa.test"))).map (·.toList)
               == some (String.toUTF8 "ecdsa.test").toList }
@@ -141,20 +208,30 @@ def checks : List Check :=
   , { name := "parseSni rejects a non-host_name name_type"
     , ok := (parseSni (ByteArray.mk #[0,13,1,0,10] ++ (String.toUTF8 "ecdsa.test"))).isNone }
   , { name := "parseAlpnStrict extracts one protocol name from an ALPN extension (RFC 7301)"
-    , ok := (parseAlpnStrict (ByteArray.mk #[0,9,8] ++ (String.toUTF8 "http/1.1"))).map (·.map (·.toList))
-              == some [(String.toUTF8 "http/1.1").toList] }
+    , ok := succeedsWith
+              ((parseAlpnStrict (ByteArray.mk #[0,9,8] ++ (String.toUTF8 "http/1.1"))).map
+                (·.map (·.toList)))
+              [(String.toUTF8 "http/1.1").toList] }
   , { name := "parseAlpnStrict extracts two protocol names in offer order"
-    , ok := (match parseAlpnStrict (ByteArray.mk #[0,12,2] ++ (String.toUTF8 "h2")
-                ++ ByteArray.mk #[8] ++ (String.toUTF8 "http/1.1")) with
-             | some l => l.length == 2 | none => false) }
+    , ok := succeedsWith
+              ((parseAlpnStrict (ByteArray.mk #[0,12,2] ++ (String.toUTF8 "h2")
+                ++ ByteArray.mk #[8] ++ (String.toUTF8 "http/1.1"))).map (·.map (·.toList)))
+              [(String.toUTF8 "h2").toList, (String.toUTF8 "http/1.1").toList] }
   , { name := "parseAlpnStrict on a too-short body is rejected (bounds-checked)"
-    , ok := (parseAlpnStrict (ByteArray.mk #[0])).isNone }
+    , ok := failsWith (parseAlpnStrict (ByteArray.mk #[0])) .unexpectedEof }
   , { name := "alpnMalformedEmptyListRejected: an empty ALPN list is malformed"
-    , ok := (parseAlpnStrict (ByteArray.mk #[0,0])).isNone }
+    , ok := failsWith (parseAlpnStrict (ByteArray.mk #[0,0])) .valueOutOfRange }
   , { name := "alpnMalformedEmptyProtocolRejected: a zero-length protocol name is malformed"
-    , ok := (parseAlpnStrict (ByteArray.mk #[0,1,0])).isNone }
+    , ok := failsWith (parseAlpnStrict (ByteArray.mk #[0,1,0])) .valueOutOfRange }
   , { name := "alpnMalformedListLenMismatchRejected: an inner length that misframes is malformed"
-    , ok := (parseAlpnStrict (ByteArray.mk #[0,5,2] ++ (String.toUTF8 "h2"))).isNone }
+    , ok := failsWith (parseAlpnStrict (ByteArray.mk #[0,5,2] ++ (String.toUTF8 "h2")))
+              .unexpectedEof }
+  , { name := "ALPN rejects residue after an otherwise exact ProtocolNameList"
+    , ok := failsWith (parseAlpnStrict (ByteArray.mk #[0,3,2] ++ (String.toUTF8 "h2")
+              ++ ByteArray.mk #[0x99])) .trailingBytes }
+  , { name := "ALPN rejects residue inside the declared ProtocolNameList"
+    , ok := failsWith (parseAlpnStrict (ByteArray.mk #[0,4,2] ++ (String.toUTF8 "h2")
+              ++ ByteArray.mk #[0x99])) .unexpectedEof }
   ]
 
 def main : IO UInt32 := do
