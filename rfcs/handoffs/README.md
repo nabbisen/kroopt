@@ -36,4 +36,4 @@ Organized by **owner**:
 ### `jemmet/`
 | Item | For | Status |
 |------|-----|--------|
-| [`kroopt-to-jemmet-m3-tls-accounting-response.md`](jemmet/kroopt-to-jemmet-m3-tls-accounting-response.md) | RFC 055 / jemmet M3 accounting and sizing request | Implementation/CI complete; pending published `0.126.0` provenance |
+| [`kroopt-to-jemmet-m3-tls-accounting-response.md`](jemmet/kroopt-to-jemmet-m3-tls-accounting-response.md) | RFC 055 / jemmet M3 accounting and sizing request | Complete; released `0.126.0` with published provenance |

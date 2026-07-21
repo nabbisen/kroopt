@@ -91,8 +91,12 @@ Closeout evidence: RFC 055 is Implemented. Clean commit
 `cfda89310c040ef893e67c0c46e2889c140326eb` passed the canonical `full-release` profile 42/42 in GitHub
 Actions run `29298648079`; the same run's dedicated GCC 12.5.0 and GCC 16.1.0 ASan/UBSan lanes passed.
 The gate artifact was retained as artifact `8297742336` (GitHub-reported ZIP SHA-256
-`ae8938e7654df165f6b1b2d366329994c86657a59d860436e9dc5c8e9e1c377b`). Release-specific source,
-sidecar, and GATE-RUN hashes remain pending for `0.126.0`. AR1 is the next blocking milestone.
+`ae8938e7654df165f6b1b2d366329994c86657a59d860436e9dc5c8e9e1c377b`). Published release `0.126.0`
+is exact commit `877e54d1ce3a45ca88030052b7dedea99358ea56`; tagged workflow run `29370919042` passed 42/42 and
+published source archive SHA-256 `c311bf854f1bfc78426fbc47292fb5756cebe33c2f127b1d197487afef83c451`,
+sidecar SHA-256 `ce621f26a828d0da97e6a834d38ee78f2f7d4b72b4b4a54d21b6e3889bf0e579`, and GATE-RUN SHA-256
+`4f81a63b2bb89452b1362cfd584b8ad671f75d9aae7b45913e52549778a729e1`. AR1 is the next blocking
+milestone.
 
 #### AR1 — Fail-closed protocol correctness
 
@@ -105,6 +109,20 @@ Order:
 2. RFC 045 — core-authorized suite selection after SNI resolution;
 3. RFC 048 — validated connection construction and no protected-epoch plaintext fallback;
 4. RFC 049 — explicit phase/content acceptance table and reachable graceful EOF.
+
+Provisional release train (planning labels, not completion evidence):
+
+| Release | Primary subject | Required subject gate before candidate release validation |
+|---|---|---|
+| `0.127.0` | RFC 046 — strict ClientHello and extension framing | accepted detailed design; exact-boundary parser proofs/tests/fuzz seeds; implementation review |
+| `0.128.0` | RFC 045 — endpoint negotiation-policy authorization | accepted selection-authority design; authorization proof and negative matrix; implementation review |
+| `0.129.0` | RFC 048 — validated construction and protected-epoch fail-closed behavior | accepted constructor/failure design; public bypass closure and no-plaintext evidence; implementation review |
+| `0.130.0` | RFC 049 — record-phase acceptance and clean-close semantics | accepted phase/content matrix; deterministic alert/EOF tests and proofs; implementation review |
+
+These versions are sequencing targets, not promises. Each release has one primary behavioral theme and
+requires its own design review, implementation review, exact-revision canonical gate, current documentation,
+and tagged-release evidence. A failed subject or release gate stops that candidate; it does not silently move
+unfinished acceptance criteria into a release. Reconfirm the remaining train after every publication.
 
 Exit gate:
 
@@ -125,6 +143,9 @@ Order:
 3. Consume the implemented RFC 051 gate — run the expanded registry on the supported release matrix and
    retain a new AR2 candidate ledger without reopening RFC 051.
 
+Provisional continuation: `0.131.0` targets RFC 047 and `0.132.0` targets RFC 050. Each remains subject to
+the same design-review, implementation-review, candidate-gate, and publication-evidence rules above.
+
 Exit gate:
 
 - slow ClientHello and idle connections terminate within configured limits;
@@ -143,6 +164,10 @@ Work:
 - run real jemmet + iotakt + kroopt HTTPS E2E, including negative TLS inputs, backpressure, timeout, ALPN,
   graceful close, and certificate-chain cases;
 - publish a versioned, provenance-linked handoff with observed commands and artifacts.
+
+Provisional continuation: `0.133.0` targets RFC 052 after AR2 closes. Because it crosses repository and
+ownership boundaries, RFC 052 also requires explicit jemmet/iotakt coordination and a versioned downstream
+handoff in addition to the normal review and release gates.
 
 Exit gate:
 

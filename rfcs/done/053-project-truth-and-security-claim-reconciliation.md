@@ -1,7 +1,7 @@
 # RFC 053 — Project Truth and Security-Claim Reconciliation
 
 **Project.** kroopt  
-**Status.** Implemented (AR0, unreleased; `2984db0`)  
+**Status.** Implemented (AR0; shipped `0.125.0`; `2984db0`)
 **Type.** Blocking documentation/governance fix  
 **Target milestone.** AR0  
 **Requires completion of.** [Tracked architecture-review baseline for 0.124.1](../../docs/src/verification/architecture-review-0.124.1.md), [RFC 018](018-data-classification-and-lifecycle.md), [RFC 020](020-observability-audit-logging-and-redaction.md), [RFC 030](030-production-readiness-and-release-runbook.md)  

@@ -1,7 +1,7 @@
 # RFC 055 — TLS Accounting, Sizing, and Progress Contract
 
 **Project.** kroopt
-**Status.** Implemented (AR-I, unreleased; `cfda893`, CI run `29298648079`)
+**Status.** Implemented (`0.126.0`; implementation `cfda893`, release `877e54d`, run `29370919042`)
 **Type.** Blocking downstream integration/API fix
 **Target milestone.** AR-I integration enabler, before AR1 protocol changes
 **Requires completion of.** [RFC 010](../done/010-tlsconn-api-nonblocking-interpreter.md), [RFC 019](../done/019-resource-budgets-backpressure-and-dos-defense.md), [RFC 042](../done/042-resource-limit-enforcement.md)
@@ -112,7 +112,15 @@ observed:
   passing;
 - the ASan/UBSan harness compiling and passing under both GCC 12.5.0 and GCC 16.1.0 with Lean 4.15.0.
 
-The CI gate artifact was retained as artifact `8297742336`; GitHub reported its ZIP SHA-256 as
-`ae8938e7654df165f6b1b2d366329994c86657a59d860436e9dc5c8e9e1c377b`. The planned `0.126.0` source
-archive, release sidecar, and published GATE-RUN hashes remain release-time evidence and are intentionally
-not claimed here.
+The implementation CI gate artifact was retained as artifact `8297742336`; GitHub reported its ZIP SHA-256
+as `ae8938e7654df165f6b1b2d366329994c86657a59d860436e9dc5c8e9e1c377b`.
+
+Release `0.126.0` is exact commit `877e54d1ce3a45ca88030052b7dedea99358ea56`. Tagged workflow run
+[`29370919042`](https://github.com/nabbisen/kroopt/actions/runs/29370919042) passed the canonical profile
+42/42, all release-machinery groups, and strict `--require-release` verification. It published:
+
+| Asset | Bytes | SHA-256 |
+|---|---:|---|
+| `kroopt-0.126.0.tar.gz` | 824935 | `c311bf854f1bfc78426fbc47292fb5756cebe33c2f127b1d197487afef83c451` |
+| `kroopt-0.126.0.release-verification.json` | 27739 | `ce621f26a828d0da97e6a834d38ee78f2f7d4b72b4b4a54d21b6e3889bf0e579` |
+| `kroopt-0.126.0.GATE-RUN.md` | 2080 | `4f81a63b2bb89452b1362cfd584b8ad671f75d9aae7b45913e52549778a729e1` |

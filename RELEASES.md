@@ -67,11 +67,20 @@ follow-up provenance fix. Earlier tags are development/history tags; this page d
 that they carried the three release assets. For a particular release, the immutable assets attached to that
 tag are the publication evidence—neither a local tag nor a CHANGELOG gate count substitutes for them.
 
-The current `main` line is newer than released `0.125.0` and remains pre-production. AR-I's clean
-implementation commit `cfda89310c040ef893e67c0c46e2889c140326eb` passed the canonical `full-release`
-profile 42/42 in CI run `29298648079`; dedicated GCC 12.5.0 and GCC 16.1.0 sanitizer lanes also passed.
-That implementation evidence does not attest the planned `0.126.0` release: the tagged release workflow
-must produce its own clean ledger, archive, sidecar, and GATE-RUN asset.
+The current published release is pre-production `0.126.0`, exact commit
+`877e54d1ce3a45ca88030052b7dedea99358ea56`. Tagged workflow run `29370919042` passed the canonical
+`full-release` profile 42/42 and the release-machinery checks, then published the three immutable assets:
+
+- source archive: 824935 bytes, SHA-256
+  `c311bf854f1bfc78426fbc47292fb5756cebe33c2f127b1d197487afef83c451`;
+- release-verification sidecar: 27739 bytes, SHA-256
+  `ce621f26a828d0da97e6a834d38ee78f2f7d4b72b4b4a54d21b6e3889bf0e579`;
+- GATE-RUN summary: 2080 bytes, SHA-256
+  `4f81a63b2bb89452b1362cfd584b8ad671f75d9aae7b45913e52549778a729e1`.
+
+The retained release gate artifact is `8326067381` (GitHub-reported ZIP SHA-256
+`5ae9bbb2309fd71ef70b2f28e9de4189c14c65c9a68e5ef04de592b17a791b71`). Publication does not change
+the production/stable NO-GO disposition; AR1 is next and every later candidate requires fresh evidence.
 
 ## Versioning
 

@@ -5,6 +5,14 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+### Post-0.126 release closeout and AR1 planning
+
+- Record immutable `0.126.0` publication evidence, close the RFC 055 jemmet handoff as a released pin,
+  and repair a removed quick-start executable plus stale milestone/cipher comments.
+- Add the provisional remediation release train and expand RFC 046 into the detailed AR1 strict-framing
+  design accepted for the exact-reader/proof foundation Slice 1 after architecture review. No protocol
+  implementation is included.
+
 ## [0.126.0] — TLS accounting, sizing, and progress contract — 2026-07-15
 
 ### AR-I — jemmet TLS accounting integration contract
@@ -17,8 +25,9 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 - Document kroopt/consumer ownership transfer, staged-transport conservation, writable progress, and the
   separate one-record terminal reserve; add deterministic boundary tests for all supported suites.
 - Close RFC 055 and AR-I after clean commit `cfda893` passed the canonical `full-release` profile 42/42 in
-  CI run `29298648079`, with dedicated GCC 12.5.0 and GCC 16.1.0 ASan/UBSan lanes green. The target release
-  remains `0.126.0`; release archive and sidecar evidence are not claimed before publication.
+  CI run `29298648079`, with dedicated GCC 12.5.0 and GCC 16.1.0 ASan/UBSan lanes green. Tagged release
+  commit `877e54d` then passed 42/42 and strict publication verification in workflow run `29370919042`;
+  immutable archive, sidecar, and GATE-RUN hashes are recorded in `RELEASES.md` and the jemmet handoff.
 
 ### Release verification
 

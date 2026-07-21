@@ -4,9 +4,9 @@
 **Subject.** RFC 055 / AR-I TLS accounting, sizing, and progress contract
 **Candidate revision.** `cfda89310c040ef893e67c0c46e2889c140326eb`
 **Target release.** `0.126.0`
-**Release-candidate revision.** Pending owner commit
+**Release-candidate revision.** `877e54d1ce3a45ca88030052b7dedea99358ea56`
 **Readiness scope.** Additive jemmet integration contract; no production/stable promotion
-**Overall status.** Implementation and clean CI Done; published release provenance Pending
+**Overall status.** Done — published as `0.126.0` with immutable provenance
 
 ## 1. Accepted inbound ownership definition
 
@@ -102,16 +102,29 @@ interpreter, and release gates remain applicable; RFC 055 adds no new canonical 
 
 ## 7. Target release and verification evidence
 
-Target release is `0.126.0`. The implemented candidate is exact commit
+Release `0.126.0` contains the implementation from exact commit
 `cfda89310c040ef893e67c0c46e2889c140326eb`. GitHub Actions run
 [`29298648079`](https://github.com/nabbisen/kroopt/actions/runs/29298648079) checked out that commit and passed
 the canonical `full-release` profile 42/42, release-machinery regression tests, and dedicated GCC 12.5.0 and
 GCC 16.1.0 ASan/UBSan jobs. The retained gate artifact is `8297742336`; GitHub reported artifact ZIP
 SHA-256 `ae8938e7654df165f6b1b2d366329994c86657a59d860436e9dc5c8e9e1c377b`.
 
-The published source archive SHA-256/byte count, release sidecar SHA-256, and published GATE-RUN SHA-256 are
-Pending until the tagged release workflow creates immutable assets. Jemmet must not treat this handoff as a
-released pin until those fields replace this paragraph's Pending state.
+The annotated `0.126.0` tag peels to release commit
+`877e54d1ce3a45ca88030052b7dedea99358ea56`. Tagged workflow run
+[`29370919042`](https://github.com/nabbisen/kroopt/actions/runs/29370919042) checked out that exact commit,
+passed the canonical `full-release` profile 42/42, all five release-machinery groups, and strict
+`--require-release` verification, then published the non-draft, non-prerelease
+[`0.126.0` release](https://github.com/nabbisen/kroopt/releases/tag/0.126.0) with exactly these assets:
+
+| Asset | Bytes | SHA-256 |
+|---|---:|---|
+| `kroopt-0.126.0.tar.gz` | 824935 | `c311bf854f1bfc78426fbc47292fb5756cebe33c2f127b1d197487afef83c451` |
+| `kroopt-0.126.0.release-verification.json` | 27739 | `ce621f26a828d0da97e6a834d38ee78f2f7d4b72b4b4a54d21b6e3889bf0e579` |
+| `kroopt-0.126.0.GATE-RUN.md` | 2080 | `4f81a63b2bb89452b1362cfd584b8ad671f75d9aae7b45913e52549778a729e1` |
+
+The retained release gate artifact is `8326067381`, with GitHub-reported ZIP SHA-256
+`5ae9bbb2309fd71ef70b2f28e9de4189c14c65c9a68e5ef04de592b17a791b71`. Jemmet may now pin `0.126.0`
+and the archive SHA-256 above.
 
 Migration from `0.124.1` is additive at the source API level. The one intentional behavior correction is that
 connected zero-length `send` no longer queues an empty record or returns backpressure. These observational and
@@ -136,9 +149,9 @@ sizing APIs do not alter proved core protocol decisions or promote kroopt's trus
 | Focused connection tests | Done | `suite:conn` passed inside the exact-revision canonical gate; local development run observed 41/41 | None for implementation |
 | Iotakt translation tests | Done | `suite:iotaktbinding` passed inside the exact-revision canonical gate; local development run observed 30/30 | None for implementation |
 | Documentation | Done | `docs`, `hygiene`, and `no-placeholder` passed in the exact-revision canonical gate | None for implementation |
-| Canonical full-release gate | Done | CI run `29298648079`: clean `cfda893`, 42/42; artifact `8297742336` | Fresh tagged-release ledger still required for publication |
+| Canonical full-release gate | Done | Release run `29370919042`: exact `877e54d`, 42/42; artifact `8326067381` | Fresh evidence required only for later releases |
 | GCC sanitizer matrix | Done | Lean 4.15.0 with GCC 12.5.0 and GCC 16.1.0: both dedicated ASan/UBSan harness jobs passed | None for implementation |
-| Published `0.126.0` provenance | Pending | No tagged release artifacts yet | Prepare/tag release and transcribe archive, sidecar, and GATE-RUN hashes |
+| Published `0.126.0` provenance | Done | Release run `29370919042`; exact commit and three immutable asset hashes recorded in §7 | Jemmet may pin the release/archive hash |
 
 ## Commands observed
 
@@ -152,6 +165,7 @@ sizing APIs do not alter proved core protocol decisions or promote kroopt's trus
 | CI `bash scripts/gate.sh --profile full-release` | Passed 42/42 on clean `cfda893` | Run `29298648079`, artifact `8297742336` |
 | CI `bash scripts/sanitizer-check.sh` (GCC 12.5.0) | Passed under ASan/UBSan on clean `cfda893` | Run `29298648079` sanitizer job log |
 | CI `bash scripts/sanitizer-check.sh` (GCC 16.1.0) | Passed under ASan/UBSan on clean `cfda893` | Run `29298648079` sanitizer job log |
+| Tagged release workflow | Passed 42/42, five release-machinery groups, and strict real-release verification on exact `877e54d` | Run `29370919042`; retained artifact `8326067381`; published `0.126.0` assets |
 
 ## Risks and follow-up
 
@@ -164,9 +178,9 @@ sizing APIs do not alter proved core protocol decisions or promote kroopt's trus
 
 ### Summary
 
-RFC 055 and AR-I are implementation-complete on exact commit `cfda89310c040ef893e67c0c46e2889c140326eb`.
-Clean CI and both sanitizer lanes passed. The response is ready for release preparation but is not yet a
-published jemmet pin.
+RFC 055 and AR-I are complete and published in `0.126.0`. The annotated tag resolves to exact commit
+`877e54d1ce3a45ca88030052b7dedea99358ea56`; clean implementation CI, sanitizer lanes, and the tagged
+release workflow passed. This response is now a published jemmet pin.
 
 ### Scope followed
 
@@ -188,7 +202,7 @@ listener-wide admission policy, or production/stable readiness claim.
 
 Inbound values are conservative live logical byte charges; consumer staging is excluded. Protected sizing is
 suite-explicit. Terminal output has a separate 24-byte reserve. Native write readiness follows aggregate
-owned ciphertext, with jemmet staging drained before `TlsConn.flush`. The planned version is `0.126.0`.
+owned ciphertext, with jemmet staging drained before `TlsConn.flush`. The published version is `0.126.0`.
 
 ### Tests and gates run
 
@@ -196,26 +210,25 @@ Local development evidence observed `lake build`, 41/41 connection checks, 30/30
 mdBook, and a dirty-tree 42/42 full-release gate. Clean CI run `29298648079` then observed 42/42 at `cfda893`
 plus passing GCC 12.5.0 and GCC 16.1.0 ASan/UBSan jobs.
 
-Release preparation additionally observed the five release-machinery regression groups pass, the canonical
-release-preparation tree pass 42/42, and the generated `0.126.0` local-dry-run sidecar pass internal provenance
-verification after the `no-placeholder` validation correction.
+The tagged release workflow additionally observed all five release-machinery groups, the canonical profile
+42/42, and strict real-release provenance verification on exact release commit `877e54d`.
 
 ### Generated artifacts
 
 Implementation CI retained gate artifact `8297742336`, with GitHub-reported artifact ZIP SHA-256
-`ae8938e7654df165f6b1b2d366329994c86657a59d860436e9dc5c8e9e1c377b`. No published source archive,
-release sidecar, or GATE-RUN asset exists yet; those are created only by the tagged release workflow.
-A local-dry-run tarball and sidecar were generated under ignored `.git-exclude/tmp/release-candidate-0.126.0/`
-and verified internally. Their dirty-tree hash/size are development diagnostics, not release evidence and
-must not be given to jemmet as a pin.
+`ae8938e7654df165f6b1b2d366329994c86657a59d860436e9dc5c8e9e1c377b`. Release run `29370919042`
+retained artifact `8326067381` (ZIP SHA-256
+`5ae9bbb2309fd71ef70b2f28e9de4189c14c65c9a68e5ef04de592b17a791b71`) and published the three
+immutable assets with the byte counts and hashes in §7. Those published hashes, not earlier local-dry-run
+diagnostics, are the release evidence jemmet should pin.
 
 ### Known limitations
 
-The handoff is not a released pin until immutable `0.126.0` artifact hashes are transcribed. RFC 048, RFC 050,
-and RFC 047 retain the compatibility obligations stated above. Project production/stable disposition remains
-NO-GO.
+RFC 048, RFC 050, and RFC 047 retain the compatibility obligations stated above. Project production/stable
+disposition remains NO-GO; publication of this additive integration contract does not close those findings.
 
 ### Recommended next step
 
-Commit the separate `0.126.0` release-preparation change, push it, and verify its exact-revision CI. Create the
-`0.126.0` tag only after that CI succeeds; then verify and transcribe the immutable published artifact hashes.
+Jemmet should pin `0.126.0` plus source-archive SHA-256
+`c311bf854f1bfc78426fbc47292fb5756cebe33c2f127b1d197487afef83c451`, implement the documented
+staging/accounting mapping, and retain the RFC 047/048/050 compatibility obligations in its adapter plan.

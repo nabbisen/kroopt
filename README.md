@@ -48,7 +48,7 @@ compiler. The canonical release profile additionally requires the declared
 
 ```sh
 lake build                          # core + parser + proofs + test executables
-lake exe kroopt-realhandshake-test  # live step-driven handshake to `connected`
+lake exe kroopt-correspondence-test # production interpreter + real provider to `connected`
 lake exe kroopt-hacl-test           # HACL* primitive KATs through the Lean FFI
 lake exe kroopt-parse-fuzz 40000    # parser / ClientHello fuzz harness
 
@@ -86,8 +86,9 @@ kroopt is a proof-backed **pre-production** constrained TLS 1.3 server implement
 record layer, key schedule, HACL\* provider, typed server flight, production interpreter, real socket path,
 and constrained OpenSSL/Python/curl interop exist. Those capabilities do not close the architecture-review
 findings: endpoint cipher policy, strict ClientHello framing, live deadline enforcement, unforgeable
-validated construction, total record-phase rejection, certificate-chain representation, canonical gate
-portability, and traffic-secret residency remain scheduled work.
+validated construction, total record-phase rejection, certificate-chain representation, and traffic-secret
+residency remain scheduled work. Canonical-gate portability was closed by RFC 051, but every candidate still
+requires its own exact-revision ledger.
 
 For current capability, evidence classification, blockers, and the next milestone, use the
 [current security state](docs/src/verification/current-security-state.md). The [CHANGELOG](CHANGELOG.md)

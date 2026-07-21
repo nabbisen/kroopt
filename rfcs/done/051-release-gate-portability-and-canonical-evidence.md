@@ -1,7 +1,7 @@
 # RFC 051 — Release-Gate Portability and Canonical Evidence
 
 **Project.** kroopt  
-**Status.** Implemented (AR0, unreleased; `2984db0`, CI run `79277038502`)  
+**Status.** Implemented (AR0; shipped `0.125.0`; `2984db0`, CI run `79277038502`)
 **Type.** Blocking release/operations fix  
 **Target milestone.** AR0  
 **Requires completion of.** [RFC 022](022-proof-gates-ci-and-lean-hygiene.md) (proof gates), [RFC 030](030-production-readiness-and-release-runbook.md) (release runbook), [RFC 043](043-hacl-evercrypt-vendoring-and-provenance.md) (provenance)  

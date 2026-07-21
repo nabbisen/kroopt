@@ -4,12 +4,15 @@ This page is the **single source of truth** for kroopt's *current* capability an
 any other page disagrees, **this page wins** — older pages may describe earlier milestones and are being
 brought into line or marked historical. If you are deciding what to trust about kroopt, start here.
 
-Evidence baseline: released `0.125.0`, followed by the AR-I integration-enabler implementation on `main`.
+Evidence baseline: released `0.126.0` at exact commit
+`877e54d1ce3a45ca88030052b7dedea99358ea56`.
 AR0 closed on 2026-07-14 JST: clean commit
 `2984db0cc93b341fd0bf4b038d34fde68425ba82` passed the canonical `full-release` profile 42/42 locally and
 in CI run `79277038502`; its GCC 12.5.0 and GCC 16.1.0 sanitizer lanes also passed. AR-I closed on
 2026-07-15 JST: clean commit `cfda89310c040ef893e67c0c46e2889c140326eb` passed 42/42 in CI run
-`29298648079`, including dedicated GCC 12.5/16.1 sanitizer lanes.
+`29298648079`, including dedicated GCC 12.5/16.1 sanitizer lanes. Tagged release workflow run
+`29370919042` then passed the canonical profile 42/42, passed the release-machinery and strict real-release
+provenance checks, and published the three immutable release assets.
 
 ## Readiness disposition
 
@@ -18,7 +21,7 @@ in CI run `79277038502`; its GCC 12.5.0 and GCC 16.1.0 sanitizer lanes also pass
 | Development and evaluation | permitted on the pre-1.0 line |
 | Production adoption | **NO-GO** until AR0–AR3 and their evidence gates complete |
 | Stable/v1 | **NO-GO** until AR0–AR4, including RFC 040 native traffic-secret residency |
-| Canonical gate | RFC 051 / AR0 implemented the portable v3 registry; clean AR-I commit `cfda893` passed 42/42 in CI with GCC 12.5/16.1 sanitizer lanes. Every later candidate still requires its own exact-revision ledger |
+| Canonical gate | RFC 051 / AR0 implemented the portable v3 registry; tagged `0.126.0` commit `877e54d` passed 42/42 in release run `29370919042`. Every later candidate still requires its own exact-revision ledger |
 
 ## Architecture-review finding status
 

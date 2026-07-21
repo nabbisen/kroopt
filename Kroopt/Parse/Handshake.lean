@@ -27,12 +27,9 @@ def maxCipherSuites : Nat := 128
 def maxKeyShares : Nat := 32
 def maxVectorLen : Nat := 65535
 
-/-- Map a cipher-suite code to a suite kroopt can *perform*. The constrained profile
-performs `TLS_CHACHA20_POLY1305_SHA256` (0x1303) only; the AES-GCM suites are not in
-the vendored provider, so they map to `none` and are skipped by the overlap selection
-(this map widens when a real AES provider lands — RFC 035). This binds suite
-*negotiation* to suite *capability*: kroopt will not select a suite it cannot perform,
-even if the client lists it first. -/
+/-- Map each supported TLS 1.3 cipher-suite code to its model value. Provider capability
+validation ensures the selected suite can be performed; RFC 045 separately owns endpoint
+allow-list authorization, which this parser-level mapping must not be mistaken for. -/
 def suiteOfU16 : UInt16 → Option CipherSuite
   | 0x1301 => some .aes128GcmSha256
   | 0x1302 => some .aes256GcmSha384
