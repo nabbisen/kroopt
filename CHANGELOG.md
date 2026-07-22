@@ -42,6 +42,17 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
   pass `WireBound.wireBytes` through the live handshake bridge, and prove the concrete parser callbacks plus
   successful public header/body-size and exact-input propositions.
 
+### RFC 046 Slice 4 — hostile corpus and assembled evidence
+
+- Add 23 minimized, behavior-named binary seeds with a fail-closed five-column manifest covering complete
+  ClientHello and nested versions/groups/signatures/key-share/SNI/ALPN classifications.
+- Make the canonical parser fuzz executable reject missing/extra/duplicate/oversized/reclassified corpus
+  entries, verify successful exact input binding, and exercise bounded acceptance-preserving, structural,
+  semantic, GREASE, and resource mutation families without printing hostile bytes.
+- Complete the constrained SNI boundary controls, including empty/mixed names, non-`xn--` reserved LDH,
+  63/64-label and 253/254-name limits, invalid wildcard suffixes, and live invalid-present/default-route
+  prevention; assemble documentation for final RFC-046 implementation review.
+
 ## [0.126.0] — TLS accounting, sizing, and progress contract — 2026-07-15
 
 ### AR-I — jemmet TLS accounting integration contract

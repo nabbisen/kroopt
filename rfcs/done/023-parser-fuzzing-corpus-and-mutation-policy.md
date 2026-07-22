@@ -5,7 +5,7 @@
 **Type.** Implementation RFC  
 **Target milestone.** v0.1; mandatory before v0.4  
 **Depends on.** RFC 003, RFC 004, RFC 006, RFC 014, RFC 017, RFC 019  
-**Touches.** `fuzz/`, `testdata/fuzz/`; `docs/src/fuzzing.md`  
+**Touches.** `Tests/Fuzz.lean`, `testdata/fuzz/`; `docs/src/fuzzing.md`
 **Canonical source.** kroopt fixed requirements and external design.  
 
 ---
@@ -55,23 +55,12 @@ Fuzz targets assert:
 
 ## 4. Corpus structure
 
-```text
-testdata/fuzz/
-  record/
-    valid-minimal.bin
-    oversize-fragment.bin
-    truncated-header.bin
-  clienthello/
-    valid-x25519-alpn-sni.bin
-    missing-keyshare.bin
-    duplicate-supported-versions.bin
-  extensions/
-    malformed-vector-length.bin
-    unknown-extension.bin
-  der/
-    minimal-leaf-ed25519.der
-    truncated-sequence.der
-```
+The implemented first corpus is `testdata/fuzz/clienthello/`: a strict
+`manifest.tsv` plus behavior-named binary seeds. Stable target wrappers cover
+the complete ClientHello and its versions, groups, signatures, key-share, SNI,
+and ALPN nested parsers. Record, inner-plaintext, and DER surfaces retain their
+existing deterministic unit/smoke coverage and may gain separate manifests as
+new regressions are found.
 
 Seed files must be small, named by behavior, and never contain private keys or
 real production certificates unless intentionally public test fixtures.
@@ -109,10 +98,11 @@ When fuzzing finds a crash, panic, excessive allocation, or invalid state:
 
 ## 7. CI policy
 
-Early milestones:
+Current normal PR/release behavior:
 
-- deterministic corpus tests run on every PR;
-- fuzz smoke tests run with short time budget.
+- `kroopt-parse-fuzz` checks every manifest classification before mutation;
+- the same executable then runs its bounded deterministic smoke loop;
+- the canonical `fuzz` gate invokes it with 20,000 iterations.
 
 Later milestones:
 

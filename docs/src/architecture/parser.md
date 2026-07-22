@@ -35,6 +35,9 @@ depends on).
 - `takeVectorBytes prefix maxLen` — a length-prefixed byte vector, rejected if the
   declared length exceeds the configured budget *or* the remaining input. This is
   the framer the record and extension parsers build on.
+- `takeVectorExact prefix maxLen parser` — isolate one declared region, require
+  the concrete nested parser to consume it completely, and return the exactly
+  advanced outer reader.
 - `takeCountedItems maxItems item` — a fuel-bounded item list, so there is never
   unbounded recursion over an attacker-controlled count.
 - `remaining`, `atEnd`, `expectEnd` — cursor queries; `expectEnd` makes leftover
@@ -47,9 +50,16 @@ alert mapping and metrics, but never raw attacker bytes. `ParseError.toPublic`
 projects it onto the coarse, redacted `Kroopt.ParseError` returned across the
 boundary (RFC 013 §13.4).
 
-## What is deferred
+## Complete ClientHello boundary
 
-The validated *protocol* value types (`ValidClientHello`, the extension set) and
-the version/extension-specific error constructors depend on the record and
-handshake models and arrive at M2/M4. The fuel combinator's bounds lemma is
-scheduled for M4 with the extension-list parser that first uses it.
+The ClientHello parser applies exact regions at the uint24 handshake body and at
+every migrated vector, including cipher suites, extensions, supported versions,
+groups, signatures, key shares, SNI, and ALPN. Success proves that the original
+input is the transcript-bound `wireBytes` and that its size is exactly the
+four-byte header plus the decoded body length. Unknown/GREASE values remain
+available to the semantic layer only after their enclosing grammar is exact.
+
+The normal fuzz gate runs the committed classification corpus described in
+[Parser fuzzing and hostile corpus](../fuzzing.md) before its bounded mutation
+loop. This is evidence for the implemented grammar/error matrix, not a claim of
+browser-grade extension or IDNA support.

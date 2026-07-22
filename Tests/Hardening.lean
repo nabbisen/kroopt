@@ -52,6 +52,9 @@ def extSniHost (host : String) : List UInt8 :=
   let h := host.toUTF8.toList
   let entry := [0] ++ u16be h.length ++ h
   [0, 0] ++ u16be (2 + entry.length) ++ u16be entry.length ++ entry
+def extSniRaw (host : List UInt8) : List UInt8 :=
+  let entry := [0] ++ u16be host.length ++ host
+  [0, 0] ++ u16be (2 + entry.length) ++ u16be entry.length ++ entry
 def extSniUnsupported : List UInt8 := [0, 0, 0, 6, 0, 4, 1, 0, 1, 0x41]
 def chWithSuites (suiteBytes exts : List UInt8) : ByteArray :=
   let body := [0x03, 0x03] ++ (List.replicate 32 0xAA) ++ [0] ++
@@ -138,6 +141,13 @@ def checks : List Check :=
               == some (String.toUTF8 "a.example.com").toList }
   , { name := "unsupported-only present SNI is rejected before default routing"
     , ok := !parseOk (extSupVer13 ++ extGroups ++ extKeyShare ++ extSigAlgs ++ extSniUnsupported) }
+  , { name := "live invalid-present SNI cannot select a configured default endpoint"
+    , ok := (let ch := chWith (extSupVer13 ++ extGroups ++ extKeyShare ++ extSigAlgs ++
+                        extSniRaw [0x61, 0x00, 0x62])
+             let s := State.initial ⟨0, 0⟩ ⟨0⟩ .sha256
+             match handshakeOnPlaintextRecord s ch with
+             | .ok (s', _) => s'.handshake.isTerminal && s'.negotiated.selectedSuite.isNone
+             | .error _ => false) }
   , { name := "malformed supported_versions residue is rejected by the ClientHello path"
     , ok := !parseOk (extSupVerTrailing ++ extGroups ++ extKeyShare ++ extSigAlgs) }
   , { name := "odd supported_groups is rejected by the ClientHello path"

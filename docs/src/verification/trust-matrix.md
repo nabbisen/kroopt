@@ -38,7 +38,7 @@ revision. All `PROVEN` rows describe theorem scope over the pure core, not unche
 |---|---|---|---|---|---|
 | Config capability validation total/deterministic | PROVEN (total fn) + TESTED | `validateServerConfigCapabilities`; `kroopt-capabilities-test`, `kroopt-config-test` | kroopt | — | met |
 | Endpoint cipher allow-list authorizes selection | **OPEN / NOT CLAIMED** | architecture review B1 | kroopt | parser currently selects before endpoint/SNI policy authorization | RFC 045 / AR1 |
-| Strict complete ClientHello framing | **OPEN / PARTIAL** | bounds proofs + architecture review B2 | kroopt | exact nested lengths/end-of-input and malformed-SNI distinction | RFC 046 / AR1 |
+| Strict complete ClientHello framing | **REVIEW PENDING — PROVEN + TESTED** | exact-region/input/size theorems; focused suites; manifest corpus in `kroopt-parse-fuzz` | kroopt | final RFC 046 implementation review and exact-commit evidence | RFC 046 / AR1 |
 | Named-group authorization (x25519-first, allow-list) | TESTED (+ structural) | `kroopt-handshake-test`; live P-256 + rejection interop | kroopt | — | met |
 | `supported_groups`/`key_share` consistency (incl. strict absent-SG reject) | TESTED | parse-time consistency check (RFC 8446 §4.2.8); `noSgCH` replay + EndToEnd consistency fixtures | kroopt | — | met (HIGH-3) |
 | ALPN offered-and-allowed | TESTED | `kroopt-handshake-test`; live interop | kroopt | — | met |

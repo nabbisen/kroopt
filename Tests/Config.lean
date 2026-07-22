@@ -111,7 +111,11 @@ def checks : List Check :=
              let rejected (s : String) :=
                   match validateServerConfig { goodConfig with sniRoutes := [invalidRoute s] } ⟨0⟩ with
                   | .error .invalidSniPattern => true | _ => false
-             rejected "bad..example" && rejected "127.0.0.1" && rejected "xn--name") }
+             let invalidWildcard : SniRoute :=
+                  { pattern := .wildcard (name "bad..example"), endpoint := epEd }
+             rejected "bad..example" && rejected "127.0.0.1" && rejected "xn--name"
+               && (match validateServerConfig { goodConfig with sniRoutes := [invalidWildcard] } ⟨0⟩ with
+                   | .error .invalidSniPattern => true | _ => false)) }
   , { name := "an empty ALPN identifier is rejected at config validation (RFC 7301)"
     , ok := (match validateServerConfig cfgEmptyAlpn ⟨0⟩ with
              | .error .invalidAlpn => true | _ => false) }

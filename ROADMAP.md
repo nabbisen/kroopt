@@ -110,6 +110,10 @@ Order:
 3. RFC 048 — validated connection construction and no protected-epoch plaintext fallback;
 4. RFC 049 — explicit phase/content acceptance table and reachable graceful EOF.
 
+RFC 046's four implementation slices are assembled on the current development
+tree. This is not closure or a `0.127.0` candidate: the mandatory final
+implementation review and exact-revision evidence still gate both.
+
 Provisional release train (planning labels, not completion evidence):
 
 | Release | Primary subject | Required subject gate before candidate release validation |

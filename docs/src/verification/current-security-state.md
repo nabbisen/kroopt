@@ -28,7 +28,7 @@ provenance checks, and published the three immutable release assets.
 | Finding | Current gap | Scheduled closure |
 |---|---|---|
 | B1 | endpoint cipher allow-list does not authorize the parser-selected suite | RFC 045 / AR1 |
-| B2 | ClientHello parsing is bounded but does not enforce all exact nested framing | RFC 046 / AR1 |
+| B2 | exact ClientHello framing/SNI implementation and hostile corpus are assembled; final architecture acceptance remains pending | RFC 046 / AR1 |
 | B3 | live drivers do not generate the modeled handshake/idle deadline events | RFC 047 / AR2 |
 | B4 | validated config/provider construction is bypassable and protected flight can fall back to plaintext | RFC 048 / AR1 |
 | B5 | invalid record phase/content combinations can be silently ignored | RFC 049 / AR1 |
@@ -37,7 +37,7 @@ provenance checks, and published the three immutable release assets.
 | B8 | a configured certificate chain is represented as one TLS `CertificateEntry` | RFC 050 / AR2 |
 
 **Next milestone:** AR1 — fail-closed protocol correctness through RFC 046, RFC 045, RFC 048, then RFC 049.
-B1, B2, B4, and B5 remain open; AR-I does not change the production/stable NO-GO disposition, and AR0's
+B1, B2, B4, and B5 remain open; B2 is review-pending rather than completed. AR-I does not change the production/stable NO-GO disposition, and AR0's
 truthful B6 wording does not complete AR4 native residency.
 
 ## Profile in one line
