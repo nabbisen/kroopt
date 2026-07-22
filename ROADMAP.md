@@ -114,20 +114,24 @@ RFC 046's four implementation slices and lifecycle closeout are complete at impl
 `ebae8f8` and closeout commit `797e2e1`; final architecture review accepted the result and B2 is closed.
 Clean closeout commit `797e2e1e7881222ab046598225bbd2bc3dcecc4e` passed the canonical `full-release`
 profile 42/42 locally and in CI run `81034382238`, including dedicated GCC 12.5.0/16.1.0 sanitizer lanes and
-all interoperability gates. This does not complete AR1 or constitute tagged-release evidence: B1, B4, and
-B5 remain open. Release-candidate preparation for `0.127.0` is under review; the exact release revision
-still requires a clean canonical ledger, successful CI and tagged workflow, and immutable provenance assets.
+all interoperability gates. That closeout evidence did not itself complete AR1 or constitute tagged-release
+evidence: B1, B4, and B5 remain open. Published release `0.127.0` is exact commit
+`7fe648505611450b9a9f961715a0cfe69e733e4b`; tagged workflow run `29920594779` passed a fresh canonical
+42/42, release machinery, and strict real-release verification. It published archive SHA-256
+`3d9919acd946b1cf79956d1aa1486fce2ba1f7216bfe5c23c8fab935783e0396`, sidecar SHA-256
+`cd8e56b8909a941dc682db5884e6406d08282f96d37df4f0c84fcb98bcfe4b63`, and GATE-RUN SHA-256
+`1c1a300d6296585bf69bcf90507199083ee6526e899f938bbd0691600d2254a2`. RFC 045 is the next AR1 subject.
 
-Provisional release train (planning labels, not completion evidence):
+Release train (`0.127.0` published; later labels remain provisional planning targets):
 
 | Release | Primary subject | Required subject gate before candidate release validation |
 |---|---|---|
-| `0.127.0` | RFC 046 — strict ClientHello and extension framing | accepted implementation/closeout; clean exact-revision canonical, CI, sanitizer, and interop evidence |
+| `0.127.0` | RFC 046 — strict ClientHello and extension framing | **published** at exact commit `7fe6485`; tagged run `29920594779`; immutable provenance assets recorded |
 | `0.128.0` | RFC 045 — endpoint negotiation-policy authorization | accepted selection-authority design; authorization proof and negative matrix; implementation review |
 | `0.129.0` | RFC 048 — validated construction and protected-epoch fail-closed behavior | accepted constructor/failure design; public bypass closure and no-plaintext evidence; implementation review |
 | `0.130.0` | RFC 049 — record-phase acceptance and clean-close semantics | accepted phase/content matrix; deterministic alert/EOF tests and proofs; implementation review |
 
-These versions are sequencing targets, not promises. Each release has one primary behavioral theme and
+The remaining versions are sequencing targets, not promises. Each release has one primary behavioral theme and
 requires its own design review, implementation review, exact-revision canonical gate, current documentation,
 and tagged-release evidence. A failed subject or release gate stops that candidate; it does not silently move
 unfinished acceptance criteria into a release. Reconfirm the remaining train after every publication.

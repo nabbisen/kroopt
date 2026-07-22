@@ -66,8 +66,10 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 - Expand the current GREASE evidence statement to the tested versions, suites, groups, signature schemes,
   key shares, and unknown-extension positions while retaining the explicit non-browser-grade boundary.
   Clean closeout commit `797e2e1` passed the canonical profile 42/42 locally and in CI run `81034382238`,
-  including release-machinery controls and dedicated GCC 12.5/16.1 sanitizer lanes. `0.127.0` publication
-  remains gated on the exact tag revision and immutable release provenance.
+  including release-machinery controls and dedicated GCC 12.5/16.1 sanitizer lanes. Signed tag `0.127.0`
+  identifies exact release commit `7fe6485`; tagged workflow run `29920594779` passed a fresh canonical
+  42/42, release machinery, and strict real-release verification before publishing the three immutable
+  assets recorded in `RELEASES.md`.
 
 ## [0.126.0] — TLS accounting, sizing, and progress contract — 2026-07-15
 

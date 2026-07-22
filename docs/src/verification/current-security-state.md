@@ -4,8 +4,8 @@ This page is the **single source of truth** for kroopt's *current* capability an
 any other page disagrees, **this page wins** — older pages may describe earlier milestones and are being
 brought into line or marked historical. If you are deciding what to trust about kroopt, start here.
 
-Evidence baseline: released `0.126.0` at exact commit
-`877e54d1ce3a45ca88030052b7dedea99358ea56`.
+Evidence baseline: released `0.127.0` at exact commit
+`7fe648505611450b9a9f961715a0cfe69e733e4b`.
 AR0 closed on 2026-07-14 JST: clean commit
 `2984db0cc93b341fd0bf4b038d34fde68425ba82` passed the canonical `full-release` profile 42/42 locally and
 in CI run `79277038502`; its GCC 12.5.0 and GCC 16.1.0 sanitizer lanes also passed. AR-I closed on
@@ -16,8 +16,10 @@ provenance checks, and published the three immutable release assets.
 RFC 046 then closed B2 on 2026-07-22 JST: clean closeout commit
 `797e2e1e7881222ab046598225bbd2bc3dcecc4e` passed the canonical profile 42/42 locally and in CI run
 `81034382238`; that run also passed release-machinery controls and the dedicated GCC 12.5/16.1 sanitizer
-lanes. This is implementation/closeout evidence for the provisional `0.127.0` subject, not publication
-evidence. `0.127.0` release-candidate metadata is under review; no tag or publication is claimed.
+lanes. This is implementation/closeout evidence for the `0.127.0` subject, not publication
+evidence. Signed tag `0.127.0` then ran the canonical profile 42/42, release machinery, and strict
+real-release provenance verification in workflow run `29920594779`, which published the three immutable
+release assets.
 
 ## Readiness disposition
 
@@ -26,14 +28,14 @@ evidence. `0.127.0` release-candidate metadata is under review; no tag or public
 | Development and evaluation | permitted on the pre-1.0 line |
 | Production adoption | **NO-GO** until AR0–AR3 and their evidence gates complete |
 | Stable/v1 | **NO-GO** until AR0–AR4, including RFC 040 native traffic-secret residency |
-| Canonical gate | RFC 051 / AR0 implemented the portable v3 registry; clean RFC 046 closeout commit `797e2e1` passed 42/42 locally and in CI run `81034382238`. The exact `0.127.0` tag revision still requires its own release ledger and provenance assets |
+| Canonical gate | RFC 051 / AR0 implemented the portable v3 registry; tagged `0.127.0` commit `7fe6485` passed 42/42 and strict publication verification in release run `29920594779`. Every later candidate still requires its own exact-revision evidence |
 
 ## Architecture-review finding status
 
 | Finding | Current gap | Scheduled closure |
 |---|---|---|
 | B1 | endpoint cipher allow-list does not authorize the parser-selected suite | RFC 045 / AR1 |
-| B2 | ~~ClientHello parsing did not enforce exact nested/top-level framing or distinguish invalid-present SNI~~ | **Closed by RFC 046**; accepted at `ebae8f8`, closeout `797e2e1` passed 42/42 locally and in CI run `81034382238` |
+| B2 | ~~ClientHello parsing did not enforce exact nested/top-level framing or distinguish invalid-present SNI~~ | **Closed by RFC 046; shipped `0.127.0`** at exact commit `7fe6485`, release run `29920594779` |
 | B3 | live drivers do not generate the modeled handshake/idle deadline events | RFC 047 / AR2 |
 | B4 | validated config/provider construction is bypassable and protected flight can fall back to plaintext | RFC 048 / AR1 |
 | B5 | invalid record phase/content combinations can be silently ignored | RFC 049 / AR1 |
@@ -41,7 +43,7 @@ evidence. `0.127.0` release-candidate metadata is under review; no tag or public
 | B7 | ~~the canonical full-release gate was not portable in the reviewed environment~~ | **Closed by RFC 051 / AR0**; clean v3 gate and GCC 12.5/16.1 lanes passed on `2984db0` |
 | B8 | a configured certificate chain is represented as one TLS `CertificateEntry` | RFC 050 / AR2 |
 
-**Next milestone:** continue AR1 fail-closed protocol correctness through RFC 045, RFC 048, then RFC 049.
+**Next milestone:** continue AR1 fail-closed protocol correctness with RFC 045, then RFC 048 and RFC 049.
 B1, B4, and B5 remain open; B2 is closed by RFC 046. This does not change the production/stable NO-GO
 disposition, and AR0's truthful B6 wording does not complete AR4 native residency.
 

@@ -67,22 +67,21 @@ follow-up provenance fix. Earlier tags are development/history tags; this page d
 that they carried the three release assets. For a particular release, the immutable assets attached to that
 tag are the publication evidence—neither a local tag nor a CHANGELOG gate count substitutes for them.
 
-The current published release is pre-production `0.126.0`, exact commit
-`877e54d1ce3a45ca88030052b7dedea99358ea56`. Tagged workflow run `29370919042` passed the canonical
+The current published release is pre-production `0.127.0`, exact commit
+`7fe648505611450b9a9f961715a0cfe69e733e4b`. Tagged workflow run `29920594779` passed the canonical
 `full-release` profile 42/42 and the release-machinery checks, then published the three immutable assets:
 
-- source archive: 824935 bytes, SHA-256
-  `c311bf854f1bfc78426fbc47292fb5756cebe33c2f127b1d197487afef83c451`;
-- release-verification sidecar: 27739 bytes, SHA-256
-  `ce621f26a828d0da97e6a834d38ee78f2f7d4b72b4b4a54d21b6e3889bf0e579`;
-- GATE-RUN summary: 2080 bytes, SHA-256
-  `4f81a63b2bb89452b1362cfd584b8ad671f75d9aae7b45913e52549778a729e1`.
+- source archive: 853239 bytes, SHA-256
+  `3d9919acd946b1cf79956d1aa1486fce2ba1f7216bfe5c23c8fab935783e0396`;
+- release-verification sidecar: 27743 bytes, SHA-256
+  `cd8e56b8909a941dc682db5884e6406d08282f96d37df4f0c84fcb98bcfe4b63`;
+- GATE-RUN summary: 2084 bytes, SHA-256
+  `1c1a300d6296585bf69bcf90507199083ee6526e899f938bbd0691600d2254a2`.
 
-The retained release gate artifact is `8326067381` (GitHub-reported ZIP SHA-256
-`5ae9bbb2309fd71ef70b2f28e9de4189c14c65c9a68e5ef04de592b17a791b71`). Publication does not change
-the production/stable NO-GO disposition. RFC 046 / B2 is implemented and `0.127.0` release-candidate
-metadata is under review, but `0.126.0` remains the current published release until a successful tagged
-workflow publishes the next immutable asset set. AR1 remains open through B1, B4, and B5.
+The retained release gate artifact is `8529817364` (GitHub-reported ZIP SHA-256
+`fc6b1f0997a953533df0038808a11135674d7ee2660a699572ad9d6412e40433`). Publication closes RFC 046's
+release step but does not change the production/stable NO-GO disposition. AR1 continues with RFC 045 / B1,
+then RFC 048 / B4 and RFC 049 / B5; every later candidate requires fresh exact-revision evidence.
 
 ## Versioning
 

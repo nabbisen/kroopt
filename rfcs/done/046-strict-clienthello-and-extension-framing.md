@@ -1,9 +1,9 @@
 # RFC 046 — Strict ClientHello and Extension Framing
 
 **Project.** kroopt
-**Status.** Implemented (AR1 B2; implementation `ebae8f8`; closeout `797e2e1`; CI run `81034382238`)
+**Status.** Implemented (`0.127.0`; implementation `ebae8f8`, release `7fe6485`, run `29920594779`)
 **Type.** Blocking parser/security fix
-**Target milestone.** AR1 first protocol slice; `0.127.0` release candidate under review
+**Target milestone.** AR1 first protocol slice; shipped `0.127.0`
 **Requires completion of.** [RFC 003](../done/003-bounds-safe-parser-and-framer.md) (bounded parser), [RFC 023](../done/023-parser-fuzzing-corpus-and-mutation-policy.md) (fuzzing), [RFC 033](../done/033-real-client-handshake-processing.md) (real-client processing)
 **Coordinates with.** [RFC 045](../proposed/045-endpoint-negotiation-policy-authorization.md) (selection authority), [RFC 039](../done/039-named-group-policy-and-enforcement.md) (group selection)
 **Touches.** `Kroopt/Parse/{Reader,Handshake}.lean`, SNI validation in `Kroopt/Core/Config.lean`, the
@@ -468,7 +468,16 @@ documentation checks. The accepted implementation was then closed at clean commi
 passed the release-machinery regression controls and dedicated ASan/UBSan lanes under GCC 12.5.0 and GCC
 16.1.0. Its canonical profile included the corpus fuzz gate and TLS, Ed25519, and record interoperability.
 
-This is content-addressed implementation/closeout evidence, not tagged-release attestation. The
-evidence-recording and release-preparation revisions must retain their own clean validation as applicable;
-publication still requires the exact `0.127.0` tag revision to pass the tagged workflow, strict real-release
-provenance checks, and immutable archive/sidecar/GATE-RUN publication.
+Release `0.127.0` is exact commit `7fe648505611450b9a9f961715a0cfe69e733e4b`. Its signed tag triggered
+workflow run `29920594779`, which passed a fresh canonical 42/42 profile, release-machinery controls, and
+strict `--require-release` verification before publishing:
+
+| Asset | Bytes | SHA-256 |
+|---|---:|---|
+| `kroopt-0.127.0.tar.gz` | 853239 | `3d9919acd946b1cf79956d1aa1486fce2ba1f7216bfe5c23c8fab935783e0396` |
+| `kroopt-0.127.0.release-verification.json` | 27743 | `cd8e56b8909a941dc682db5884e6406d08282f96d37df4f0c84fcb98bcfe4b63` |
+| `kroopt-0.127.0.GATE-RUN.md` | 2084 | `1c1a300d6296585bf69bcf90507199083ee6526e899f938bbd0691600d2254a2` |
+
+This publication completes RFC 046's release step but not AR1. Endpoint cipher authorization (RFC 045),
+validated construction/protected-epoch fail-closed behavior (RFC 048), and record-phase acceptance/clean
+close semantics (RFC 049) remain open, as do the production and stable readiness gates.
