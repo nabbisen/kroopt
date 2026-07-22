@@ -3,7 +3,7 @@
 **Project.** kroopt
 **Status.** Implemented (AR1 B2; implementation `ebae8f8`; closeout `797e2e1`; CI run `81034382238`)
 **Type.** Blocking parser/security fix
-**Target milestone.** AR1 first protocol slice; provisional release `0.127.0`
+**Target milestone.** AR1 first protocol slice; `0.127.0` release candidate under review
 **Requires completion of.** [RFC 003](../done/003-bounds-safe-parser-and-framer.md) (bounded parser), [RFC 023](../done/023-parser-fuzzing-corpus-and-mutation-policy.md) (fuzzing), [RFC 033](../done/033-real-client-handshake-processing.md) (real-client processing)
 **Coordinates with.** [RFC 045](../proposed/045-endpoint-negotiation-policy-authorization.md) (selection authority), [RFC 039](../done/039-named-group-policy-and-enforcement.md) (group selection)
 **Touches.** `Kroopt/Parse/{Reader,Handshake}.lean`, SNI validation in `Kroopt/Core/Config.lean`, the

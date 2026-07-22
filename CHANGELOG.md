@@ -5,6 +5,8 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+## [0.127.0] — Strict ClientHello and extension framing — 2026-07-22
+
 ### Post-0.126 release closeout and AR1 planning
 
 - Record immutable `0.126.0` publication evidence, close the RFC 055 jemmet handoff as a released pin,

@@ -80,7 +80,9 @@ The current published release is pre-production `0.126.0`, exact commit
 
 The retained release gate artifact is `8326067381` (GitHub-reported ZIP SHA-256
 `5ae9bbb2309fd71ef70b2f28e9de4189c14c65c9a68e5ef04de592b17a791b71`). Publication does not change
-the production/stable NO-GO disposition; AR1 is next and every later candidate requires fresh evidence.
+the production/stable NO-GO disposition. RFC 046 / B2 is implemented and `0.127.0` release-candidate
+metadata is under review, but `0.126.0` remains the current published release until a successful tagged
+workflow publishes the next immutable asset set. AR1 remains open through B1, B4, and B5.
 
 ## Versioning
 

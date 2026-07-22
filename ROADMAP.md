@@ -115,8 +115,8 @@ RFC 046's four implementation slices and lifecycle closeout are complete at impl
 Clean closeout commit `797e2e1e7881222ab046598225bbd2bc3dcecc4e` passed the canonical `full-release`
 profile 42/42 locally and in CI run `81034382238`, including dedicated GCC 12.5.0/16.1.0 sanitizer lanes and
 all interoperability gates. This does not complete AR1 or constitute tagged-release evidence: B1, B4, and
-B5 remain open, and the exact `0.127.0` release revision still requires its own release workflow and
-immutable provenance assets.
+B5 remain open. Release-candidate preparation for `0.127.0` is under review; the exact release revision
+still requires a clean canonical ledger, successful CI and tagged workflow, and immutable provenance assets.
 
 Provisional release train (planning labels, not completion evidence):
 

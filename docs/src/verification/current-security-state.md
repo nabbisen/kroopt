@@ -17,7 +17,7 @@ RFC 046 then closed B2 on 2026-07-22 JST: clean closeout commit
 `797e2e1e7881222ab046598225bbd2bc3dcecc4e` passed the canonical profile 42/42 locally and in CI run
 `81034382238`; that run also passed release-machinery controls and the dedicated GCC 12.5/16.1 sanitizer
 lanes. This is implementation/closeout evidence for the provisional `0.127.0` subject, not publication
-evidence.
+evidence. `0.127.0` release-candidate metadata is under review; no tag or publication is claimed.
 
 ## Readiness disposition
 
