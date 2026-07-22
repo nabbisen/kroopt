@@ -48,6 +48,11 @@ def extGroupsOdd : List UInt8 := [0, 10, 0, 5, 0, 3, 0, 0x1D, 0]
 def extSigAlgsEmpty : List UInt8 := [0, 0x0D, 0, 2, 0, 0]
 def extKeyShareEmptyUnknown : List UInt8 := [0, 51, 0, 6, 0, 4, 0x0A, 0x0A, 0, 0]
 def extAlpnTrailing : List UInt8 := [0, 16, 0, 6, 0, 3, 2, 0x68, 0x32, 0x99]
+def extSniHost (host : String) : List UInt8 :=
+  let h := host.toUTF8.toList
+  let entry := [0] ++ u16be h.length ++ h
+  [0, 0] ++ u16be (2 + entry.length) ++ u16be entry.length ++ entry
+def extSniUnsupported : List UInt8 := [0, 0, 0, 6, 0, 4, 1, 0, 1, 0x41]
 def chWithSuites (suiteBytes exts : List UInt8) : ByteArray :=
   let body := [0x03, 0x03] ++ (List.replicate 32 0xAA) ++ [0] ++
               (u16be suiteBytes.length ++ suiteBytes) ++ [1, 0] ++ (u16be exts.length ++ exts)
@@ -64,6 +69,11 @@ def negotiatedSuite (suiteBytes exts : List UInt8) : Option Kroopt.Core.CipherSu
   match Kroopt.Parse.parseClientHello (chWithSuites suiteBytes exts) with
   | .ok wb => some wb.value.selectedSuite | .error _ => none
 
+def parsedSni (exts : List UInt8) : Option ByteArray :=
+  match Kroopt.Parse.parseClientHello (chWith exts) with
+  | .ok wb => wb.value.sni
+  | .error _ => none
+
 /-- A ClientHello whose legacy_version is 0x0301, not the RFC-mandated 0x0303. -/
 def chBadVersion (exts : List UInt8) : ByteArray :=
   let body := [0x03, 0x01] ++ (List.replicate 32 0xAA) ++ [0] ++
@@ -78,6 +88,10 @@ def chBadCompression (exts : List UInt8) : ByteArray :=
 
 def rejects (ch : ByteArray) : Bool :=
   match Kroopt.Parse.parseClientHello ch with | .ok _ => false | .error _ => true
+
+def withDeclaredBodyLength (ch : ByteArray) (n : Nat) : ByteArray :=
+  bytesOf ([ch.get! 0, (n / 65536).toUInt8, ((n / 256) % 256).toUInt8,
+    (n % 256).toUInt8] ++ (ch.extract 4 ch.size).toList)
 
 def checks : List Check :=
   [ -- resource budgets are hard bounds (RFC 019)
@@ -105,6 +119,25 @@ def checks : List Check :=
   , { name := "well-framed GREASE beside every usable nested offer parses"
     , ok := parseOk (extSupVerGrease13 ++ extGroupsGreaseX25519 ++
               extKeyShareGreaseX25519 ++ extSigAlgsGreaseEd25519) }
+  , { name := "top-level uint24 framing rejects under/over-declaration and outer residue"
+    , ok := (let ch := chWith (extSupVer13 ++ extGroups ++ extKeyShare ++ extSigAlgs)
+             let bodyLen := ch.size - 4
+             rejects (withDeclaredBodyLength ch (bodyLen - 1))
+               && rejects (withDeclaredBodyLength ch (bodyLen + 1))
+               && rejects (ch ++ bytesOf [0x99])) }
+  , { name := "top-level cipher-suite vector rejects empty and odd framing"
+    , ok := rejects (chWithSuites [] (extSupVer13 ++ extGroups ++ extKeyShare ++ extSigAlgs))
+            && rejects (chWithSuites [0x13] (extSupVer13 ++ extGroups ++ extKeyShare ++ extSigAlgs)) }
+  , { name := "top-level extension vector enforces the extension-count ceiling"
+    , ok := (let unknown := [0xAA, 0xAA, 0, 0]
+             let extras := (List.replicate (Kroopt.Parse.maxExtensions + 1) unknown).flatten
+             rejects (chWith (extSupVer13 ++ extGroups ++ extKeyShare ++ extSigAlgs ++ extras))) }
+  , { name := "ClientHello SNI is canonicalized before entering the core"
+    , ok := (parsedSni (extSupVer13 ++ extGroups ++ extKeyShare ++ extSigAlgs ++
+              extSniHost "A.EXAMPLE.COM")).map (·.toList)
+              == some (String.toUTF8 "a.example.com").toList }
+  , { name := "unsupported-only present SNI is rejected before default routing"
+    , ok := !parseOk (extSupVer13 ++ extGroups ++ extKeyShare ++ extSigAlgs ++ extSniUnsupported) }
   , { name := "malformed supported_versions residue is rejected by the ClientHello path"
     , ok := !parseOk (extSupVerTrailing ++ extGroups ++ extKeyShare ++ extSigAlgs) }
   , { name := "odd supported_groups is rejected by the ClientHello path"

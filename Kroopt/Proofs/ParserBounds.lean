@@ -303,6 +303,18 @@ theorem takeVectorExact_witnesses {α : Type}
             · rw [htakeBounds.2.2.1, hlenExact.2]
           · simp at hv
 
+/-- The outer cursor returned by exact vector parsing always remains on the
+original input, independently of the isolated callback's implementation. -/
+theorem takeVectorExact_outer_input {α : Type}
+    (r : Reader) (lp : LenPrefix) (maxLen : Nat)
+    (parse : Reader → Except ParseError (α × Reader))
+    (value : α) (outer : Reader)
+    (h : r.takeVectorExact lp maxLen parse = .ok (value, outer)) :
+    outer.input = r.input := by
+  obtain ⟨_, _, _, _, _, _, _, _, hinput, _, _⟩ :=
+    takeVectorExact_witnesses r lp maxLen parse value outer h
+  exact hinput
+
 /-- **Parser bounds safety (umbrella).** For the foundational reads, success
 always yields a cursor that advanced monotonically and remains within the
 buffer. Stated over `takeBytes` (every primitive reduces to it). This is the M1

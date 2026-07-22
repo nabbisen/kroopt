@@ -112,7 +112,7 @@ def handshakeOnPlaintextRecord (s : State) (body : ByteArray) : RecordStepResult
   if s.handshake = .start then
     match Kroopt.Parse.parseClientHello body with
     | .error e => recordFailAlert s (alertForParseError e.toPublic) (.parse e.toPublic)
-    | .ok wb => handshakeOnClientHello s wb.value body
+    | .ok wb => handshakeOnClientHello s wb.value wb.wireBytes
   else if s.handshake = .sentServerFinished then
     onClientFinishedBytes s body
   else

@@ -99,6 +99,19 @@ def checks : List Check :=
     , ok := (let cfg := { goodConfig with sniRoutes := [routeExact, routeExact] }
              match validateServerConfig cfg ⟨0⟩ with
              | .error .ambiguousSni => true | _ => false) }
+  , { name := "SNI ambiguity is detected after ASCII case normalization"
+    , ok := (let upper : SniRoute :=
+                  { pattern := .exact (name "A.EXAMPLE.COM"), endpoint := epEd }
+             let cfg := { goodConfig with sniRoutes := [routeExact, upper] }
+             match validateServerConfig cfg ⟨0⟩ with
+             | .error .ambiguousSni => true | _ => false) }
+  , { name := "invalid, IPv4, and reserved-LDH SNI patterns are rejected"
+    , ok := (let invalidRoute (s : String) : SniRoute :=
+                  { pattern := .exact (name s), endpoint := epEd }
+             let rejected (s : String) :=
+                  match validateServerConfig { goodConfig with sniRoutes := [invalidRoute s] } ⟨0⟩ with
+                  | .error .invalidSniPattern => true | _ => false
+             rejected "bad..example" && rejected "127.0.0.1" && rejected "xn--name") }
   , { name := "an empty ALPN identifier is rejected at config validation (RFC 7301)"
     , ok := (match validateServerConfig cfgEmptyAlpn ⟨0⟩ with
              | .error .invalidAlpn => true | _ => false) }
@@ -114,6 +127,11 @@ def checks : List Check :=
              | some v => match selectEndpoint v (some (name "a.example.com")) with
                          | some e => e.signatureSchemes == [.ed25519] | none => false
              | none => false) }
+  , { name := "SNI lookup shares config canonicalization"
+    , ok := (match validated 0 with
+             | some v => match selectEndpoint v (some (name "A.EXAMPLE.COM")) with
+                         | some e => e.allowedAlpn.length == 2 | none => false
+             | none => false) }
   , { name := "wildcard SNI matches a single leftmost label"
     , ok := (match validated 0 with
              | some v => (selectEndpoint v (some (name "host.wild.com"))).isSome
@@ -123,6 +141,10 @@ def checks : List Check :=
   , { name := "unknown SNI falls back to the default endpoint"
     , ok := (match validated 0 with
              | some v => (selectEndpoint v (some (name "nope.test"))).isSome
+             | none => false) }
+  , { name := "invalid present SNI cannot fall through to the default endpoint"
+    , ok := (match validated 0 with
+             | some v => (selectEndpoint v (some (name "127.0.0.1"))).isNone
              | none => false) }
     -- ALPN negotiation (RFC 7301 §3.2, RFC 011 §5) — fact-only negotiateAlpn over AlpnPreference
   , { name := "ALPN server preference picks the server's first overlapping protocol"

@@ -123,11 +123,12 @@ theorem selectEndpoint_none_uses_default (cfg : ValidatedServerConfig) :
 
 /-- An ambiguous route table is rejected deterministically (RFC 011 §7). -/
 theorem validateServerConfig_rejects_ambiguous
-    (cfg : ServerConfig) (gen : ConfigGeneration)
-    (h : hasAmbiguousRoutes cfg.sniRoutes = true) :
+    (cfg : ServerConfig) (gen : ConfigGeneration) (routes : List ValidatedSniRoute)
+    (hnorm : validateSniRoutes cfg.sniRoutes = .ok routes)
+    (h : hasAmbiguousValidatedRoutes routes = true) :
     validateServerConfig cfg gen = .error .ambiguousSni := by
   unfold validateServerConfig
-  rw [if_pos h]
+  simp [hnorm, h]
 
 /-- A validated config carries the generation it was stamped with (RFC 011 §6):
 this is what lets in-flight connections keep a consistent view across reload. -/
@@ -137,16 +138,27 @@ theorem validateServerConfig_preserves_generation
     vcfg.generation = gen := by
   unfold validateServerConfig at h
   split at h
-  · exact absurd h (by simp)
+  · simp at h
   · split at h
-    · exact absurd h (by simp)
+    · simp at h
     · split at h
-      · exact absurd h (by simp)
+      · simp at h
       · split at h
-        · split at h
-          · exact absurd h (by simp)
-          · simp only [Except.ok.injEq] at h; rw [← h]
-        · simp only [Except.ok.injEq] at h; rw [← h]
+        · simp at h
+        · cases hd : cfg.defaultEndpoint with
+          | none =>
+              rw [hd] at h
+              simp only [Except.ok.injEq] at h
+              rw [← h]
+          | some d =>
+              rw [hd] at h
+              simp only at h
+              cases he : validateEndpoint d with
+              | error e => rw [he] at h; simp at h
+              | ok u =>
+                  rw [he] at h
+                  simp only [Except.ok.injEq] at h
+                  rw [← h]
 
 /-- **Signature-scheme soundness (RFC 012 §6).** A selected CertificateVerify
 scheme was offered by the client, configured by the endpoint, and is producible

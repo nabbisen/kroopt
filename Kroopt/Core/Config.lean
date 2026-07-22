@@ -71,6 +71,76 @@ structure SniRoute where
   endpoint : EndpointConfig
   deriving Inhabited
 
+/-- Byte-free failures from the constrained ASCII server-name profile. -/
+inductive ServerNameError where
+  | invalidLength
+  | invalidCharacter
+  | invalidLabel
+  | addressLiteral
+  | reservedLdhLabel
+  deriving DecidableEq, Repr, Inhabited
+
+/-- A canonical, validated DNS server name. The constructor is private: raw
+bytes can enter only through `ValidatedServerName.ofBytes`. -/
+structure ValidatedServerName where
+  private mk ::
+  bytes : ByteArray
+
+private def asciiLower (b : UInt8) : UInt8 :=
+  if 0x41 ≤ b && b ≤ 0x5a then b + 0x20 else b
+
+private def asciiNameByte (b : UInt8) : Bool :=
+  (0x41 ≤ b && b ≤ 0x5a) || (0x61 ≤ b && b ≤ 0x7a) ||
+    (0x30 ≤ b && b ≤ 0x39) || b == 0x2d || b == 0x2e
+
+private def asciiAlphaNum (b : UInt8) : Bool :=
+  (0x61 ≤ b && b ≤ 0x7a) || (0x30 ≤ b && b ≤ 0x39)
+
+private def splitLabels (bytes : List UInt8) : List (List UInt8) :=
+  let rec go (rest current : List UInt8) (acc : List (List UInt8)) :=
+    match rest with
+    | [] => (current.reverse :: acc).reverse
+    | b :: tail =>
+        if b == 0x2e then go tail [] (current.reverse :: acc)
+        else go tail (b :: current) acc
+  go bytes [] []
+
+private def reservedLdhLabel (label : List UInt8) : Bool :=
+  label.length ≥ 4 && label.get! 2 == 0x2d && label.get! 3 == 0x2d
+
+private def validDnsLabel (label : List UInt8) : Bool :=
+  !label.isEmpty && label.length ≤ 63 && asciiAlphaNum label.head! &&
+    asciiAlphaNum label.getLast! && label.all (fun b => asciiAlphaNum b || b == 0x2d)
+
+private def decimalOctet (label : List UInt8) : Bool :=
+  !label.isEmpty && label.all (fun b => 0x30 ≤ b && b ≤ 0x39) &&
+    label.foldl (fun n b => n * 10 + (b - 0x30).toNat) 0 ≤ 255
+
+/-- Validate and lowercase one DNS server name. The supported profile is
+deliberately ASCII-only and rejects IPv4 literals and every reserved `??--`
+LDH label; IDNA processing is outside this boundary. -/
+def ValidatedServerName.ofBytes (input : ByteArray) : Except ServerNameError ValidatedServerName := do
+  if input.size == 0 || input.size > 253 then throw .invalidLength
+  let raw := input.toList
+  if !raw.all asciiNameByte then throw .invalidCharacter
+  let canonical := raw.map asciiLower
+  let labels := splitLabels canonical
+  if !labels.all validDnsLabel then throw .invalidLabel
+  if labels.any reservedLdhLabel then throw .reservedLdhLabel
+  if labels.length == 4 && labels.all decimalOctet then throw .addressLiteral
+  pure ⟨ByteArray.mk canonical.toArray⟩
+
+def ValidatedServerName.eq (a b : ValidatedServerName) : Bool := baEq a.bytes b.bytes
+
+/-- Canonical patterns and routes stored only after configuration validation. -/
+inductive ValidatedServerNamePattern where
+  | exact (name : ValidatedServerName)
+  | wildcard (suffix : ValidatedServerName)
+
+structure ValidatedSniRoute where
+  pattern  : ValidatedServerNamePattern
+  endpoint : EndpointConfig
+
 /-- How ALPN is selected from the client/endpoint intersection (RFC 011 §5). -/
 inductive AlpnSelectionMode where
   | serverPreference
@@ -185,7 +255,7 @@ connections keep theirs. -/
 structure ValidatedServerConfig where
   generation      : ConfigGeneration
   defaultEndpoint : Option EndpointConfig
-  sniRoutes       : List SniRoute
+  sniRoutes       : List ValidatedSniRoute
   alpnMode        : AlpnSelectionMode
   limits          : ResourceLimits
   deriving Inhabited
@@ -248,6 +318,26 @@ def patternsConflict : ServerNamePattern → ServerNamePattern → Bool
   | .wildcard a, .wildcard b => baEq a b
   | _,           _           => false
 
+private def validatedPatternMatches (pattern : ValidatedServerNamePattern)
+    (name : ValidatedServerName) : Bool :=
+  match pattern with
+  | .exact p => p.eq name
+  | .wildcard suffix =>
+      let n := name.bytes.toList
+      let s := suffix.bytes.toList
+      match firstDotIdx n with
+      | none => false
+      | some i =>
+          let label := n.take i
+          let rest := n.drop (i + 1)
+          label.length > 0 && rest == s
+
+private def validatedPatternsConflict :
+    ValidatedServerNamePattern → ValidatedServerNamePattern → Bool
+  | .exact a, .exact b => a.eq b
+  | .wildcard a, .wildcard b => a.eq b
+  | _, _ => false
+
 /-! ## Config validation (RFC 011 §7, RFC 012 §5) -/
 
 /-- Are there two routes whose patterns conflict? -/
@@ -256,6 +346,31 @@ def hasAmbiguousRoutes (routes : List SniRoute) : Bool :=
     | [] => false
     | r :: rest => rest.any (fun r2 => patternsConflict r.pattern r2.pattern) || go rest
   go routes
+
+def hasAmbiguousValidatedRoutes (routes : List ValidatedSniRoute) : Bool :=
+  let rec go : List ValidatedSniRoute → Bool
+    | [] => false
+    | r :: rest =>
+        rest.any (fun r2 => validatedPatternsConflict r.pattern r2.pattern) || go rest
+  go routes
+
+private def validateSniPattern : ServerNamePattern →
+    Except ConfigError ValidatedServerNamePattern
+  | .exact name =>
+      match ValidatedServerName.ofBytes name with
+      | .ok n => .ok (.exact n)
+      | .error _ => .error .invalidSniPattern
+  | .wildcard suffix =>
+      match ValidatedServerName.ofBytes suffix with
+      | .ok n => .ok (.wildcard n)
+      | .error _ => .error .invalidSniPattern
+
+def validateSniRoutes : List SniRoute → Except ConfigError (List ValidatedSniRoute)
+  | [] => .ok []
+  | r :: rest => do
+      let pattern ← validateSniPattern r.pattern
+      let tail ← validateSniRoutes rest
+      pure ({ pattern := pattern, endpoint := r.endpoint } :: tail)
 
 /-- Validate one endpoint: it must offer a cipher suite, carry only well-formed ALPN identifiers
 (RFC 7301 — each 1..255 bytes), and have a compatible cert/key pair. -/
@@ -287,18 +402,21 @@ ambiguous SNI routes and any endpoint whose cert/key/suites fail the lint. On
 success, stamps the generation; the result is immutable. -/
 def validateServerConfig (cfg : ServerConfig) (gen : ConfigGeneration) :
     Except ConfigError ValidatedServerConfig :=
-  if hasAmbiguousRoutes cfg.sniRoutes then
-    .error .ambiguousSni
-  else if ¬ validLimits cfg.limits then
-    .error .invalidLimits
-  else
-    let rec checkAll : List SniRoute → Except ConfigError Unit
+  match validateSniRoutes cfg.sniRoutes with
+  | .error e => .error e
+  | .ok routes =>
+    if hasAmbiguousValidatedRoutes routes then
+      .error .ambiguousSni
+    else if ¬ validLimits cfg.limits then
+      .error .invalidLimits
+    else
+    let rec checkAll : List ValidatedSniRoute → Except ConfigError Unit
       | [] => .ok ()
       | r :: rest =>
           match validateEndpoint r.endpoint with
           | .error e => .error e
           | .ok _ => checkAll rest
-    match checkAll cfg.sniRoutes with
+    match checkAll routes with
     | .error e => .error e
     | .ok _ =>
         match cfg.defaultEndpoint with
@@ -306,28 +424,32 @@ def validateServerConfig (cfg : ServerConfig) (gen : ConfigGeneration) :
             match validateEndpoint d with
             | .error e => .error e
             | .ok _ => .ok { generation := gen, defaultEndpoint := cfg.defaultEndpoint
-                             sniRoutes := cfg.sniRoutes, alpnMode := cfg.alpnMode
+                             sniRoutes := routes, alpnMode := cfg.alpnMode
                              limits := cfg.limits }
         | none => .ok { generation := gen, defaultEndpoint := none
-                        sniRoutes := cfg.sniRoutes, alpnMode := cfg.alpnMode
+                        sniRoutes := routes, alpnMode := cfg.alpnMode
                         limits := cfg.limits }
 
 /-! ## Selection (used by the handshake) -/
 
-/-- Select the endpoint for an (optional, already-validated) SNI name
-(RFC 011 §4): exact match preferred over wildcard, falling back to the default
-endpoint. Deterministic; ambiguity was rejected at validation. -/
+/-- Select the endpoint for an optional SNI name (RFC 011 §4). Present input is
+revalidated through the shared canonicalizer; invalid presence fails closed and
+cannot reach the default. Exact match is preferred over wildcard, with a valid
+unmatched name falling back to the default. -/
 def selectEndpoint (cfg : ValidatedServerConfig) (sni : Option ByteArray) :
     Option EndpointConfig :=
   match sni with
   | none => cfg.defaultEndpoint
-  | some name =>
+  | some rawName =>
+    match ValidatedServerName.ofBytes rawName with
+    | .error _ => none
+    | .ok name =>
       let exactHit := cfg.sniRoutes.find? (fun r =>
-        match r.pattern with | .exact p => baEq p name | _ => false)
+        match r.pattern with | .exact p => p.eq name | _ => false)
       match exactHit with
       | some r => some r.endpoint
       | none =>
-          let wildHit := cfg.sniRoutes.find? (fun r => patternMatches r.pattern name)
+          let wildHit := cfg.sniRoutes.find? (fun r => validatedPatternMatches r.pattern name)
           match wildHit with
           | some r => some r.endpoint
           | none => cfg.defaultEndpoint

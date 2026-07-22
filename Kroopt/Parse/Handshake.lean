@@ -19,7 +19,7 @@ cipher suite, and no duplicate extensions.
 
 namespace Kroopt.Parse
 
-open Kroopt.Core (ValidClientHello CipherSuite NamedGroup SignatureScheme)
+open Kroopt.Core (ValidClientHello CipherSuite NamedGroup SignatureScheme ValidatedServerName)
 
 /-- Conservative parse budgets (RFC 019). -/
 def maxExtensions : Nat := 64
@@ -38,15 +38,6 @@ def suiteOfU16 : UInt16 → Option CipherSuite
   -- All three TLS 1.3 suites are servable end-to-end: AES-128-GCM / ChaCha20-Poly1305 (SHA-256)
   -- and AES-256-GCM-SHA384 (the SHA-384 key schedule + transcript landed; the interpreter seal
   -- path is suite-aware as of 0.68.0-dev, the schedule hash-parameterized as of 0.71.0-dev).
-
-/-- Legacy unprefixed conversion retained only for the top-level cipher-suite
-slice until RFC 046 Slice 3 migrates the complete ClientHello body. Authorized
-Slice 2 extension paths use `parseNonemptyU16Vector` and never collapse errors
-to `[]`. -/
-def u16sOfBytes (b : ByteArray) : List UInt16 :=
-  match (Reader.ofBytes b).takeCountedItems b.size (fun r => r.takeU16) with
-  | .ok (xs, _) => xs
-  | .error _    => []
 
 /-- Parse UInt16 items to the end of an isolated reader. Fuel is the remaining
 byte count, so the walk is bounded without imposing a new TLS policy ceiling. -/
@@ -108,17 +99,47 @@ def hasDuplicateExt (exts : List RawExtension) : Bool :=
 def findExt (exts : List RawExtension) (ty : UInt16) : Option ByteArray :=
   (exts.find? (fun e => e.fst == ty)).map Prod.snd
 
-/-- Extract the first host_name from a raw `server_name` extension body (RFC 6066 §3):
-`server_name_list_len(2) ‖ name_type(1, 0x00 = host_name) ‖ host_name_len(2) ‖ host_name`. Returns
-the bare hostname bytes — what the SNI routing table matches against — or `none` if absent,
-malformed, or empty. Bounds-checked against the extension length. -/
-def parseSni (ext : ByteArray) : Option ByteArray :=
-  if ext.size < 5 then none
-  else if ext.get! 2 != 0x00 then none
-  else
-    let hlen := (ext.get! 3).toNat * 256 + (ext.get! 4).toNat
-    if hlen == 0 ∨ 5 + hlen > ext.size then none
-    else some (ext.extract 5 (5 + hlen))
+/-- Structural outcome of the RFC 6066 server-name extension. Presence without
+a supported name is kept distinct from absence so it cannot reach default-route
+selection. -/
+inductive SniOffer where
+  | absent
+  | hostName (name : ValidatedServerName)
+  | presentWithoutSupportedName
+
+abbrev RawServerName := UInt8 × ByteArray
+
+def parseServerNameEntry (r : Reader) : Except ParseError (RawServerName × Reader) :=
+  match r.takeU8 with
+  | .error e => .error e
+  | .ok (nameType, r1) =>
+      match r1.takeVectorBytes .len16 maxVectorLen with
+      | .error e => .error e
+      | .ok (name, r2) =>
+          if name.isEmpty then .error .valueOutOfRange
+          else .ok ((nameType, name), r2)
+
+def parseServerNameItems (r : Reader) : Except ParseError (List RawServerName × Reader) :=
+  r.takeCountedItems r.remaining parseServerNameEntry
+
+def hasDuplicateServerNameTypes (names : List RawServerName) : Bool :=
+  let types := names.map Prod.fst
+  types.any (fun ty => (types.filter (· == ty)).length > 1)
+
+/-- Strict, exactly framed `server_name` parsing. Unknown name types are
+retained for duplicate detection and otherwise skipped. Host names pass through
+the shared constrained ASCII canonicalizer used by server configuration. -/
+def parseSni (ext : ByteArray) : Except ParseError SniOffer := do
+  let (names, outer) ←
+    (Reader.ofBytes ext).takeVectorExact .len16 maxVectorLen parseServerNameItems
+  outer.expectEnd
+  if names.isEmpty || hasDuplicateServerNameTypes names then throw .valueOutOfRange
+  match names.find? (fun n => n.fst == 0) with
+  | none => pure .presentWithoutSupportedName
+  | some (_, raw) =>
+      match ValidatedServerName.ofBytes raw with
+      | .error _ => throw .valueOutOfRange
+      | .ok name => pure (.hostName name)
 
 /-- Parse one non-empty ALPN ProtocolName (`uint8` opaque vector). -/
 def parseAlpnProtocol (r : Reader) : Except ParseError (ByteArray × Reader) := do
@@ -240,51 +261,108 @@ def clientSigSchemeCodes (exts : List RawExtension) : Except ParseError (List UI
   | none   => .ok []
   | some d => parseSignatureAlgorithms d
 
-/-- Parse and validate a ClientHello handshake message (RFC 006 §5). Returns the
-validated parameters bound to the exact consumed bytes. -/
-def parseClientHello (input : ByteArray) : Except ParseError (Kroopt.Core.WireBound ValidClientHello) := do
-  let r := Reader.ofBytes input
-  -- handshake header: msg_type = 1 (client_hello), 3-byte length
-  let (msgType, r) ← r.takeU8
-  if msgType != 1 then throw .valueOutOfRange
-  let (_len, r) ← r.takeLen .len24
-  -- ClientHello body
-  let (legacyVersion, r) ← r.takeU16
-  -- RFC 8446 §4.1.2: a TLS 1.3 ClientHello MUST set legacy_version to 0x0303;
-  -- version preference is carried only in supported_versions.
-  if legacyVersion != 0x0303 then throw .valueOutOfRange
-  let (_random, r) ← r.takeBytes 32
-  let (sessionId, r) ← r.takeVectorBytes .len8 32
-  let (suitesBytes, r) ← r.takeVectorBytes .len16 (2 * maxCipherSuites)
-  let (compression, r) ← r.takeVectorBytes .len8 maxVectorLen
-  -- RFC 8446 §4.1.2: legacy_compression_methods MUST be exactly one byte set to zero
-  -- (compression is forbidden in TLS 1.3).
-  if !(compression.size == 1 && compression.get! 0 == 0) then throw .valueOutOfRange
-  let (extBytes, _r) ← r.takeVectorBytes .len16 maxVectorLen
-  -- extensions
-  let exts ← match (Reader.ofBytes extBytes).takeCountedItems maxExtensions parseExtension with
-             | .error e => throw e
-             | .ok (exts, _) => pure exts
+/-- Parse a TLS extension list to the end of its isolated reader. RFC 8446's
+ClientHello extension vector is non-empty in this profile and every extension
+occupies at least four bytes; the required TLS 1.3 extensions make eight bytes
+the minimum accepted top-level vector. -/
+def parseExtensionItems (r : Reader) : Except ParseError (List RawExtension × Reader) :=
+  if r.input.size < 8 then .error .valueOutOfRange
+  else r.takeCountedItems maxExtensions parseExtension
+
+/-- Decode the uint24 declared body length when a four-byte handshake header is
+available. This is intentionally only a header decoder; `parseClientHello`
+establishes equality with the complete input on success. -/
+def clientHelloDeclaredLength (input : ByteArray) : Option Nat :=
+  match (Reader.ofBytes input).takeU8 with
+  | .error _ => none
+  | .ok (_, r) =>
+      match r.takeLen .len24 with
+      | .error _ => none
+      | .ok (n, _) => some n
+
+/-- Exactly framed top-level ClientHello fields, before semantic negotiation. -/
+structure FramedClientHello where
+  sessionId : ByteArray
+  offeredSuites : List UInt16
+  extensions : List RawExtension
+
+def frameClientHelloBody (r : Reader) : Except ParseError (FramedClientHello × Reader) :=
+  match r.takeU16 with
+  | .error e => .error e
+  | .ok (legacyVersion, r1) =>
+    if legacyVersion != 0x0303 then .error .valueOutOfRange else
+    match r1.takeBytes 32 with
+    | .error e => .error e
+    | .ok (_, r2) =>
+      match r2.takeVectorBytes .len8 32 with
+      | .error e => .error e
+      | .ok (sessionId, r3) =>
+        match r3.takeVectorExact .len16 (2 * maxCipherSuites) parseU16Items with
+        | .error e => .error e
+        | .ok (offeredSuites, r4) =>
+          if offeredSuites.isEmpty then .error .valueOutOfRange else
+          match r4.takeVectorBytes .len8 maxVectorLen with
+          | .error e => .error e
+          | .ok (compression, r5) =>
+            if !(compression.size == 1 && compression.get! 0 == 0) then
+              .error .valueOutOfRange
+            else
+              match r5.takeVectorExact .len16 maxVectorLen parseExtensionItems with
+              | .error e => .error e
+              | .ok (exts, r6) =>
+                  .ok ({ sessionId := sessionId, offeredSuites := offeredSuites,
+                         extensions := exts }, r6)
+
+/-- Perform ClientHello semantic validation after exact top-level framing. -/
+def validateFramedClientHello (framed : FramedClientHello) : Except ParseError ValidClientHello := do
+  let exts := framed.extensions
   if hasDuplicateExt exts then throw .valueOutOfRange
   if !(← offersTls13 exts) then throw .valueOutOfRange
   let offeredShares ← findOfferedKeyShares exts
-  let some suite := selectSuite (u16sOfBytes suitesBytes) | throw .valueOutOfRange
+  let some suite := selectSuite framed.offeredSuites | throw .valueOutOfRange
   let offeredSchemes := recognizedSigSchemes (← clientSigSchemeCodes exts)
   if offeredSchemes.isEmpty then throw .valueOutOfRange
-  -- ALPN (RFC 7301): absent ⇒ `none` (proceed); present ⇒ strict-parse, rejecting an empty list or
-  -- empty protocol name as malformed. Uses the parser's `valueOutOfRange` (⇒ `illegal_parameter`),
-  -- consistent with how the parser rejects other malformed-structure inputs (duplicate extensions, bad
-  -- compression, bad key_share), rather than silently treating a malformed extension as absent.
   let alpnField ← match findExt exts 16 with
     | none   => pure (none : Option (List ByteArray))
     | some d => pure (some (← parseAlpnStrict d))
-  let vch : ValidClientHello :=
-    { selectedSuite := suite
-      offeredShares := offeredShares
-      offeredSigSchemes := offeredSchemes
-      sni := (findExt exts 0).bind parseSni
-      alpn := alpnField
-      sessionId := sessionId }
-  pure { value := vch, wireBytes := input }
+  let sniField ← match findExt exts 0 with
+    | none => pure (none : Option ByteArray)
+    | some d =>
+        match ← parseSni d with
+        | .hostName name => pure (some name.bytes)
+        | .presentWithoutSupportedName => throw .valueOutOfRange
+        | .absent => throw .valueOutOfRange
+  pure
+    ({ selectedSuite := suite
+       offeredShares := offeredShares
+       offeredSigSchemes := offeredSchemes
+       sni := sniField
+       alpn := alpnField
+       sessionId := framed.sessionId })
+
+/-- Parse the exactly isolated ClientHello body and return the final reader.
+Semantic validation happens only after all top-level vectors have been framed. -/
+def parseClientHelloBody (r : Reader) : Except ParseError (ValidClientHello × Reader) :=
+  match frameClientHelloBody r with
+  | .error e => .error e
+  | .ok (framed, outer) =>
+      match validateFramedClientHello framed with
+      | .error e => .error e
+      | .ok vch => .ok (vch, outer)
+
+/-- Parse and validate a ClientHello handshake message (RFC 006 §5). Returns the
+validated parameters bound to the exact consumed bytes. -/
+def parseClientHello (input : ByteArray) : Except ParseError (Kroopt.Core.WireBound ValidClientHello) :=
+  let r := Reader.ofBytes input
+  match r.takeU8 with
+  | .error e => .error e
+  | .ok (msgType, r1) =>
+    if msgType != 1 then .error .valueOutOfRange else
+    match r1.takeVectorExact .len24 r1.remaining parseClientHelloBody with
+    | .error e => .error e
+    | .ok (vch, outer) =>
+      match outer.expectEnd with
+      | .error e => .error e
+      | .ok _ => .ok { value := vch, wireBytes := input }
 
 end Kroopt.Parse

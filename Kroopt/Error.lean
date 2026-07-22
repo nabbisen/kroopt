@@ -132,6 +132,7 @@ inductive ConfigError where
   | emptyChain
   | oversizedDer
   | ambiguousSni
+  | invalidSniPattern
   | invalidAlpn
   | capabilityMissing
   | invalidLimits

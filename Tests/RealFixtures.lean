@@ -151,19 +151,26 @@ private def rsaEndpoint : Kroopt.Core.EndpointConfig :=
 RSA-2048 leaf, anything else (including no SNI) → the default Ed25519 leaf. Each hostname therefore
 selects a different certificate *and* a different signature scheme (RFC 8446 §4.4.2.2). -/
 def multiCertServerConfig : Kroopt.Core.ValidatedServerConfig :=
-  { (default : Kroopt.Core.ValidatedServerConfig) with
-    defaultEndpoint := some edEndpoint
-    sniRoutes :=
-      [ { pattern := .exact (String.toUTF8 "ecdsa.test"), endpoint := ecEndpoint }
-      , { pattern := .exact (String.toUTF8 "rsa.test"),   endpoint := rsaEndpoint } ] }
+  match Kroopt.Core.ValidatedServerName.ofBytes (String.toUTF8 "ecdsa.test"),
+        Kroopt.Core.ValidatedServerName.ofBytes (String.toUTF8 "rsa.test") with
+  | .ok ecdsaName, .ok rsaName =>
+      { (default : Kroopt.Core.ValidatedServerConfig) with
+        defaultEndpoint := some edEndpoint
+        sniRoutes :=
+          [ { pattern := .exact ecdsaName, endpoint := ecEndpoint }
+          , { pattern := .exact rsaName,   endpoint := rsaEndpoint } ] }
+  | _, _ => Kroopt.Core.ValidatedServerConfig.baseline
 
 /-- A wildcard SNI config exercising `ServerNamePattern.wildcard` over the wire: a single leftmost
 label before `example.com` (e.g. `api.example.com`) → the ECDSA-P256 leaf; anything else — the bare
 `example.com`, a multi-label prefix like `a.b.example.com`, any other host, or no SNI — → the default
 Ed25519 leaf. -/
 def wildcardServerConfig : Kroopt.Core.ValidatedServerConfig :=
-  { (default : Kroopt.Core.ValidatedServerConfig) with
-    defaultEndpoint := some edEndpoint
-    sniRoutes := [ { pattern := .wildcard (String.toUTF8 "example.com"), endpoint := ecEndpoint } ] }
+  match Kroopt.Core.ValidatedServerName.ofBytes (String.toUTF8 "example.com") with
+  | .ok suffix =>
+      { (default : Kroopt.Core.ValidatedServerConfig) with
+        defaultEndpoint := some edEndpoint
+        sniRoutes := [ { pattern := .wildcard suffix, endpoint := ecEndpoint } ] }
+  | .error _ => Kroopt.Core.ValidatedServerConfig.baseline
 
 end Tests.RealFixtures

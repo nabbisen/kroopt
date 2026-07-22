@@ -31,6 +31,17 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
   structural, semantic, GREASE, and full-ClientHello-path regressions. Top-level ClientHello framing,
   SNI/config routing, and live transcript binding remain unchanged for Slice 3.
 
+### RFC 046 Slice 3 — top-level framing and canonical SNI
+
+- Enforce the complete ClientHello `uint24` body, final input end, exact non-empty/even cipher-suite vector,
+  and exact minimum/count-bounded extension vector; remove the remaining lossy top-level conversion.
+- Add a private-constructor canonical server-name type shared by client parsing and config validation,
+  including ASCII lowercasing, DNS label bounds, no-IDNA reserved-LDH rejection, IPv4-literal rejection,
+  and ambiguity checks after normalization.
+- Distinguish unsupported-present SNI from absence, prevent invalid presence from reaching the default route,
+  pass `WireBound.wireBytes` through the live handshake bridge, and prove the concrete parser callbacks plus
+  successful public header/body-size and exact-input propositions.
+
 ## [0.126.0] — TLS accounting, sizing, and progress contract — 2026-07-15
 
 ### AR-I — jemmet TLS accounting integration contract

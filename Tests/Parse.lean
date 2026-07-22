@@ -201,12 +201,20 @@ def checks : List Check :=
              let shares : RawExtension := (51, keyShareData greaseShare)
              failsWith (findOfferedKeyShares [groups, shares]) .valueOutOfRange) }
   , { name := "parseSni extracts the bare hostname from a server_name extension (RFC 6066)"
-    , ok := (parseSni (ByteArray.mk #[0,13,0,0,10] ++ (String.toUTF8 "ecdsa.test"))).map (·.toList)
-              == some (String.toUTF8 "ecdsa.test").toList }
+    , ok := (match parseSni (ByteArray.mk #[0,13,0,0,10] ++ (String.toUTF8 "ECDSA.TEST")) with
+             | .ok (.hostName n) => n.bytes.toList == (String.toUTF8 "ecdsa.test").toList
+             | _ => false) }
   , { name := "parseSni rejects a truncated server_name body (bounds-checked)"
-    , ok := (parseSni (ByteArray.mk #[0,13,0,0,10])).isNone }
-  , { name := "parseSni rejects a non-host_name name_type"
-    , ok := (parseSni (ByteArray.mk #[0,13,1,0,10] ++ (String.toUTF8 "ecdsa.test"))).isNone }
+    , ok := failsWith (parseSni (ByteArray.mk #[0,13,0,0,10])) .unexpectedEof }
+  , { name := "parseSni preserves unsupported-only presence"
+    , ok := (match parseSni (ByteArray.mk #[0,13,1,0,10] ++ (String.toUTF8 "ecdsa.test")) with
+             | .ok .presentWithoutSupportedName => true | _ => false) }
+  , { name := "parseSni rejects duplicate name types, including unknown types"
+    , ok := failsWith (parseSni (bytes [0,8,1,0,1,65,1,0,1,66])) .valueOutOfRange }
+  , { name := "parseSni rejects invalid, address-literal, and reserved-LDH host names"
+    , ok := failsWith (parseSni (ByteArray.mk #[0,6,0,0,3] ++ String.toUTF8 "a..")) .valueOutOfRange
+            && failsWith (parseSni (ByteArray.mk #[0,12,0,0,9] ++ String.toUTF8 "127.0.0.1")) .valueOutOfRange
+            && failsWith (parseSni (ByteArray.mk #[0,10,0,0,7] ++ String.toUTF8 "xn--bad")) .valueOutOfRange }
   , { name := "parseAlpnStrict extracts one protocol name from an ALPN extension (RFC 7301)"
     , ok := succeedsWith
               ((parseAlpnStrict (ByteArray.mk #[0,9,8] ++ (String.toUTF8 "http/1.1"))).map
