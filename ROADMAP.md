@@ -111,9 +111,12 @@ Order:
 4. RFC 049 — explicit phase/content acceptance table and reachable graceful EOF.
 
 RFC 046's four implementation slices and lifecycle closeout are complete at implementation commit
-`ebae8f8`; final architecture review accepted the result and B2 is closed. This does not complete AR1 or
-designate a `0.127.0` candidate: B1, B4, and B5 remain open, and the release still requires clean
-exact-revision canonical and CI evidence.
+`ebae8f8` and closeout commit `797e2e1`; final architecture review accepted the result and B2 is closed.
+Clean closeout commit `797e2e1e7881222ab046598225bbd2bc3dcecc4e` passed the canonical `full-release`
+profile 42/42 locally and in CI run `81034382238`, including dedicated GCC 12.5.0/16.1.0 sanitizer lanes and
+all interoperability gates. This does not complete AR1 or constitute tagged-release evidence: B1, B4, and
+B5 remain open, and the exact `0.127.0` release revision still requires its own release workflow and
+immutable provenance assets.
 
 Provisional release train (planning labels, not completion evidence):
 

@@ -1,7 +1,7 @@
 # RFC 046 — Strict ClientHello and Extension Framing
 
 **Project.** kroopt
-**Status.** Implemented (AR1 B2; implementation `ebae8f8`; final architecture review accepted 2026-07-22)
+**Status.** Implemented (AR1 B2; implementation `ebae8f8`; closeout `797e2e1`; CI run `81034382238`)
 **Type.** Blocking parser/security fix
 **Target milestone.** AR1 first protocol slice; provisional release `0.127.0`
 **Requires completion of.** [RFC 003](../done/003-bounds-safe-parser-and-framer.md) (bounded parser), [RFC 023](../done/023-parser-fuzzing-corpus-and-mutation-policy.md) (fuzzing), [RFC 033](../done/033-real-client-handshake-processing.md) (real-client processing)
@@ -462,6 +462,13 @@ authorized parser change deliberately aligns it and updates the corresponding cl
 
 The implementation-review gate used complete-tree development evidence, including a dirty-tree canonical
 `full-release` result, and independently reran the focused proof, parser, corpus, compatibility, hygiene, and
-documentation checks. That evidence supports implementation acceptance but is not a content-addressed
-`0.127.0` candidate attestation. Candidate designation and release still require a clean exact-commit
-canonical ledger plus the required CI, sanitizer, interop, release-machinery, and provenance evidence.
+documentation checks. The accepted implementation was then closed at clean commit
+`797e2e1e7881222ab046598225bbd2bc3dcecc4e`. That exact revision passed the canonical
+`kroopt-gate/v3` `full-release` profile 42/42 locally and in GitHub Actions run `81034382238`. The CI run also
+passed the release-machinery regression controls and dedicated ASan/UBSan lanes under GCC 12.5.0 and GCC
+16.1.0. Its canonical profile included the corpus fuzz gate and TLS, Ed25519, and record interoperability.
+
+This is content-addressed implementation/closeout evidence, not tagged-release attestation. The
+evidence-recording and release-preparation revisions must retain their own clean validation as applicable;
+publication still requires the exact `0.127.0` tag revision to pass the tagged workflow, strict real-release
+provenance checks, and immutable archive/sidecar/GATE-RUN publication.

@@ -93,7 +93,7 @@ in" identifies where each item substantively landed (see CHANGELOG/ROADMAP for d
 
 | ID | Title | Shipped in |
 |----|-------|------------|
-| 046 | [Strict ClientHello and Extension Framing](done/046-strict-clienthello-and-extension-framing.md) | Implemented (AR1 B2; provisional `0.127.0`) — exact framing, canonical SNI, proofs, and hostile corpus accepted at `ebae8f8`; clean candidate/release evidence pending |
+| 046 | [Strict ClientHello and Extension Framing](done/046-strict-clienthello-and-extension-framing.md) | Implemented (AR1 B2; provisional `0.127.0`) — accepted at `ebae8f8`; clean closeout `797e2e1` passed 42/42 locally and in CI run `81034382238`; tagged-release evidence pending |
 | 055 | [TLS Accounting, Sizing, and Progress Contract](done/055-tls-accounting-sizing-and-progress-contract.md) | Implemented (AR-I; shipped `0.126.0`) — release commit `877e54d`, tagged workflow `29370919042`, canonical `full-release` 42/42 and immutable provenance assets published |
 | 053 | [Project Truth and Security-Claim Reconciliation](done/053-project-truth-and-security-claim-reconciliation.md) | Implemented (AR0; shipped `0.125.0`) — public/security/release/RFC claims reconciled; pre-production and traffic-secret limitations made explicit |
 | 051 | [Release-Gate Portability and Canonical Evidence](done/051-release-gate-portability-and-canonical-evidence.md) | Implemented (AR0; shipped `0.125.0`) — clean full-release gate 42/42 plus GCC 12.5/16.1 sanitizer lanes in CI run `79277038502` |

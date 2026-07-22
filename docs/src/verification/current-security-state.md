@@ -13,6 +13,11 @@ in CI run `79277038502`; its GCC 12.5.0 and GCC 16.1.0 sanitizer lanes also pass
 `29298648079`, including dedicated GCC 12.5/16.1 sanitizer lanes. Tagged release workflow run
 `29370919042` then passed the canonical profile 42/42, passed the release-machinery and strict real-release
 provenance checks, and published the three immutable release assets.
+RFC 046 then closed B2 on 2026-07-22 JST: clean closeout commit
+`797e2e1e7881222ab046598225bbd2bc3dcecc4e` passed the canonical profile 42/42 locally and in CI run
+`81034382238`; that run also passed release-machinery controls and the dedicated GCC 12.5/16.1 sanitizer
+lanes. This is implementation/closeout evidence for the provisional `0.127.0` subject, not publication
+evidence.
 
 ## Readiness disposition
 
@@ -21,14 +26,14 @@ provenance checks, and published the three immutable release assets.
 | Development and evaluation | permitted on the pre-1.0 line |
 | Production adoption | **NO-GO** until AR0–AR3 and their evidence gates complete |
 | Stable/v1 | **NO-GO** until AR0–AR4, including RFC 040 native traffic-secret residency |
-| Canonical gate | RFC 051 / AR0 implemented the portable v3 registry; tagged `0.126.0` commit `877e54d` passed 42/42 in release run `29370919042`. Every later candidate still requires its own exact-revision ledger |
+| Canonical gate | RFC 051 / AR0 implemented the portable v3 registry; clean RFC 046 closeout commit `797e2e1` passed 42/42 locally and in CI run `81034382238`. The exact `0.127.0` tag revision still requires its own release ledger and provenance assets |
 
 ## Architecture-review finding status
 
 | Finding | Current gap | Scheduled closure |
 |---|---|---|
 | B1 | endpoint cipher allow-list does not authorize the parser-selected suite | RFC 045 / AR1 |
-| B2 | ~~ClientHello parsing did not enforce exact nested/top-level framing or distinguish invalid-present SNI~~ | **Closed by RFC 046**; exact framing, canonical SNI, proofs, and hostile corpus accepted at `ebae8f8` |
+| B2 | ~~ClientHello parsing did not enforce exact nested/top-level framing or distinguish invalid-present SNI~~ | **Closed by RFC 046**; accepted at `ebae8f8`, closeout `797e2e1` passed 42/42 locally and in CI run `81034382238` |
 | B3 | live drivers do not generate the modeled handshake/idle deadline events | RFC 047 / AR2 |
 | B4 | validated config/provider construction is bypassable and protected flight can fall back to plaintext | RFC 048 / AR1 |
 | B5 | invalid record phase/content combinations can be silently ignored | RFC 049 / AR1 |
