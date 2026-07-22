@@ -28,7 +28,7 @@ provenance checks, and published the three immutable release assets.
 | Finding | Current gap | Scheduled closure |
 |---|---|---|
 | B1 | endpoint cipher allow-list does not authorize the parser-selected suite | RFC 045 / AR1 |
-| B2 | exact ClientHello framing/SNI implementation and hostile corpus are assembled; final architecture acceptance remains pending | RFC 046 / AR1 |
+| B2 | ~~ClientHello parsing did not enforce exact nested/top-level framing or distinguish invalid-present SNI~~ | **Closed by RFC 046**; exact framing, canonical SNI, proofs, and hostile corpus accepted at `ebae8f8` |
 | B3 | live drivers do not generate the modeled handshake/idle deadline events | RFC 047 / AR2 |
 | B4 | validated config/provider construction is bypassable and protected flight can fall back to plaintext | RFC 048 / AR1 |
 | B5 | invalid record phase/content combinations can be silently ignored | RFC 049 / AR1 |
@@ -36,9 +36,9 @@ provenance checks, and published the three immutable release assets.
 | B7 | ~~the canonical full-release gate was not portable in the reviewed environment~~ | **Closed by RFC 051 / AR0**; clean v3 gate and GCC 12.5/16.1 lanes passed on `2984db0` |
 | B8 | a configured certificate chain is represented as one TLS `CertificateEntry` | RFC 050 / AR2 |
 
-**Next milestone:** AR1 — fail-closed protocol correctness through RFC 046, RFC 045, RFC 048, then RFC 049.
-B1, B2, B4, and B5 remain open; B2 is review-pending rather than completed. AR-I does not change the production/stable NO-GO disposition, and AR0's
-truthful B6 wording does not complete AR4 native residency.
+**Next milestone:** continue AR1 fail-closed protocol correctness through RFC 045, RFC 048, then RFC 049.
+B1, B4, and B5 remain open; B2 is closed by RFC 046. This does not change the production/stable NO-GO
+disposition, and AR0's truthful B6 wording does not complete AR4 native residency.
 
 ## Profile in one line
 
@@ -90,8 +90,9 @@ blocking and the non-blocking reactor driver: handshakes with AES-128-GCM, AES-2
 ChaCha20-Poly1305; x25519 and P-256 group coverage; an Ed25519 server certificate; application-data
 round-trip; an explicitly observed graceful `close_notify`; and a rejection case (an x25519-only listener
 refuses a P-256-only client — no HRR).
-GREASE tolerance is tested only for a named-group and a cipher-suite GREASE value alongside valid offers
-(RFC 8701); other GREASE positions are browser-grade follow-up.
+GREASE tolerance is tested alongside usable offers for cipher suites, supported versions, named groups,
+signature schemes, and key-share entries; exact framing of an unknown extension is also tested (RFC 8701).
+This remains constrained-profile evidence rather than a claim of browser-grade extension breadth.
 **Browser-grade interop is not claimed** — see
 [constrained vs browser-grade](../interop/constrained-vs-browser-grade.md).
 

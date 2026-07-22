@@ -53,6 +53,18 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
   63/64-label and 253/254-name limits, invalid wildcard suffixes, and live invalid-present/default-route
   prevention; assemble documentation for final RFC-046 implementation review.
 
+### RFC 046 lifecycle closeout
+
+- Close architecture-review finding B2 and move RFC 046 to `done/` after final implementation review
+  accepted exact framing, canonical SNI, live transcript binding, proofs, focused tests, and the hostile
+  corpus with no blocking findings.
+- Record the accepted top-level helper-capacity variance: it affects only internal error precedence for a
+  one-to-three-byte body over-declaration, not successful parsing, resource safety, exact-input proofs, or
+  public error projection.
+- Expand the current GREASE evidence statement to the tested versions, suites, groups, signature schemes,
+  key shares, and unknown-extension positions while retaining the explicit non-browser-grade boundary.
+  `0.127.0` remains gated on clean exact-commit canonical and CI evidence.
+
 ## [0.126.0] — TLS accounting, sizing, and progress contract — 2026-07-15
 
 ### AR-I — jemmet TLS accounting integration contract

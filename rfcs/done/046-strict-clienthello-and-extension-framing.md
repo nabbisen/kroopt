@@ -1,11 +1,11 @@
 # RFC 046 — Strict ClientHello and Extension Framing
 
 **Project.** kroopt
-**Status.** Proposed — all implementation slices assembled; final architecture review pending
+**Status.** Implemented (AR1 B2; implementation `ebae8f8`; final architecture review accepted 2026-07-22)
 **Type.** Blocking parser/security fix
 **Target milestone.** AR1 first protocol slice; provisional release `0.127.0`
 **Requires completion of.** [RFC 003](../done/003-bounds-safe-parser-and-framer.md) (bounded parser), [RFC 023](../done/023-parser-fuzzing-corpus-and-mutation-policy.md) (fuzzing), [RFC 033](../done/033-real-client-handshake-processing.md) (real-client processing)
-**Coordinates with.** [RFC 045](045-endpoint-negotiation-policy-authorization.md) (selection authority), [RFC 039](../done/039-named-group-policy-and-enforcement.md) (group selection)
+**Coordinates with.** [RFC 045](../proposed/045-endpoint-negotiation-policy-authorization.md) (selection authority), [RFC 039](../done/039-named-group-policy-and-enforcement.md) (group selection)
 **Touches.** `Kroopt/Parse/{Reader,Handshake}.lean`, SNI validation in `Kroopt/Core/Config.lean`, the
 `WireBound` bridge in `Kroopt/Core/RecordPath.lean`, parser/config proofs, deterministic parser/hardening
 tests, `testdata/fuzz/clienthello/`, the existing canonical fuzz executable, parser/security documentation
@@ -442,3 +442,26 @@ ROADMAP, CHANGELOG, and the `0.127.0` release evidence only when the correspondi
 No new TLS extensions, HelloRetryRequest, browser-grade/IDNA breadth, endpoint cipher authorization, deadline
 enforcement, certificate-chain redesign, public API stabilization, configurable pre-parse resource admission,
 or alert-policy redesign is included.
+
+## 14. Implementation closeout
+
+The four implementation slices were committed as `f3467b2`, `f6b380f`, `a1303cd`, and `ebae8f8`. Final
+architecture review accepted the assembled implementation with no blocking findings. The accepted result
+provides exact-region and whole-input proofs, strict nested and top-level framing, canonical SNI validation,
+live `WireBound` transcript binding, deterministic focused tests, and a 23-seed manifest-driven hostile
+corpus in the canonical fuzz executable.
+
+One internal capacity variance from the design in §5 is accepted and recorded. At the reader positioned
+after `msg_type`, `parseClientHello` passes the pre-prefix `r1.remaining` value as the `uint24` helper maximum
+rather than subtracting `LenPrefix.len24.byteWidth`. The post-prefix slice still rejects every unavailable
+declared body, the outer `expectEnd` still rejects residue, and the public exact-input theorem still links a
+successful parse to the decoded header/body equation. Consequently this does not change successful parsing,
+resource safety, or the public error projection; it can only change internal error precedence for a body
+declaration one to three bytes beyond the available body. Preserve this accepted variance unless a later
+authorized parser change deliberately aligns it and updates the corresponding classification evidence.
+
+The implementation-review gate used complete-tree development evidence, including a dirty-tree canonical
+`full-release` result, and independently reran the focused proof, parser, corpus, compatibility, hygiene, and
+documentation checks. That evidence supports implementation acceptance but is not a content-addressed
+`0.127.0` candidate attestation. Candidate designation and release still require a clean exact-commit
+canonical ledger plus the required CI, sanitizer, interop, release-machinery, and provenance evidence.

@@ -110,15 +110,16 @@ Order:
 3. RFC 048 — validated connection construction and no protected-epoch plaintext fallback;
 4. RFC 049 — explicit phase/content acceptance table and reachable graceful EOF.
 
-RFC 046's four implementation slices are assembled on the current development
-tree. This is not closure or a `0.127.0` candidate: the mandatory final
-implementation review and exact-revision evidence still gate both.
+RFC 046's four implementation slices and lifecycle closeout are complete at implementation commit
+`ebae8f8`; final architecture review accepted the result and B2 is closed. This does not complete AR1 or
+designate a `0.127.0` candidate: B1, B4, and B5 remain open, and the release still requires clean
+exact-revision canonical and CI evidence.
 
 Provisional release train (planning labels, not completion evidence):
 
 | Release | Primary subject | Required subject gate before candidate release validation |
 |---|---|---|
-| `0.127.0` | RFC 046 — strict ClientHello and extension framing | accepted detailed design; exact-boundary parser proofs/tests/fuzz seeds; implementation review |
+| `0.127.0` | RFC 046 — strict ClientHello and extension framing | accepted implementation/closeout; clean exact-revision canonical, CI, sanitizer, and interop evidence |
 | `0.128.0` | RFC 045 — endpoint negotiation-policy authorization | accepted selection-authority design; authorization proof and negative matrix; implementation review |
 | `0.129.0` | RFC 048 — validated construction and protected-epoch fail-closed behavior | accepted constructor/failure design; public bypass closure and no-plaintext evidence; implementation review |
 | `0.130.0` | RFC 049 — record-phase acceptance and clean-close semantics | accepted phase/content matrix; deterministic alert/EOF tests and proofs; implementation review |
