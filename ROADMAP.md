@@ -106,7 +106,7 @@ out-of-phase inputs.
 Order:
 
 1. RFC 046 — strict ClientHello/extension framing and fuzz seeds;
-2. RFC 045 — core-authorized suite selection after SNI resolution;
+2. RFC 045 — core-authorized suite selection after SNI resolution, with RFC 056 landing alongside it;
 3. RFC 048 — validated connection construction and no protected-epoch plaintext fallback;
 4. RFC 049 — explicit phase/content acceptance table and reachable graceful EOF.
 
@@ -121,13 +121,26 @@ evidence: B1, B4, and B5 remain open. Published release `0.127.0` is exact commi
 `3d9919acd946b1cf79956d1aa1486fce2ba1f7216bfe5c23c8fab935783e0396`, sidecar SHA-256
 `cd8e56b8909a941dc682db5884e6406d08282f96d37df4f0c84fcb98bcfe4b63`, and GATE-RUN SHA-256
 `1c1a300d6296585bf69bcf90507199083ee6526e899f938bbd0691600d2254a2`. RFC 045 is the next AR1 subject.
+Its rev-3 design was accepted by architecture review on 2026-08-01 and **Slice 1 is authorized**; no RFC 045
+protocol implementation has started. rev-3 specifies the parser/core fact boundary, single endpoint
+resolution, startup provider-capability composition with its bridging lemmas, scoped error precedence, a
+dedicated route-miss category, proof obligations, the compatibility change, the negative/interop matrix, and
+two implementation slices. The human owner ruled the fixed preference order to be **AES-128-GCM,
+AES-256-GCM, ChaCha20-Poly1305**: AES-128-GCM is the RFC 8446 §9.1 mandatory-to-implement suite and the only
+preferred candidate this build accelerates in hardware, while ChaCha20-Poly1305 is compiled scalar-only.
+
+That ruling surfaced **RFC 056**, a newly discovered defect outside the B1–B8 inventory: `realCapabilities`
+advertises AES-GCM statically while EverCrypt gates it on runtime CPUID and Lean never probes, so an
+incapable host advertises a suite it cannot perform and fails after ServerHello commits. Making AES-GCM the
+preferred suite would place that path in the default position, so RFC 056 must land with or before RFC 045
+Slice 2 in the same release. RFC 045 Slice 1 is not gated on it.
 
 Release train (`0.127.0` published; later labels remain provisional planning targets):
 
 | Release | Primary subject | Required subject gate before candidate release validation |
 |---|---|---|
 | `0.127.0` | RFC 046 — strict ClientHello and extension framing | **published** at exact commit `7fe6485`; tagged run `29920594779`; immutable provenance assets recorded |
-| `0.128.0` | RFC 045 — endpoint negotiation-policy authorization | accepted selection-authority design; authorization proof and negative matrix; implementation review |
+| `0.128.0` | RFC 045 — endpoint negotiation-policy authorization, with RFC 056 — provider capability runtime honesty | rev-3 design accepted; Slice 1/Slice 2 implementation reviews; authorization proof and negative matrix; RFC 056 Implemented in the same release so AES-GCM advertisement is truthful before it becomes the default |
 | `0.129.0` | RFC 048 — validated construction and protected-epoch fail-closed behavior | accepted constructor/failure design; public bypass closure and no-plaintext evidence; implementation review |
 | `0.130.0` | RFC 049 — record-phase acceptance and clean-close semantics | accepted phase/content matrix; deterministic alert/EOF tests and proofs; implementation review |
 

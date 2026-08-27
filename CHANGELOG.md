@@ -5,6 +5,37 @@ governed by [`rfcs/done/000-rfc-lifecycle-policy.md`](rfcs/done/000-rfc-lifecycl
 
 ## [Unreleased]
 
+### RFC 045 endpoint suite-authorization design — accepted at rev-3
+
+- Expand RFC 045 into the reviewable AR1/B1 implementation contract: the parser reports recognized client
+  offers, the core resolves one endpoint exactly once and selects from its unordered allow-set under a fixed
+  server preference, and provider support composes from startup capability validation.
+- Settle the preference order by human-owner ruling as **AES-128-GCM, AES-256-GCM, ChaCha20-Poly1305**, with
+  the rationale and the three rejected alternatives recorded in RFC 045 §5.2. This changes multi-suite
+  negotiation from first-recognized client order to fixed server order: a client offering ChaCha20 before
+  AES-128-GCM will negotiate AES-128-GCM when both are endpoint-allowed. Endpoint list order becomes
+  explicitly non-semantic. `0.128.0` release notes must call this out.
+- Scope the parser/core error precedence to semantic negotiation failures, add the missing
+  `ServerConfig`→`ValidatedServerConfig` bridging lemmas to the provider-composition chain, give route-miss
+  its own internal `noEndpointForSni` category, and record B1 closure as conditional on RFC 048.
+- Pin no-overlap alert/output behavior, proof and downstream-consistency obligations, redaction-safe
+  diagnostics, tests/interop, and two implementation slices. This is design work only; B1 and AR1 remain
+  open pending implementation.
+
+### RFC 056 provider capability runtime honesty (new)
+
+- Record a defect found while reviewing RFC 045 and outside the B1–B8 inventory: `realCapabilities`
+  advertises AES-GCM statically, while EverCrypt gates AES-GCM construction on runtime CPUID
+  (`aesni && pclmulqdq && avx && sse && movbe`) and no probe is exposed to Lean. An incapable host — an Ivy
+  Bridge Xeon E5 v2 or a CPU-masked VM — passes config validation and then fails after ServerHello has
+  committed to the suite.
+- Advertise the intersection of the build's maximal set with a startup probe that tests the actual predicate
+  by attempting `EverCrypt_AEAD_create_in`, so an AES-GCM endpoint on an incapable host is refused at config
+  validation instead of mid-handshake. ChaCha20-Poly1305 is scalar C and always available, so the advertised
+  set is never empty.
+- Gates RFC 045 Slice 2 and ships in the same `0.128.0` release; RFC 045 Slice 1 is not gated on it. Design
+  work only.
+
 ## [0.127.0] — Strict ClientHello and extension framing — 2026-07-22
 
 ### Post-0.126 release closeout and AR1 planning

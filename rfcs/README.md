@@ -51,7 +51,7 @@ HTTPS E2E + interop breadth (RFC 015/026) the headline track; 031, 032, 033, 034
 Read order: ROADMAP first, then RFCs 001–007 (pure verified core), 008–009
 (crypto integration), 010–015 (runtime integration and acceptance), 016 (scope
 control), then 017–030 (cross-cutting security, lifecycle, and release governance),
-031–043 (correspondence/native/interop hardening history), and finally 044–055
+031–043 (correspondence/native/interop hardening history), and finally 044–056
 (the current architecture-review remediation and deferred-evolution schedule).
 
 ## Proposed — architecture-review remediation schedule
@@ -62,13 +62,14 @@ durable work item. Milestone order and release decision gates are in ROADMAP §0
 | ID | Title | Milestone / purpose |
 |----|-------|---------------------|
 | 044 | [Async Crypto Offload and Result Correlation](proposed/044-async-crypto-offload-and-result-correlation.md) | Deferred until after AR4; preserves RFC 040's sync-first boundary |
-| 045 | [Endpoint Negotiation Policy Authorization](proposed/045-endpoint-negotiation-policy-authorization.md) | AR1 — B1 endpoint cipher policy |
+| 045 | [Endpoint Negotiation Policy Authorization](proposed/045-endpoint-negotiation-policy-authorization.md) | AR1 — B1; rev-3 design accepted, Slice 1 authorized, no implementation yet |
 | 047 | [Monotonic Deadlines and Timeout Enforcement](proposed/047-monotonic-deadlines-and-timeout-enforcement.md) | AR2 — B3 handshake/idle/close deadlines |
 | 048 | [Validated Construction and Protected-Epoch Fail-Closed Behavior](proposed/048-validated-construction-and-protected-epoch-fail-closed.md) | AR1 — B4 construction and protected-flight safety |
 | 049 | [Record-Phase Acceptance and Clean-Close Semantics](proposed/049-record-phase-acceptance-and-clean-close.md) | AR1 — B5 plus public graceful EOF |
 | 050 | [Bounded Certificate-Chain Presentation](proposed/050-bounded-certificate-chain-presentation.md) | AR2 — B8 real certificate lists |
 | 052 | [jemmet+iotakt Production-Path Acceptance](proposed/052-jemmet-iotakt-production-path-acceptance.md) | AR3 — real downstream evidence; coordinates RFC 015/026 |
 | 054 | [Maintainability Split and History Archival](proposed/054-maintainability-split-and-history-archival.md) | AR-M — module/history concentration before stable |
+| 056 | [Provider Capability Runtime Honesty](proposed/056-provider-capability-runtime-honesty.md) | AR1 — advertised AES-GCM is host-conditional; gates RFC 045 Slice 2 |
 
 ## Proposed — pre-existing open deliverables
 
